@@ -1,0 +1,65 @@
+(
+    spec: (
+        width: 14,
+        height: 8,
+        seed: 1592614941,
+        spawns: [
+            (
+                x: 1,
+                y: 1,
+            ),
+            (
+                x: 2,
+                y: 6,
+            ),
+        ],
+    ),
+    commands: [
+        (
+            tick: 0,
+            command: SetGoal(
+                entity: (1),
+                goal: Some((
+                    x: 12,
+                    y: 6,
+                )),
+            ),
+        ),
+        (
+            tick: 10,
+            command: Spawn(
+                pos: (
+                    x: 7,
+                    y: 4,
+                ),
+            ),
+        ),
+        (
+            tick: 12,
+            command: SetGoal(
+                entity: (3),
+                goal: Some((
+                    x: 0,
+                    y: 0,
+                )),
+            ),
+        ),
+        (
+            tick: 30,
+            command: SetGoal(
+                entity: (1),
+                goal: Some((
+                    x: 3,
+                    y: 7,
+                )),
+            ),
+        ),
+        (
+            tick: 60,
+            command: Despawn(
+                entity: (3),
+            ),
+        ),
+    ],
+    ticks: 120,
+)

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# The whole CI suite, runnable locally. .github/workflows/ci.yml calls THIS
+# script rather than duplicating the commands, so local and CI cannot drift.
+#
+#   scripts/ci.sh              # everything
+#   scripts/ci.sh rust         # cargo checks only
+#   scripts/ci.sh docs         # doc checks only (fast — no Rust build)
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+WHICH="${1:-all}"
+FAILED=()
+
+step() { printf '\n\033[1m=== %s\033[0m\n' "$1"; }
+
+run_rust() {
+  # fmt and clippy are gated from day one deliberately. The predecessor project
+  # could not turn the fmt gate on without a whole-tree reformat commit first,
+  # because the drift accumulated before anyone checked. It is free now.
+  step "cargo fmt --check"
+  cargo fmt --all --check || FAILED+=("fmt")
+
+  step "cargo clippy (deny warnings)"
+  cargo clippy --workspace --all-targets -- -D warnings || FAILED+=("clippy")
+
+  step "cargo test (incl. golden replays and the determinism scan)"
+  cargo test --workspace || FAILED+=("rust")
+}
+
+run_docs() {
+  # $1 is a directory to check *instead of* the working tree: the pre-commit
+  # hook extracts the staged index and passes that prefix, so the hook and a
+  # bare local run check the same paths against different content. Defaults to
+  # the repo root. Every path below is built from $ROOT — hardcoding one is what
+  # made the hook's extraction dead machinery in the predecessor project.
+  local ROOT="${1:-.}"
+
+  step "relative links and line citations resolve"
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node not found — install Node 20+ to run the doc checks" >&2
+    FAILED+=("docs (node missing)")
+    return
+  fi
+  # No deps, so it runs before the npm install below.
+  # $ROOT, not $ROOT/docs: CLAUDE.md and .claude/design-invariants.md carry
+  # cross-references too, and the hook extracts every tracked .md.
+  node scripts/check-links.mjs "$ROOT" || FAILED+=("links")
+
+  step "registers are consistent, ordered and bounded"
+  # Counts are derived from the entries (live + history shards), not read from
+  # prose. Also caps file size, which is what makes sharding automatic rather
+  # than something nobody does until a register is 166 KB.
+  node scripts/check-registers.mjs "$ROOT/docs" || FAILED+=("registers")
+
+  step "split-doc part files open with their breadcrumb"
+  node scripts/check-doc-layout.mjs "$ROOT/docs" || FAILED+=("doc-layout")
+
+  step "mermaid diagrams parse"
+  # Install on first run, or whenever the lockfile is newer than the tree.
+  if [ ! -d scripts/node_modules ] \
+     || [ scripts/package-lock.json -nt scripts/node_modules ]; then
+    echo "installing doc-check deps…"
+    if [ -f scripts/package-lock.json ]; then
+      npm ci --prefix scripts --silent --no-fund --no-audit
+    else
+      npm install --prefix scripts --silent --no-fund --no-audit
+    fi
+  fi
+  node scripts/check-mermaid.mjs "$ROOT/docs" || FAILED+=("mermaid")
+}
+
+# Optional $2: check this directory instead of the working tree (see run_docs).
+case "$WHICH" in
+  all)  run_docs "${2:-.}"; run_rust ;;   # docs first: seconds, vs. minutes for Rust
+  rust) run_rust ;;
+  docs) run_docs "${2:-.}" ;;
+  *)    echo "usage: scripts/ci.sh [all|rust|docs] [root]" >&2; exit 2 ;;
+esac
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  printf '\n\033[31mFAILED: %s\033[0m\n' "${FAILED[*]}"
+  exit 1
+fi
+
+printf '\n\033[32mAll checks passed.\033[0m\n'
