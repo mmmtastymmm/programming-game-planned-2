@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned so CI and every contributor build on the same compiler the
+# golden-replay hashes were generated with. A toolchain bump is allowed to
+# change a hash — but it has to be a deliberate commit that says so, not a
+# surprise from whatever `stable` rolled to that week.
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

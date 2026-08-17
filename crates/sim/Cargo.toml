@@ -1,0 +1,9 @@
+[package]
+name = "sim"
+version.workspace = true
+edition.workspace = true
+description = "Deterministic world simulation — plain Rust, no ECS, no floats (see ../../CLAUDE.md)"
+
+[dependencies]
+ron = "0.12.2"
+serde = { version = "1.0.228", features = ["derive"] }

@@ -1,0 +1,39 @@
+# Both jobs shell out to scripts/ci.sh, which is also what you run locally
+# (`scripts/ci.sh` for everything, or `rust` / `docs` for one half). Keeping the
+# commands in the script rather than in this file is what stops local and CI
+# drifting apart.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Seconds, and needs no Rust toolchain — so a docs-only PR gets fast feedback
+  # instead of waiting on a full build. This repo is design-first, so most PRs
+  # are docs-only.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+      - name: Doc checks (links, registers, layout, mermaid)
+        run: scripts/ci.sh docs
+
+  # Determinism gate (CLAUDE.md): golden-replay fixtures are checked in, so any
+  # sim behavior change fails here until the fixture is regenerated
+  # (UPDATE_GOLDEN=1) — and the PR explains why.
+  #
+  # No toolchain action: rust-toolchain.toml pins the compiler, and letting the
+  # action override it would defeat the pin the golden hashes depend on.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt, clippy, test (incl. golden replays)
+        run: scripts/ci.sh rust
