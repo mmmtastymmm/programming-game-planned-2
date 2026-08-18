@@ -1,11 +1,17 @@
 # Programming Game 2 (working title)
 
-A lockstep-multiplayer programming game: players write programs that drive
-their units, and the simulation runs identically on every machine. **The design
-is not written yet.** What exists today is the corpus scaffolding and the
-determinism gate, both ported from the predecessor project
-`../programming_game_planned` — see [docs/00-overview.md](docs/00-overview.md)
-for what has to be decided and in what order.
+A lockstep-multiplayer programming game: the player writes a small number of
+programs, a fleet of identical units runs them, and **the player rewrites those
+programs while the match is running** — each update a lockstep-synchronized
+command applied on the same tick by every peer (Q3). The player never commands an
+individual unit. The simulation runs identically on every machine.
+
+The design is in its first pass. The framing rulings are made and live in
+[docs/00-overview.md](docs/00-overview.md)'s Decided section; the language, the
+tick, sensing, fault behavior and unit production are all still open in
+[docs/QUESTIONS.md](docs/QUESTIONS.md). The corpus scaffolding and the
+determinism gate are ported from the predecessor project
+`../programming_game_planned` and proven in CI.
 
 Design lives in `docs/`; unresolved design questions in
 [docs/QUESTIONS.md](docs/QUESTIONS.md).

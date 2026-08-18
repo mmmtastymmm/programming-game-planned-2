@@ -21,28 +21,132 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-08-17 (latest):** nothing is open, because nothing has been
-proposed. The prompts below are the questions that block everything else; they
-become numbered entries once each has an actual worksheet — a statement of the
-options and what each costs — rather than just a topic.
+**Status 2026-08-17 (latest):** the framing pass is done. Q1–Q4 are answered and
+live in [history/questions-answered-001.md](history/questions-answered-001.md):
+this is a fresh take on the predecessor's core idea, the player programs a fleet
+of identical units, **programs are rewritten mid-match as lockstep-synchronized
+updates**, and PvE ships before PvP. Those rulings are summarised in
+[00-overview.md](00-overview.md)'s Decided section.
 
-## Where the design has to start
-
-The predecessor project answered these in a particular order and paid for the
-places where it guessed early. In rough dependency order:
-
-1. **What does the player program — one unit, a fleet, or a factory?** Almost
-   every other decision hangs off this one.
-2. **What is the language?** Its execution model (interpreted one operation at a
-   time? compiled to a bytecode with a cycle budget?) determines what "fair"
-   means and what the tick loop costs.
-3. **What is the tick, and how many ticks per second?** Lockstep pins this
-   early; changing it later invalidates every tuning number.
-4. **What does a unit sense?** Determinism rule 6 means every query is a sorted
-   query — the sensing model and the sort order are the same decision.
-5. **What is the win condition?** PvE, PvP, or both changes what the sim has to
-   be fair about.
+Eight questions are open below. Q5 is the next one that blocks the rest. Q11 and
+Q12 exist because Q3 admits mid-match updates, and neither can be deferred past
+Q5 — both change what the language and the tick loop have to be.
 
 ## Open
 
-*(none yet — see above)*
+**Q5 — What is the language?**
+
+Syntax family, execution model and cost model. Q3 makes this the entire authoring
+surface of the game *and* puts it on the hot path: a program is not written once,
+it is rewritten under time pressure while units are dying.
+
+| Option | What it costs |
+|---|---|
+| Interpreted one operation per tick, Python-like | The predecessor's model. Legible cost model — a player can count ticks by reading — but the interpreter sits on the hash-critical path and every builtin is a determinism obligation. |
+| Compiled to a bytecode with a per-tick cycle budget | Cost becomes a budget rather than a line count. Faster, and separates language surface from tick cost, but "why did my unit only get halfway" is harder to explain. |
+| A restricted DSL — behavior trees, rules, or a state machine | Far smaller determinism surface, much easier to make fast, and quick to edit under pressure. Ceiling is lower, and "programming game" becomes arguable. |
+| An existing embeddable language (Lua, Rhai, WASM) | Enormous head start on tooling and familiarity. Determinism must then be audited inside someone else's runtime, which is the one thing this project cannot compromise on. |
+
+Whatever wins must also answer what a program's *identity* is across an edit,
+since Q11 needs it and rule 7 hashes it.
+
+Leaning: the embeddable-runtime option is the one to disprove first. If a stock
+runtime can be made bit-deterministic it dominates; if it cannot, learning that
+early is worth more than any other answer here. The existing cross-process replay
+harness can settle it empirically.
+
+**Q6 — What is the tick, and how many ticks per second?**
+
+Lockstep pins this early and every tuning constant in the corpus inherits it.
+
+| Option | What it costs |
+|---|---|
+| Slow tick (5–10/s), one action per tick | Cheap to simulate, easy to reason about, and a program's cost is legible. Movement looks stepped unless the renderer interpolates. |
+| Medium tick (20–30/s) | Conventional and smooth. More sim work per second and a tighter budget for interpretation. |
+| Fast tick (60/s) | Renderer and sim agree; no interpolation needed. Leaves very little room per unit per tick at fleet scale. |
+| Decouple: slow sim tick, interpolating renderer | Best of both, at the cost of a rendering layer that must never feed anything back into the sim. |
+
+Blocked on nothing, but pointless to fix before Q5 — the interpreter's cost per
+unit per tick is the input that decides it. A slow tick also widens the window
+Q12 needs for scheduling updates, which is a second reason not to guess.
+
+**Q7 — What does a unit sense?**
+
+Determinism rule 6 makes every query a *sorted* query, so the sensing model and
+its ordering are one decision, not two.
+
+| Option | What it costs |
+|---|---|
+| Omniscient within a radius | Simplest to specify and to sort. Removes scouting and information asymmetry as design material. |
+| Line-of-sight, per unit | Makes terrain matter and exploration real. Visibility becomes per-unit hashed state, a large addition to the state hash at fleet scale. |
+| Shared fleet vision | One visibility set per player rather than per unit. Cheaper to hash, and makes the fleet feel like one organism rather than many agents. |
+| Explicit sensors as equipment | Sensing becomes a build choice with costs and trade-offs. Most design surface, most tuning, most to get wrong. |
+
+**Q8 — What happens when a program faults?**
+
+Q2's failure mode is "one bad program, fifty dead units". Q3 softens it — the
+player can patch mid-match — but that makes the *diagnosis* path matter as much
+as the failure semantics: a fault the player cannot see is a fault they cannot fix.
+
+| Option | What it costs |
+|---|---|
+| Hard fault — the unit stops dead | Brutal, legible, teaches fast. Fifty stopped units is a dramatic and readable signal to patch. |
+| Fault, then fall back to a default behavior | Forgiving, keeps a match alive. The fallback becomes a hidden second program every player must learn, and masks the signal that something is wrong. |
+| Faults are values — the program handles them | Most expressive and most in the spirit of a programming game. Requires an error model in the language from day one, which pushes on Q5. |
+| Static rejection — programs that can fault do not compile | Strongest guarantee a player can rely on. Demands real analysis in the toolchain, and a slow compile is punishing when editing under fire (Q3). |
+
+**Q9 — Where do units come from?**
+
+Fixed roster at match start, or produced during it.
+
+| Option | What it costs |
+|---|---|
+| Fixed roster, chosen before the match | Simplest. A match becomes a pure test of the program set, and the economy stops being gameplay. |
+| Produced by a rule the player configures, and can reconfigure mid-match | Consistent with Q3: production is another thing you author and re-author. The configuration surface is a second, smaller language to design unless it folds into Q5. |
+| Produced by ordinary programs, like any other unit behavior | One authoring surface, maximum consistency with Q2. Production becomes something a program can get catastrophically wrong — which Q8 then has to survive. |
+
+**Q10 — What else, besides program updates, may enter the sim mid-match?**
+
+Q3 settled that program updates do. This is the question of whether *anything
+else* does, and it decides how many categories of command the netcode carries.
+
+| Option | What it costs |
+|---|---|
+| Nothing else — program updates are the whole input surface | Cleanest. Leaves no way to resign and no way to end a stalemate early. |
+| Plus match-control only (resign, agreed draw) | Keeps every sim-affecting input a program update while remaining playable. A second command category with different rules is a permanent small complication. |
+| Plus spectator-visible annotations | Nice for streaming and teaching. Anything visible risks becoming load-bearing, and then it is unit-level live input by another name — which Q3 forbids. |
+
+**Q11 — What happens to a unit mid-execution when its program is swapped?**
+
+⚠HASH. Q3 permits the swap; this decides what it does to fifty units that are
+each somewhere in the middle of the old program. Every option below changes the
+state hash, so this cannot be discovered during implementation.
+
+| Option | What it costs |
+|---|---|
+| Restart from the top | Trivially defined and easy to explain. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
+| Resume at the same instruction offset | Feels continuous, and is meaningless the moment the edit changes the program's shape — offset 12 of the new text is not the old offset 12. |
+| Resume at a named re-entry point the program declares | Predictable and authorable, and gives the player real control over patch cost. Requires the language to carry the concept (Q5). |
+| Finish the current action, then restart | A compromise that keeps in-flight work. "Current action" must then be a precisely defined boundary in the sim, which is a rule-7-grade specification burden. |
+
+Whatever wins must also say what happens to a unit's **local state** — variables,
+accumulated position in a loop — across the swap. Discarding it is simple;
+preserving it means the new program must be type-compatible with the old one's
+state, which is a language decision, not a sim decision.
+
+**Q12 — How is a program update scheduled in lockstep?**
+
+The player presses deploy at some wall-clock moment; every peer must apply the
+update on the *same tick*. The standard answer is to agree it for a future tick,
+far enough ahead that every peer holds it in time.
+
+| Option | What it costs |
+|---|---|
+| Fixed turn delay (apply at tick `now + N`) | The classic RTS answer: simple, predictable, and the delay is a tunable felt directly as input lag. Picking `N` trades responsiveness against tolerance for a slow peer. |
+| Delay negotiated from measured latency | Feels better on good connections and adapts to bad ones. The negotiation itself becomes shared state that must be deterministic. |
+| Lockstep barrier — the tick does not advance until every peer has acked | No input lag and no wrong guesses, but one slow peer stalls everyone, which is the failure mode lockstep games are most hated for. |
+
+Also to settle here: what happens when a peer **misses** its window — drop the
+update, stall, or desync-and-resync. And whether updates are rate-limited, which
+is where PvP fairness re-enters (Q4 defers PvP, so this may be deferred with it,
+but the *hook* has to exist in the command format from the start).

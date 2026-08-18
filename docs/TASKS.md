@@ -15,18 +15,36 @@ Two conventions carried over from the predecessor project:
 ## M0 — Scaffolding (done except where noted)
 
 - [x] CI harness: `scripts/ci.sh`, GitHub Actions, pre-commit doc gate.
-- [x] Doc checks: links, register counts, doc layout, mermaid.
+- [x] Doc checks: links, registers, doc layout, mermaid.
 - [x] Determinism kit: FNV-1a state hash, named seeded RNG streams, replay
       artifact, golden fixture, cross-process replay check, syntactic scan for
       floats / hash iteration / wall clock.
 - [ ] Replace the placeholder sim in `crates/sim` with the real world model.
-      ⚠HASH — this regenerates the golden fixture by definition. Blocked on the
-      design, which is the point of the next milestone.
+      ⚠HASH — this regenerates the golden fixture by definition. Blocked on Q5
+      and Q9; the shape of `Command` is blocked on Q10 and Q12; hot-swap
+      semantics on Q11.
 
 ## M1 — First design pass
 
-- [ ] Answer the ordering questions in [QUESTIONS.md](QUESTIONS.md) well enough
-      to write `docs/00-overview.md` as something other than a placeholder.
-- [ ] Write the first numbered docs. Split them (doorway + parts directory) only
-      once a file actually outgrows itself — the split has a real cost in
-      cross-part invariants.
+- [x] Answer the framing questions. Q1–Q4 are ruled; `00-overview.md` is real
+      rather than a placeholder and carries its Decided section.
+- [ ] Answer Q5 (the language). It decides the cost model Q6 needs and the error
+      model Q8 needs, and `docs/01` cannot be written without it.
+- [ ] Answer Q6–Q12 and write the numbered docs they unblock. Split a doc
+      (doorway + parts directory) only once it actually outgrows one file — the
+      split has a real cost in cross-part invariants.
+
+## Decided-but-unbuilt
+
+Nothing yet. The Q1–Q4 rulings are all either architectural (already true in
+`crates/sim`) or not yet implementable.
+
+Note for whoever builds M0's last item: Q3 admits mid-match program updates, so
+`Command` **is** an ordered per-tick log — but its principal variant is a program
+deploy, not a unit order. The placeholder's `Spawn` / `SetGoal` / `Despawn`
+variants command individual units, which Q3 forbids outright; they are
+scaffolding, not a model. Not a register entry — the placeholder never claimed to
+be the model — but wrong to copy from.
+
+The golden fixture will need to exercise a mid-match redeploy once Q11 lands,
+since that is the hash-affecting path most likely to differ between peers.
