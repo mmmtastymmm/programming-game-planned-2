@@ -21,39 +21,21 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-08-17 (latest):** the framing pass is done. Q1–Q4 are answered and
-live in [history/questions-answered-001.md](history/questions-answered-001.md):
-this is a fresh take on the predecessor's core idea, the player programs a fleet
-of identical units, **programs are rewritten mid-match as lockstep-synchronized
-updates**, and PvE ships before PvP. Those rulings are summarised in
-[00-overview.md](00-overview.md)'s Decided section.
+**Status 2026-08-18 (latest):** Q5 is answered — we write our own
+Python-shaped interpreter, deterministic by construction rather than by audit.
+The spike that informed it
+([spikes/lang-determinism](../spikes/lang-determinism/README.md)) disproved what
+it was aimed at: an embedded Rhai *is* bit-identical across processes, so this
+was a trade accepted, not one forced. Its findings survive as the checklist for
+our own implementation. The displaced 2026-08-17 block is in
+[history/questions-status-log-2026.md](history/questions-status-log-2026.md).
 
-Eight questions are open below. Q5 is the next one that blocks the rest. Q11 and
-Q12 exist because Q3 admits mid-match updates, and neither can be deferred past
-Q5 — both change what the language and the tick loop have to be.
+Nine questions are open. Q13 and Q14 are new and immediate: neither `docs/01` nor
+the parser can be written until the subset boundary and the number model are
+fixed. Q6 (tick rate) is now unblocked — the spike showed interpretation cost is
+not what bounds it.
 
 ## Open
-
-**Q5 — What is the language?**
-
-Syntax family, execution model and cost model. Q3 makes this the entire authoring
-surface of the game *and* puts it on the hot path: a program is not written once,
-it is rewritten under time pressure while units are dying.
-
-| Option | What it costs |
-|---|---|
-| Interpreted one operation per tick, Python-like | The predecessor's model. Legible cost model — a player can count ticks by reading — but the interpreter sits on the hash-critical path and every builtin is a determinism obligation. |
-| Compiled to a bytecode with a per-tick cycle budget | Cost becomes a budget rather than a line count. Faster, and separates language surface from tick cost, but "why did my unit only get halfway" is harder to explain. |
-| A restricted DSL — behavior trees, rules, or a state machine | Far smaller determinism surface, much easier to make fast, and quick to edit under pressure. Ceiling is lower, and "programming game" becomes arguable. |
-| An existing embeddable language (Lua, Rhai, WASM) | Enormous head start on tooling and familiarity. Determinism must then be audited inside someone else's runtime, which is the one thing this project cannot compromise on. |
-
-Whatever wins must also answer what a program's *identity* is across an edit,
-since Q11 needs it and rule 7 hashes it.
-
-Leaning: the embeddable-runtime option is the one to disprove first. If a stock
-runtime can be made bit-deterministic it dominates; if it cannot, learning that
-early is worth more than any other answer here. The existing cross-process replay
-harness can settle it empirically.
 
 **Q6 — What is the tick, and how many ticks per second?**
 
@@ -150,3 +132,41 @@ Also to settle here: what happens when a peer **misses** its window — drop the
 update, stall, or desync-and-resync. And whether updates are rate-limited, which
 is where PvP fairness re-enters (Q4 defers PvP, so this may be deferred with it,
 but the *hook* has to exist in the command format from the start).
+
+**Q13 — How much of Python?**
+
+Q5 fixed the *shape*; this fixes the boundary. Every line drawn here is a line
+the parser enforces and the player runs into, and Q3 means they run into it while
+their fleet is dying — so the failure has to be legible, not just correct.
+
+| Option | What it costs |
+|---|---|
+| Expression-and-statement subset: functions, `if`/`while`/`for`, lists, dicts, no classes, no comprehensions | Smallest to build and to specify, fastest to run, easiest to make legible. Players who know Python will hit walls constantly, which is its own kind of unfamiliar. |
+| Procedural subset: the above plus comprehensions, slicing, tuple unpacking, exceptions | The plausible sweet spot — reads as real Python for the code anyone would actually write in a unit program. Each addition is a determinism obligation and a parser burden. |
+| Near-complete Python minus dynamic reflection (no `eval`, no metaclasses, no monkey-patching) | Most familiar by far. A very large implementation, and classes plus generators are exactly where an interpreter's evaluation order gets subtle. |
+| Python syntax, deliberately different semantics where determinism demands | Honest about what it is, and avoids promising compatibility we will not honour. "It looks like Python but isn't" is a documentation burden that never ends. |
+
+Note that these are not exclusive: the boundary can start narrow and widen, and
+widening is cheap while narrowing is not. Whatever is chosen, the *divergences
+from Python* need to be enumerable on one page — a player's first debugging tool
+is their existing Python knowledge.
+
+**Q14 — The number model**
+
+⚠HASH. The spike disqualified Lua on exactly this axis: `7 / 2` is `3.5`, and a
+float in a state-affecting path violates rule 2. Python's `/` behaves the same
+way, so Python's own answer is not available to us.
+
+| Option | What it costs |
+|---|---|
+| Fixed-width `i64`, overflow faults | One number type, no surprises, and overflow is a legible in-game failure. The fault is hash-affecting, so the fault *boundary* becomes spec (Q8). |
+| Fixed-width `i64`, overflow wraps | Never faults, never surprises the sim. Silently wrong answers are worse than loud ones in a language players debug under time pressure. |
+| Arbitrary-precision integers | No overflow to specify at all, and deterministic. Unbounded memory and time per operation, which fights the per-tick cost model Q5 chose to own. |
+| Fixed-point rationals for fractional values | Makes division expressible without floats. A second numeric type, and every mixed-type operation is a rule someone has to remember. |
+
+Whatever wins must also answer what `/` *does*: reject at parse time (forcing
+`//`), silently mean integer division (familiar-looking and quietly un-Pythonic),
+or return a fixed-point value. Rejecting is the most honest and the most annoying;
+it is also the only option that cannot silently produce a different answer than
+the player expected.
+

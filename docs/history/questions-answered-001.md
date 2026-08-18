@@ -1,6 +1,6 @@
 *Closed record — see [README.md](README.md). Not spec.*
 
-# Answered questions — Q1–Q4
+# Answered questions — Q1–Q5
 
 Rulings, oldest first, one entry per answered question. **The heading states the
 range this shard actually holds; it is derived and machine-checked, so append
@@ -117,3 +117,64 @@ rather than aspirational.
 *Consequences.* The golden-replay gate earns its keep from day one even with no
 PvP, because the same determinism is what makes PvE reproducible and its bugs
 reportable. Balance questions may be deferred; determinism questions may not.
+
+---
+
+**Q5 — What is the language?**
+
+*Ruling (2026-08-18):* **a purpose-built interpreter for a Python-shaped
+language, written in this project and deterministic by construction.** Not an
+embedded third-party runtime, and *not* CPython semantics — a subset chosen for
+this game, wearing Python's surface syntax so it reads as familiar on sight.
+
+*Reasoning.* The spike
+([spikes/lang-determinism](../../spikes/lang-determinism/README.md)) was aimed at
+disproving the embeddable-runtime option and failed to: Rhai is bit-identical
+across four fresh processes once floats are removed from the language and the
+package set is curated by hand. So this ruling is **not made out of necessity**.
+The alternative works, and was rejected anyway.
+
+What owning the interpreter buys:
+
+- Determinism becomes a property we *design in* rather than one we *audit for*.
+  Every builtin, every iteration order, every numeric edge case is ours to
+  specify rather than to discover in someone else's changelog.
+- No dependency whose next release can change evaluation order underneath a
+  checked-in replay hash. Rhai would have needed version pinning and a fixture to
+  catch a bump, exactly as the Rust toolchain does.
+- The cost model becomes a design lever. "One operation per tick" is a rule we
+  can state and tune; an embedded runtime does not expose that cleanly, and Q3
+  makes the cost model something the player reasons about under time pressure.
+- Python's surface is the most familiar syntax available to the audience, which
+  matters more here than in most games because editing under fire (Q3) is the
+  core loop.
+
+What it costs, stated plainly: every builtin is a determinism obligation forever,
+the interpreter sits on the hash-critical path, and the work the spike showed
+could be skipped is work we are choosing to do. The golden-replay gate and the
+source scan are what keep that choice honest rather than aspirational.
+
+*Consequences.*
+
+- **The spike's findings do not retire with the option they were measuring.**
+  They become the checklist for our own implementation:
+  - `/` **must not be float division.** Python's `/` returns a float and Lua's
+    does too — that alone violated rule 2 in the spike and is what disqualified
+    Lua on core semantics. Ours divides integers or does not exist (Q14).
+  - **Iteration order is specified, never inherited.** Python dicts are
+    insertion-ordered, which is fine; Python *sets* are hash-ordered, which is
+    fatal. Every container we ship states its order in the spec.
+  - **Every limit is pinned in the spec, not left to a build default.** Rhai's
+    recursion limit differed between debug and release builds and would have
+    desynced two peers on different profiles — a desync caused by a build flag
+    rather than by code.
+  - **A test that fails to run must not score green.** The spike's own harness
+    scored an error transcript as deterministic across all four processes,
+    because an identical error hashes identically. The interpreter's test suite
+    needs that guard explicitly.
+- The subset boundary is **Q13** and the number model is **Q14**. Neither can be
+  deferred past writing `docs/01`, because both change what the parser accepts.
+- `crates/` gains a language crate. Its name is not chosen here.
+- Cross-architecture agreement remains unproven for *any* candidate, ours
+  included. Owning the interpreter does not grant it — it only means the bug
+  would be ours to fix. The CI check the spike proposed is still owed.

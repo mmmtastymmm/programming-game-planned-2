@@ -6,20 +6,21 @@ programs while the match is running** — each update a lockstep-synchronized
 command applied on the same tick by every peer (Q3). The player never commands an
 individual unit. The simulation runs identically on every machine.
 
-The design is in its first pass. The framing rulings are made and live in
-[docs/00-overview.md](docs/00-overview.md)'s Decided section; the language, the
-tick, sensing, fault behavior and unit production are all still open in
-[docs/QUESTIONS.md](docs/QUESTIONS.md). The corpus scaffolding and the
+The design is in its first pass. The framing rulings and the language decision
+are made and live in [docs/00-overview.md](docs/00-overview.md)'s Decided
+section; the tick, sensing, fault behavior, unit production and the language's
+own subset boundary are still open in [docs/QUESTIONS.md](docs/QUESTIONS.md). The corpus scaffolding and the
 determinism gate are ported from the predecessor project
 `../programming_game_planned` and proven in CI.
 
 Design lives in `docs/`; unresolved design questions in
 [docs/QUESTIONS.md](docs/QUESTIONS.md).
 
-Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**).
-A renderer crate and a unit-language crate are expected but deliberately
-unbuilt: both are design decisions, and neither is needed for the determinism
-gate to be real.
+Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
+unit-language crate is ruled in (Q5: our own Python-shaped interpreter,
+deterministic by construction) but unbuilt, pending Q13 and Q14. A renderer crate
+is expected and still undecided. Neither is needed for the determinism gate to be
+real.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
 

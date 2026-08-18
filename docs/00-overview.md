@@ -69,6 +69,13 @@ don't read those in a normal pass.
   `Command` is a real ordered log whose principal variant is a program deploy, a
   replay is `(seed, timed command log)`, and determinism rule 7 is load-bearing:
   which byte-exact program version a unit runs is part of the state hash.
+- **The unit language is ours, Python-shaped, deterministic by construction
+  (Q5).** A purpose-built interpreter rather than an embedded runtime — not
+  because an embedded one failed, but because owning it means determinism is
+  designed in rather than audited for, the cost model is a design lever, and no
+  dependency can change evaluation order under a checked-in replay hash. It is
+  Python's *surface syntax*, not CPython's semantics; the subset boundary is Q13
+  and the number model is Q14.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -80,7 +87,7 @@ inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | Q5 |
+| `01` | The unit language — syntax, execution model, cost model | Q13, Q14 |
 | `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | Q4 (answered) |
@@ -92,6 +99,8 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 ## Where to go next
 
-[QUESTIONS.md](QUESTIONS.md) holds what is still open, in dependency order. Q5
-(the language) is the one that unblocks the most: it decides the cost model that
-Q6 needs, the error model that Q8 needs, and whether `01` can be written at all.
+[QUESTIONS.md](QUESTIONS.md) holds what is still open, in dependency order.
+Q13 (how much of Python) and Q14 (the number model) are what `01` now waits on —
+both change what the parser accepts, so neither can be discovered during
+implementation. Q6 (tick rate) came unblocked when the language spike showed
+interpretation cost is not what bounds it.

@@ -1,6 +1,6 @@
 *Closed record — see [README.md](README.md). Not spec.*
 
-# Answered-question worksheets — Q1–Q4
+# Answered-question worksheets — Q1–Q5
 
 The full worksheet bodies of answered questions — options weighed, numbers run,
 paths not taken — moved here out of [QUESTIONS.md](../QUESTIONS.md) when the
@@ -80,3 +80,34 @@ All three are tractable; none is free.
 Deferring PvP is free architecturally because lockstep is not retrofittable and
 is therefore being built now either way. What it buys is slack on balance during
 the period when the sim is changing fastest.
+
+---
+
+**Q5 — What is the language?**
+
+Measured rather than argued, which is unusual for this corpus and was the point.
+See [spikes/lang-determinism](../../spikes/lang-determinism/README.md).
+
+| Option | Determinism | What it costs |
+|---|---|---|
+| **Purpose-built Python-shaped interpreter** *(chosen)* | Ours to design in | Every builtin is a determinism obligation forever; the interpreter is on the hash-critical path; it is work the spike proved avoidable |
+| Embed Rhai (`no_float`, `only_i64`, curated packages) | **Measured: bit-identical across 4 fresh processes** | Version pinning plus a fixture to catch a bump; the cost model is not ours to shape; Rhai's syntax rather than Python's |
+| Embed Lua 5.4 | **Measured: differs on every process** | Disqualified on core semantics, not configuration: `pairs()` order is per-process seeded and `7 / 2` is `3.5` |
+| Compile to WASM (wasmtime/wasmi) | Deterministic by specification | Not spiked. The player does not write WASM, so a source language and compiler are still needed — it moves the work rather than removing it |
+
+The decisive fact is what the spike did *not* find. Rhai passed, so the choice
+stopped being "can we avoid writing an interpreter" and became "do we want to own
+one". Owning it was chosen for control over the cost model and freedom from a
+dependency that can change evaluation order under a checked-in hash — with the
+cost, an interpreter permanently on the hash-critical path, accepted rather than
+hand-waved.
+
+Throughput did not discriminate: Rhai ran a plausible unit program in 4.4 µs,
+putting 200 units at 30 ticks/s near 2.6% of one core. A hand-written
+tree-walking interpreter has no reason to be dramatically worse, so Q6 is not
+bounded by interpretation cost either way.
+
+What the losing options contributed, and why the spike was worth running even
+though its recommendation was declined: three of the four checklist items in the
+ruling — float division, build-dependent limits, and a green test that ran
+nothing — were discovered by measuring runtimes we are not going to use.
