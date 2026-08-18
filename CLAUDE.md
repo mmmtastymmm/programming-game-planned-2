@@ -18,7 +18,8 @@ Design lives in `docs/`; unresolved design questions in
 
 Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
 unit-language crate is ruled in (Q5: our own Python-shaped interpreter,
-deterministic by construction) but unbuilt, pending Q13 and Q14. A renderer crate
+deterministic by construction; Q13: a broad subset — procedural Python plus
+`class`, `set`, `match` and `import`) but unbuilt, pending Q14. A renderer crate
 is expected and still undecided. Neither is needed for the determinism gate to be
 real.
 

@@ -21,19 +21,19 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-08-18 (latest):** Q5 is answered — we write our own
-Python-shaped interpreter, deterministic by construction rather than by audit.
-The spike that informed it
-([spikes/lang-determinism](../spikes/lang-determinism/README.md)) disproved what
-it was aimed at: an embedded Rhai *is* bit-identical across processes, so this
-was a trade accepted, not one forced. Its findings survive as the checklist for
-our own implementation. The displaced 2026-08-17 block is in
+**Status 2026-08-18 (latest):** Q5 and Q13 are answered. The language is ours,
+Python-shaped and deterministic by construction (Q5), and its boundary is a
+**broad subset** — procedural Python plus `class`, `set`, `match` and `import`,
+without generators or reflection (Q13). The spike behind Q5 is
+[spikes/lang-determinism](../spikes/lang-determinism/README.md); the displaced
+2026-08-17 block is in
 [history/questions-status-log-2026.md](history/questions-status-log-2026.md).
 
-Nine questions are open. Q13 and Q14 are new and immediate: neither `docs/01` nor
-the parser can be written until the subset boundary and the number model are
-fixed. Q6 (tick rate) is now unblocked — the spike showed interpretation cost is
-not what bounds it.
+Eight questions are open. **Q14 is the last thing `docs/01` waits on.** Two
+others now carry live dependencies on Q13: **Q11** must clear variables on a
+hot-swap or Q13's boundary reopens, and **Q8**'s static-rejection option got
+harder rather than easier, because classes and duck-typed attribute access need
+type inference to analyse even with no reflection in the language.
 
 ## Open
 
@@ -75,7 +75,7 @@ as the failure semantics: a fault the player cannot see is a fault they cannot f
 | Hard fault — the unit stops dead | Brutal, legible, teaches fast. Fifty stopped units is a dramatic and readable signal to patch. |
 | Fault, then fall back to a default behavior | Forgiving, keeps a match alive. The fallback becomes a hidden second program every player must learn, and masks the signal that something is wrong. |
 | Faults are values — the program handles them | Most expressive and most in the spirit of a programming game. Requires an error model in the language from day one, which pushes on Q5. |
-| Static rejection — programs that can fault do not compile | Strongest guarantee a player can rely on. Demands real analysis in the toolchain, and a slow compile is punishing when editing under fire (Q3). |
+| Static rejection — programs that can fault do not compile | Strongest guarantee a player can rely on. Demands real analysis in the toolchain, and a slow compile is punishing when editing under fire (Q3). **Q13 made this materially harder**: with user-defined classes and duck-typed attribute access, `x.foo()` needs type inference to check statically even though reflection is excluded. |
 
 **Q9 — Where do units come from?**
 
@@ -104,9 +104,16 @@ else* does, and it decides how many categories of command the netcode carries.
 each somewhere in the middle of the old program. Every option below changes the
 state hash, so this cannot be discovered during implementation.
 
+**Q13 depends on the answer.** Its broad subset — `class`, and any later
+admission of generators — is sound *because* a swap clears all variables, so
+nothing survives it in a half-valid state. Choosing any option here that
+**resumes** rather than clears reopens Q13's boundary. The leaning is therefore
+to clear, and this note exists so that choosing otherwise is a deliberate act
+rather than an oversight.
+
 | Option | What it costs |
 |---|---|
-| Restart from the top | Trivially defined and easy to explain. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
+| Restart from the top, clearing all variables | Trivially defined, easy to explain, and the option Q13's boundary assumes. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
 | Resume at the same instruction offset | Feels continuous, and is meaningless the moment the edit changes the program's shape — offset 12 of the new text is not the old offset 12. |
 | Resume at a named re-entry point the program declares | Predictable and authorable, and gives the player real control over patch cost. Requires the language to carry the concept (Q5). |
 | Finish the current action, then restart | A compromise that keeps in-flight work. "Current action" must then be a precisely defined boundary in the sim, which is a rule-7-grade specification burden. |
@@ -132,24 +139,6 @@ Also to settle here: what happens when a peer **misses** its window — drop the
 update, stall, or desync-and-resync. And whether updates are rate-limited, which
 is where PvP fairness re-enters (Q4 defers PvP, so this may be deferred with it,
 but the *hook* has to exist in the command format from the start).
-
-**Q13 — How much of Python?**
-
-Q5 fixed the *shape*; this fixes the boundary. Every line drawn here is a line
-the parser enforces and the player runs into, and Q3 means they run into it while
-their fleet is dying — so the failure has to be legible, not just correct.
-
-| Option | What it costs |
-|---|---|
-| Expression-and-statement subset: functions, `if`/`while`/`for`, lists, dicts, no classes, no comprehensions | Smallest to build and to specify, fastest to run, easiest to make legible. Players who know Python will hit walls constantly, which is its own kind of unfamiliar. |
-| Procedural subset: the above plus comprehensions, slicing, tuple unpacking, exceptions | The plausible sweet spot — reads as real Python for the code anyone would actually write in a unit program. Each addition is a determinism obligation and a parser burden. |
-| Near-complete Python minus dynamic reflection (no `eval`, no metaclasses, no monkey-patching) | Most familiar by far. A very large implementation, and classes plus generators are exactly where an interpreter's evaluation order gets subtle. |
-| Python syntax, deliberately different semantics where determinism demands | Honest about what it is, and avoids promising compatibility we will not honour. "It looks like Python but isn't" is a documentation burden that never ends. |
-
-Note that these are not exclusive: the boundary can start narrow and widen, and
-widening is cheap while narrowing is not. Whatever is chosen, the *divergences
-from Python* need to be enumerable on one page — a player's first debugging tool
-is their existing Python knowledge.
 
 **Q14 — The number model**
 

@@ -30,9 +30,14 @@ Two conventions carried over from the predecessor project:
       rather than a placeholder and carries its Decided section.
 - [x] Answer Q5 (the language). Ruled: our own Python-shaped interpreter. The
       spike behind it is [../spikes/lang-determinism](../spikes/lang-determinism/README.md).
-- [ ] Answer Q13 and Q14, then write `docs/01`. Both change what the parser
-      accepts, so neither can be discovered during implementation.
-- [ ] Answer Q6–Q12 and write the numbered docs they unblock. Split a doc
+- [x] Answer Q13 (the subset boundary). Broad: procedural Python plus `class`,
+      `set`, `match` and `import`; no generators, no reflection.
+- [ ] Answer Q14 (the number model), then write `docs/01`. It changes what the
+      parser accepts, so it cannot be discovered during implementation.
+- [ ] Answer Q6–Q12 and write the numbered docs they unblock.
+- [ ] **Q11 must clear variables on hot-swap, or Q13's boundary reopens.** The
+      dependency is recorded in both; this line exists so the sequencing is not
+      discovered late. Split a doc
       (doorway + parts directory) only once it actually outgrows one file — the
       split has a real cost in cross-part invariants.
 
@@ -55,3 +60,21 @@ be the model — but wrong to copy from.
 
 The golden fixture will need to exercise a mid-match redeploy once Q11 lands,
 since that is the hash-affecting path most likely to differ between peers.
+
+## M2 — Language implementation (staged; Q13 is the target, not the first ship)
+
+Q13's boundary is materially larger than the procedural core, so the build is
+staged. **Staging does not narrow the spec** — `docs/01` specifies all of it —
+and this section exists so that the first milestone does not quietly become the
+boundary.
+
+- [ ] Lexer with significant indentation (INDENT/DEDENT), then the procedural
+      core: functions, control flow, `list`/`dict`/`set`, comprehensions,
+      f-strings, chained comparisons, `lambda`.
+- [ ] `class` with single inheritance and a closed dunder set. ⚠HASH
+- [ ] `match`/`case`. ⚠HASH
+- [ ] `import` over a closed module set, program identity as the hash of every
+      file's bytes in sorted name order, circular imports rejected at load. ⚠HASH
+- [ ] Determinism suite mirroring `crates/sim`'s: golden fixtures for program
+      execution, a cross-process check, and the guard the language spike needed —
+      **a test that fails to run must not score green.**

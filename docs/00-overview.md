@@ -74,8 +74,16 @@ don't read those in a normal pass.
   because an embedded one failed, but because owning it means determinism is
   designed in rather than audited for, the cost model is a design lever, and no
   dependency can change evaluation order under a checked-in replay hash. It is
-  Python's *surface syntax*, not CPython's semantics; the subset boundary is Q13
-  and the number model is Q14.
+  Python's *surface syntax*, not CPython's semantics.
+- **The subset is broad (Q13).** Procedural Python — functions, control flow,
+  collections, comprehensions, the expression grammar — plus `class`, `set`,
+  `match` and `import`. Excluded: generators (on implementation cost) and dynamic
+  reflection (permanently, since it defeats static analysis and makes the module
+  graph dynamic). Familiarity is the point of choosing Python at all, so the
+  divergence list, not the exclusion list, is what a player has to read. **This
+  boundary depends on Q11 clearing all variables on a hot-swap** — if a swap ever
+  resumes instead, `class` starts carrying live state across it and the boundary
+  reopens. The number model is Q14.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -87,7 +95,7 @@ inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | Q13, Q14 |
+| `01` | The unit language — syntax, execution model, cost model | Q14 |
 | `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | Q4 (answered) |
@@ -100,7 +108,7 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 ## Where to go next
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open, in dependency order.
-Q13 (how much of Python) and Q14 (the number model) are what `01` now waits on —
-both change what the parser accepts, so neither can be discovered during
-implementation. Q6 (tick rate) came unblocked when the language spike showed
-interpretation cost is not what bounds it.
+**Q14 (the number model) is the last thing `01` waits on** — it changes what the
+parser accepts, so it cannot be discovered during implementation. Q6 (tick rate)
+came unblocked when the language spike showed interpretation cost is not what
+bounds it.

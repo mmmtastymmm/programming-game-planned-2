@@ -1,6 +1,6 @@
 *Closed record — see [README.md](README.md). Not spec.*
 
-# Answered-question worksheets — Q1–Q5
+# Answered-question worksheets — Q1–Q13
 
 The full worksheet bodies of answered questions — options weighed, numbers run,
 paths not taken — moved here out of [QUESTIONS.md](../QUESTIONS.md) when the
@@ -111,3 +111,62 @@ What the losing options contributed, and why the spike was worth running even
 though its recommendation was declined: three of the four checklist items in the
 ruling — float division, build-dependent limits, and a green test that ran
 nothing — were discovered by measuring runtimes we are not going to use.
+
+---
+
+**Q13 — How much of Python?**
+
+| Option | What it costs |
+|---|---|
+| Bare statement subset: functions, `if`/`while`/`for`, lists, dicts, no comprehensions | Smallest and fastest. A Python programmer hits a wall on the first line they would naturally write. |
+| Procedural subset: the above plus comprehensions, slicing, tuple unpacking, f-strings, `lambda` | Ordinary Python code compiles unchanged, until it uses a class or a set. |
+| **Broad subset: procedural plus `class`, `set`, `match`, `import`** *(chosen)* | A materially larger interpreter — method dispatch, structural pattern matching and a module system are each substantial. Buys a dialect a Python programmer rarely notices they are in. |
+| Near-complete Python including generators and reflection | Reflection is excluded permanently: it defeats the static analysis Q8 may need and makes the module graph dynamic. Generators are excluded on cost alone. |
+
+### How the line was drawn, and how it moved
+
+The first draft of this ruling chose the *procedural* option, on one argument:
+under Q3 a player swaps a program mid-match while fifty units are partway through
+it, and both `class` instances and generators carry live state across that swap.
+A suspended generator resumes into a function body that no longer exists; an
+instance of a changed class has fields that may no longer be declared. Neither
+has a good answer, and inventing a state-migration model to get one is a research
+project rather than a design decision.
+
+**That argument was rebutted rather than outweighed.** A hot-swap **clears all
+variables**, so nothing survives it — and therefore nothing can survive it in a
+broken state. The exclusion had exactly one load-bearing reason, and the reply
+removed it. What was left was cost against familiarity, which is a much weaker
+case for a narrow line: Python was chosen (Q5) precisely because players know it,
+and meeting them with "not in this dialect" spends the goodwill that choice
+bought.
+
+Recorded because the shape recurs: the narrow line looked well-argued and was,
+right up until an answer to a *different* open question dissolved its premise.
+The dependency now runs the other way and is written into both rulings — if Q11
+ever chooses an option that resumes rather than clears, this boundary reopens.
+
+### The remaining exclusions, and why they are unequal
+
+**Reflection is permanent.** `getattr`/`eval`/introspection defeat static
+analysis and make the import graph dynamic; both matter more now that classes and
+modules are in.
+
+**Generators are provisional.** With hot-swap no longer an argument, their
+exclusion rests on implementation cost alone — a lazy frame the metered executor
+would have to model on top of the one it already has. That is a reason to defer,
+not a reason to refuse, and a new question number is cheap.
+
+**Multiple inheritance is a complexity call, not a determinism one.** C3
+linearization is perfectly deterministic. It is excluded because a subtly wrong
+MRO is a bug class nobody wants to discover inside a lockstep state hash.
+
+### What the additions cost in specification, not just code
+
+Three of the four are only deterministic once we say something Python does not
+say: `set` needs a specified iteration order and specified operator output order;
+`import` needs a closed module set, a rule for program identity across multiple
+files, and a decision on circular imports; `class` needs a closed dunder set,
+because an open-ended special-method protocol is an open-ended determinism
+surface. `match` alone needed nothing — its arms already test top to bottom.
+
