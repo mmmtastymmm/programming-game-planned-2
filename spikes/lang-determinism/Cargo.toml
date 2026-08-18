@@ -1,0 +1,17 @@
+# Standalone workspace on purpose: this is an experiment answering Q5, not a
+# dependency of the game. The `[workspace]` table below detaches it from the
+# root workspace so `cargo test` at the repo root never builds a scripting
+# runtime.
+[workspace]
+
+[package]
+name = "lang-determinism"
+version = "0.0.0"
+edition = "2024"
+description = "Q5 spike: can a stock embeddable runtime be made bit-deterministic?"
+
+[dependencies]
+# no_float: remove f64 from the language entirely (determinism rule 2).
+# only_i64: one integer type, so there is no int-width ambiguity across builds.
+rhai = { version = "1", default-features = false, features = ["no_float", "only_i64", "sync"] }
+mlua = { version = "0.11", features = ["lua54", "vendored"] }
