@@ -6,10 +6,10 @@ substance or its leaning; a question restated in two places gets answered in one
 of them.
 
 Answering a question empties it out of this file in three directions: the ruling
-goes to the current `questions-answered-NNN.md` shard, its worksheet body to the
-current `questions-worksheets-NNN.md` shard, and the status block it displaces
-to this year's `questions-status-log-YYYY.md` — all in
-[history/](history/README.md). Nothing answered stays here. That discipline is
+and its worksheet become one new file in
+[history/questions-answered/](history/questions-answered/README.md), which must
+declare its **Outcome**: docs changed now, a problem opened, or a task created.
+A ruling that changes nothing anywhere was not a ruling. Nothing answered stays here. That discipline is
 the whole reason this file is readable: the predecessor project let answered
 material stack up and reached 166 KB, at which point everyone was reading it in
 full to find the handful of things still open.
@@ -21,16 +21,18 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-08-18 (latest):** Q5 and Q13 are answered. The language is ours,
+**Status 2026-08-18.** Q5 and Q13 are answered. The language is ours,
 Python-shaped and deterministic by construction (Q5), and its boundary is a
 **broad subset** — procedural Python plus `class`, `set`, `match` and `import`,
 without generators or reflection (Q13). The spike behind Q5 is
-[spikes/lang-determinism](../spikes/lang-determinism/README.md); the displaced
-2026-08-17 block is in
-[history/questions-status-log-2026.md](history/questions-status-log-2026.md).
+[spikes/lang-determinism](../spikes/lang-determinism/README.md).
+
+This block is **rewritten in place**, never stacked or archived: `git log -p
+docs/QUESTIONS.md` already records every status this file has carried, dated and
+attached to the commit that changed it.
 
 Eight questions are open. **Q14 is the last thing `docs/01` waits on.** Two
-others now carry live dependencies on Q13: **Q11** must clear variables on a
+others carry live dependencies on Q13: **Q11** must clear variables on a
 hot-swap or Q13's boundary reopens, and **Q8**'s static-rejection option got
 harder rather than easier, because classes and duck-typed attribute access need
 type inference to analyse even with no reflection in the language.

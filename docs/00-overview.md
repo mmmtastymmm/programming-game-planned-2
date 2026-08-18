@@ -50,9 +50,9 @@ the player to an individual unit.
 
 Rulings this doc owns. Each is normative — an implementer builds from this
 section. The reasoning behind each, and the options rejected, live in
-[history/questions-answered-001.md](history/questions-answered-001.md) and
-[history/questions-worksheets-001.md](history/questions-worksheets-001.md);
-don't read those in a normal pass.
+[history/questions-answered/](history/questions-answered/README.md) — one file
+per ruling, each carrying the worksheet behind it. Don't read those in a normal
+pass.
 
 - **This is a fresh take on the predecessor project's core idea (Q1).** Lockstep
   multiplayer, player-programmed units, deterministic plain-Rust sim. The

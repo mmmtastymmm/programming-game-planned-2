@@ -17,47 +17,55 @@ ever made — the predecessor project's `QUESTIONS.md` reached 166 KB, almost al
 of it answered. Grepping here is fine, and a hit for a retired term is usually
 correct history to leave alone.
 
-## Sharding
+## Layout: one file per entry
 
-Closed records are **split into numbered shards, and the shards are bounded**.
-`scripts/check-registers.mjs` fails any file over 40 KB, so filling one is what
-tells you to start the next — nobody has to notice.
-
-| Family | Shards | Holds |
+| Directory | Files | Holds |
 |---|---|---|
-| Answered questions | `questions-answered-NNN.md` | One ruling per answered question. The thing that gets cited. |
-| Worksheets | `questions-worksheets-NNN.md` | The argument behind a ruling — options, numbers, paths not taken. Largest files here; split hardest. |
-| Fixed problems | `problems-fixed-NNN.md` | Register entries closed out of `PROBLEMS.md`, with the commit that closed them. |
-| Status blocks | `questions-status-log-YYYY.md` | Dated board states displaced from `QUESTIONS.md`. Sharded by year — blocks are dated, not numbered. |
-| Milestones | [tasks-completed.md](tasks-completed.md) | Milestones with no open items. One file; milestones are few. |
+| [questions-answered/](questions-answered/README.md) | `question-answered-0013.md` | The ruling for Q13, then the worksheet behind it |
+| [problems-fixed/](problems-fixed/README.md) | `problem-fixed-0007.md` | P7 as recorded, and the commit that closed it |
+| [tasks-completed/](tasks-completed/README.md) | `task-completed-0007.md` | T7 and the commit that finished it |
+| [inbox-triaged/](inbox-triaged/README.md) | `inbox-triaged-0007.md` | I7 as written, and where it went |
 
-**There is no index table, deliberately** — one would be a hand-maintained
-derived value, which is the thing this corpus keeps getting wrong. Each shard's
-H1 states the range it actually holds, derived and machine-checked. The headings
-*are* the index:
+There is deliberately **no status log**. An earlier version archived the dated
+status blocks displaced from `QUESTIONS.md`, and they turned out to restate what
+was already authoritative elsewhere — which rulings existed (`ls` answers that),
+what they said (each has its own file), and what was still open (`QUESTIONS.md`
+itself). `git log -p docs/QUESTIONS.md` records every status block ever written,
+dated and attached to its commit, which is a stricter record than a
+hand-maintained archive and cannot be forgotten.
+
+**The filename is the index.** Finding Q73 means opening
+`questions-answered/question-answered-0073.md` and nothing else — no table to
+consult, and no table to go stale. `ls` is the table of contents:
 
 ```sh
-grep -H '^# ' docs/history/*.md
+ls docs/history/questions-answered/
 ```
 
-Shards fill in order: every number in shard `002` is above every number in
-`001`. So finding `Q73` means opening the one shard whose heading covers it, and
-nothing else gets read.
+This replaced an earlier scheme that batched entries into numbered shards. That
+scheme needed three rules to stay straight — shards fill in order, each shard's
+H1 states the range it holds, an empty shard must be the last one — and all three
+existed only because a shard held many entries. One file per entry deletes the
+category. It also removed a failure already approaching: the first shard reached
+24 KB at six entries and would have needed splitting at about ten.
+
+`scripts/check-registers.mjs` enforces what the scheme depends on: a file's name
+and its heading must agree, a file holds exactly one entry, numbering is dense,
+and nothing exceeds 40 KB.
 
 ## Working rules
 
-- **Answering a question writes here.** The ruling goes to the current
-  `questions-answered-NNN.md`; the question's worksheet body goes to the current
-  `questions-worksheets-NNN.md`; the status block it displaces from
-  `QUESTIONS.md` goes to the top of this year's status log. Then the question
-  leaves `QUESTIONS.md` entirely — it is answered, so it is not open.
-- **Fixing a problem writes here.** The entry moves out of `PROBLEMS.md` into
-  the current `problems-fixed-NNN.md` with its closing commit. The register's
-  `fixed` count is derived from these shards, so an entry left behind in the
-  live register is still open as far as CI is concerned.
-- **Blocks arrive as they were written.** Moving a block here changes exactly
-  two things: it loses any `(latest)` marker, and its relative links gain a
-  `../` because the archive sits a directory deeper. Not the prose, not the
-  counts, not the ordering.
-- **Numbers are never reused.** A shard is append-only once closed; an amended
-  ruling is a new number, not an edit.
+- **Answering a question writes here.** The ruling and its worksheet become one
+  new file in `questions-answered/`. Then the question leaves `QUESTIONS.md`
+  entirely — it is answered, so it is not open. Its status block is simply
+  rewritten; nothing is displaced.
+- **Fixing a problem writes here.** The entry becomes a file in
+  `problems-fixed/` with its closing commit. The register's `fixed` count is
+  derived from that directory, so an entry left behind in the live register is
+  still open as far as CI is concerned.
+- **Relative links gain a `../` on the way in.** This directory sits a level
+  below `docs/`, and its entry files another level below that. Moving text here
+  silently deepens every relative link it contains; `scripts/check-links.mjs`
+  exists because that rot is invisible in review.
+- **Numbers are never reused.** A file here is append-only once written; an
+  amended ruling is a new number and a new file, not an edit.
