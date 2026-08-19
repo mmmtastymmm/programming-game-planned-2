@@ -22,16 +22,16 @@ export function stripFences(text) {
 /**
  * Cells of a markdown table row, with the leading/trailing empties dropped.
  *
- * Inline code spans and escaped pipes are blanked first. A row like
- * `| \`a \\| b\` | bitwise or |` is two columns, not three — and this corpus
- * documents its own syntax, so an operator table is a realistic addition rather
- * than a hypothetical one.
+ * ESCAPED pipes are honoured; pipes inside code spans are NOT. That asymmetry
+ * is GFM's, not ours: a table row is split on unescaped pipes *before* inline
+ * parsing, so `| \`a | b\` | c |` really is three cells and renders that way on
+ * GitHub. An earlier version blanked pipes inside code spans too, which made
+ * this accept a table that renders broken — a false negative, and worse than
+ * the false positive it was fixing. To put a pipe in a cell, escape it, even
+ * inside a code span.
  */
 export function cells(line) {
-  const safe = line
-    .replace(/\\\|/g, "\u0000")
-    .replace(/`[^`]*`/g, (m) => m.replace(/\|/g, "\u0000"));
-  const parts = safe.split("|").map((c) => c.replace(/\u0000/g, "|"));
+  const parts = line.replace(/\\\|/g, "\u0000").split("|").map((c) => c.replace(/\u0000/g, "|"));
   if (parts.length && parts[0].trim() === "") parts.shift();
   if (parts.length && parts[parts.length - 1].trim() === "") parts.pop();
   return parts.map((c) => c.trim());

@@ -70,8 +70,11 @@ which is indistinguishable from agreement.
     oversized file — a large file is permanent once pushed, and
     `scripts/check-staged-size.sh` owns the limit.
 - **`scripts/check-checks.mjs` is the check on the checks.** It seeds known
-  defects into a copy of the tracked corpus and asserts each is caught by the
-  right check with a message that names the real problem. Three review rounds of
+  defects into a copy of the working tree and asserts each is caught by the
+  right check with a message that names the real problem. It checks the working
+  tree, not the index, so it agrees with every other local check — but that
+  means an untracked file can make it pass locally where CI's fresh clone
+  fails. The pre-commit hook, which reads the index, is what covers that gap. Three review rounds of
   this repo found checks that were green while validating nothing — citations
   scanned on one line of a wrapped bullet, fenced examples read as entries,
   success reported on zero inputs. Each was found by mutating a corpus copy by

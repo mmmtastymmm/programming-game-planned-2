@@ -13,7 +13,7 @@ import { join } from "node:path";
 // under scripts/, and .git is .git. A walker that descends into any of them is
 // a bug waiting for the first caller who widens a root — which is exactly what
 // happened when check-mermaid's default moved from docs/ to the repo root.
-const SKIP = new Set([".git", "node_modules", "target"]);
+export const SKIP = new Set([".git", "node_modules", "target"]);
 
 export function markdownFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

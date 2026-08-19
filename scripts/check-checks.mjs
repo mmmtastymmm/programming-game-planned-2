@@ -30,9 +30,13 @@
 // ADDING A CHECK MEANS ADDING MUTATIONS HERE. A check with no mutation is a
 // check nobody has ever seen fail.
 
-import { cpSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, readdirSync, renameSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, readdirSync, renameSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+// The same skip list the other checks walk with — imported, not restated. The
+// fixture's whole value is being identical to what they see, and two copies of
+// the list means that identity is maintained by hand.
+import { SKIP } from "./lib/md-files.mjs";
 import { spawnSync } from "node:child_process";
 
 const repo = process.argv[2] ?? ".";
@@ -177,8 +181,13 @@ function run(check, dir) {
 // Copying the working tree makes the fixture identical to what every other
 // check in `scripts/ci.sh docs` looks at, so the baseline can only disagree with
 // them for a real reason.
-const SKIP = new Set([".git", "node_modules", "target"]);
-
+//
+// WHAT THIS GIVES UP, stated so nobody rediscovers it: the tracked-file version
+// saw exactly what CI checks out, so a green suite meant "the same inputs CI
+// sees". It no longer does — a file you forgot to `git add` passes here and
+// fails on a fresh clone. The pre-commit hook covers that, because it reads the
+// index. The trade was made deliberately: a check that fires during ordinary
+// work gets bypassed, and then it protects nothing.
 function copyTree(src, dst) {
   mkdirSync(dst, { recursive: true });
   let n = 0;
@@ -211,23 +220,90 @@ const failures = [];
 // true`, and clippy stays green either way. The deny exists so the coming
 // language crate is covered; a silent opt-out would defeat it exactly when it
 // starts to matter.
-{
-  const rootManifest = readFileSync(join(repo, "Cargo.toml"), "utf8");
+function lintOptInProblems(dir) {
+  const found = [];
+  const rootManifest = readFileSync(join(dir, "Cargo.toml"), "utf8");
   if (!/\[workspace\.lints\.clippy\]/.test(rootManifest)) {
-    failures.push("Cargo.toml: no [workspace.lints.clippy] section");
+    found.push("Cargo.toml: no [workspace.lints.clippy] section");
   }
-  const members = /members\s*=\s*\[([^\]]*)\]/.exec(rootManifest);
-  const paths = members ? [...members[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [];
-  if (paths.length === 0) failures.push("Cargo.toml: could not read workspace members");
+  // Anchored: `members\s*=` alone also matches the tail of `default-members =`,
+  // which would silently validate a subset.
+  const members = /^\s*members\s*=\s*\[([^\]]*)\]/m.exec(rootManifest);
+  const globs = members ? [...members[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [];
+  if (globs.length === 0) found.push("Cargo.toml: could not read workspace members");
+
+  // Cargo allows globs in `members`; expand them rather than throwing ENOENT.
+  const paths = [];
+  for (const g of globs) {
+    if (!g.includes("*")) {
+      paths.push(g);
+      continue;
+    }
+    const base = g.slice(0, g.indexOf("*")).replace(/\/$/, "");
+    const baseDir = join(dir, base);
+    if (!existsSync(baseDir)) continue;
+    for (const e of readdirSync(baseDir, { withFileTypes: true })) {
+      if (e.isDirectory() && existsSync(join(baseDir, e.name, "Cargo.toml"))) {
+        paths.push(join(base, e.name));
+      }
+    }
+  }
+
   for (const rel of paths) {
-    const manifest = readFileSync(join(repo, rel, "Cargo.toml"), "utf8");
-    if (!/\[lints\][\s\S]*?workspace\s*=\s*true/.test(manifest)) {
-      failures.push(
+    const manifest = join(dir, rel, "Cargo.toml");
+    if (!existsSync(manifest)) {
+      found.push(`${rel}/Cargo.toml: listed as a workspace member but absent`);
+      continue;
+    }
+    const text = readFileSync(manifest, "utf8");
+    // Slice the [lints] section only. An unanchored `[\s\S]*?` ran past the
+    // section boundary, so `serde = { workspace = true }` under [dependencies]
+    // satisfied it — which is the ordinary way to use a workspace dependency,
+    // and precisely the "declares its own [lints], forgets the opt-in" case
+    // this block exists to catch.
+    const at = text.search(/^\[lints\]\s*$/m);
+    const section = at === -1 ? "" : (() => {
+      const rest = text.slice(at + 1);
+      const next = rest.search(/^\[/m);
+      return next === -1 ? rest : rest.slice(0, next);
+    })();
+    if (!/^\s*workspace\s*=\s*true\s*$/m.test(section)) {
+      found.push(
         `${rel}/Cargo.toml: does not opt into the workspace lints ` +
           `([lints] workspace = true) — the arithmetic_side_effects deny is inert here`,
       );
     }
   }
+  return found;
+}
+
+failures.push(...lintOptInProblems(repo));
+
+// The rule this file states in capitals applies to this file: a check with no
+// mutation is a check nobody has ever seen fail. Strip the opt-in from a copy
+// and confirm the check notices.
+{
+  const dir = fresh();
+  const manifest = join(dir, "crates/sim/Cargo.toml");
+  writeFileSync(manifest, readFileSync(manifest, "utf8").replace(/^\[lints\]\s*\nworkspace = true\n/m, ""));
+  if (lintOptInProblems(dir).length === 0) {
+    failures.push("workspace-lints check: did not notice a member with the opt-in removed");
+  }
+  // And the shape that defeated the first version of the regex.
+  const dir2 = fresh();
+  const m2 = join(dir2, "crates/sim/Cargo.toml");
+  writeFileSync(
+    m2,
+    readFileSync(m2, "utf8").replace(/^\[lints\]\s*\nworkspace = true\n/m, '[lints]\nclippy.pedantic = "warn"\n'),
+  );
+  if (lintOptInProblems(dir2).length === 0) {
+    failures.push(
+      "workspace-lints check: accepted a [lints] section without the opt-in, " +
+        "satisfied by a `workspace = true` elsewhere in the manifest",
+    );
+  }
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir2, { recursive: true, force: true });
 }
 
 // ── The staged-size gate, exercised in a throwaway repository ───────────────
@@ -316,5 +392,6 @@ if (failures.length) {
 console.log(
   `✓ ${MUTATIONS.length} seeded defects each caught by the right check, ` +
     `${Object.keys(CHECKS).length} checks pass the corpus clean, ` +
-    `and the staged-size gate behaves on all three of its cases`,
+    `the staged-size gate behaves on all three of its cases, ` +
+    `and the workspace lint opt-in is in force`,
 );

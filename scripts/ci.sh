@@ -92,11 +92,11 @@ run_docs() {
   fi
   node scripts/check-mermaid.mjs "$ROOT" || FAILED+=("mermaid")
 
-  # The meta-check builds its fixture from `git ls-files`, so it needs the
-  # repository — not the extracted index the pre-commit hook passes as $ROOT.
-  # Running it there would check the working tree while the hook is deliberately
-  # checking the staged content, and unstaged breakage would block a clean
-  # commit, which the hook's header explicitly promises it will not.
+  # The meta-check copies the working tree and shells out to git, so it needs
+  # the repository — not the extracted index the pre-commit hook passes as
+  # $ROOT. Running it there would check the working tree while the hook is
+  # deliberately checking the staged content, and unstaged breakage would block
+  # a clean commit, which the hook's header explicitly promises it will not.
   if [ "$ROOT" = "." ]; then
     step "the checks themselves catch what they claim to"
     node scripts/check-checks.mjs . || FAILED+=("check-checks")
