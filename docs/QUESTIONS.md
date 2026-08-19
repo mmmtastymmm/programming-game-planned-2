@@ -51,10 +51,10 @@ Lockstep pins this early and every tuning constant in the corpus inherits it.
 | Fast tick (60/s) | Renderer and sim agree; no interpolation needed. Leaves very little room per unit per tick at fleet scale. |
 | Decouple: slow sim tick, interpolating renderer | Best of both, at the cost of a rendering layer that must never feed anything back into the sim. |
 
-**Unblocked.** The language spike measured 4.4 µs per unit-tick, putting 200
-units at 30 ticks/s near 2.6% of one core, so interpretation cost does not bound
-the tick rate at any fleet size contemplated. This is a game-feel and netcode
-decision, not a performance one. A slower tick also widens the window Q12 needs
+**Unblocked.** The language spike measured single-digit microseconds per
+unit-tick — 200 units at 30 ticks/s costs a few percent of one core — so
+interpretation cost does not bound the tick rate at any fleet size contemplated.
+This is a game-feel and netcode decision, not a performance one. A slower tick also widens the window Q12 needs
 for scheduling updates, which is the remaining reason not to guess.
 
 **Q7 — What does a unit sense?**

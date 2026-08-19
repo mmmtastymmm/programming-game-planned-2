@@ -61,9 +61,12 @@ wall clock.
 4. **Integer division truncates toward zero and modulo takes the dividend's
    sign** (`-7 / 2 == -3`, `-7 % 3 == -1`). Deterministic, but it is a spec
    detail that has to be written down rather than inherited silently.
-5. **Throughput is not the constraint.** 4.4 µs per unit-tick in release —
-   200 units at 30 ticks/s is ~2.6% of one core. The tick rate (Q6) is not
-   bounded by interpretation cost at any fleet size currently contemplated.
+5. **Throughput is not the constraint.** Between 4 and 7 µs per unit-tick in
+   release across runs — 200 units at 30 ticks/s lands in the 3–4% range on one
+   core. The spread is machine load, not measurement error, which is why the
+   figure is quoted as an order of magnitude rather than a number: the useful
+   claim is that interpretation cost is nowhere near bounding the tick rate
+   (Q6) at any fleet size contemplated, and that claim survives a 2× swing.
 
 ## Not tested
 

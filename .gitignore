@@ -1,4 +1,7 @@
-/target
+# Unanchored on purpose. `/target` matches the root workspace only, and this
+# repo has nested workspaces (spikes/*) whose build output landed in git for
+# 528 MB across 2057 files before anyone noticed.
+target/
 
 # Linux crash core dumps (kernel core_pattern core.%e.%p.%h.%t). Deliberately
 # narrower than a bare `core`/`core.*`, which would silently swallow a future
@@ -7,5 +10,11 @@ core.*.[0-9]*
 
 # doc-check tooling (scripts/) — JS deps, not part of the Rust build
 scripts/node_modules/
+
+# macOS Finder droppings. The history directories are browsed in Finder, and a
+# stray .DS_Store there fails the register check on the working tree while CI
+# and the pre-commit hook (which read the index) pass — breaking the local/CI
+# parity ci.sh promises.
+.DS_Store
 
 /.idea

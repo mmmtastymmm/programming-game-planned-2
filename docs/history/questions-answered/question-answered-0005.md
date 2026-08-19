@@ -94,10 +94,12 @@ dependency that can change evaluation order under a checked-in hash — with the
 cost, an interpreter permanently on the hash-critical path, accepted rather than
 hand-waved.
 
-Throughput did not discriminate: Rhai ran a plausible unit program in 4.4 µs,
-putting 200 units at 30 ticks/s near 2.6% of one core. A hand-written
-tree-walking interpreter has no reason to be dramatically worse, so Q6 is not
-bounded by interpretation cost either way.
+Throughput did not discriminate: Rhai ran a plausible unit program in single-digit
+microseconds, putting 200 units at 30 ticks/s at a few percent of one core. The
+figure moved by roughly 2× between runs on the same machine, so it is recorded as
+an order of magnitude rather than a number — the claim that survives the spread
+is that interpretation cost is nowhere near bounding Q6, and a hand-written
+tree-walking interpreter has no reason to be dramatically worse.
 
 What the losing options contributed, and why the spike was worth running even
 though its recommendation was declined: three of the four checklist items in the

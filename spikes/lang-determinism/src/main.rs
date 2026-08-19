@@ -119,7 +119,10 @@ fn rhai_transcript() -> String {
     // Ambient nondeterminism must be absent, not merely unused.
     for probe in ["timestamp()", "rand()", "print(1)", "1.5"] {
         let reachable = engine.eval::<rhai::Dynamic>(probe).is_ok();
-        out += &format!("|{probe}={}", if reachable { "REACHABLE" } else { "absent" });
+        out += &format!(
+            "|{probe}={}",
+            if reachable { "REACHABLE" } else { "absent" }
+        );
     }
     out
 }
@@ -180,7 +183,10 @@ fn rhai_throughput() {
     let engine = rhai_engine();
     let ast = match engine.compile(UNIT_PROGRAM) {
         Ok(a) => a,
-        Err(e) => { println!("throughput: compile failed: {e}"); return; }
+        Err(e) => {
+            println!("throughput: compile failed: {e}");
+            return;
+        }
     };
 
     let mut enemies = rhai::Array::new();
@@ -198,7 +204,15 @@ fn rhai_throughput() {
         scope.push("enemies", enemies.clone());
         scope.push("me_x", (i % 20) as i64);
         scope.push("me_y", (i % 13) as i64);
-        let _ = engine.eval_ast_with_scope::<rhai::Dynamic>(&mut scope, &ast);
+        if let Err(e) = engine.eval_ast_with_scope::<rhai::Dynamic>(&mut scope, &ast) {
+            // Same rule as the battery: a measurement of a program that does not
+            // run is worse than no measurement, because it gets quoted. This
+            // number appears in Q5's ruling and in TASKS M2 as the budget.
+            println!("\n=== rhai throughput ===");
+            println!("ABORTED: the program errored on iteration {i}: {e}");
+            println!("the timing would have been the cost of failing, not of working");
+            return;
+        }
     }
     let elapsed = start.elapsed();
     let per_run = elapsed.as_secs_f64() / runs as f64;
@@ -215,8 +229,16 @@ fn rhai_throughput() {
     }
     println!(
         "({} build{})",
-        if cfg!(debug_assertions) { "debug" } else { "release" },
-        if cfg!(debug_assertions) { " — release is several times faster; re-run with --release" } else { "" }
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
+        if cfg!(debug_assertions) {
+            " — release is several times faster; re-run with --release"
+        } else {
+            ""
+        }
     );
 }
 
@@ -245,9 +267,11 @@ fn main() {
         let local = transcript(engine);
         println!("\n=== {engine} ===");
         println!("transcript : {local}");
-        println!("local hash : {:016x}", fnv(&local));
+        let local_hash = format!("{:016x}", fnv(&local));
+        println!("local hash : {local_hash}");
 
         let mut hashes = Vec::new();
+        let mut failures = Vec::new();
         for _ in 0..CHILD_RUNS {
             let out = Command::new(&exe)
                 .args(["--child", engine])
@@ -256,26 +280,41 @@ fn main() {
             let s = String::from_utf8_lossy(&out.stdout);
             match s.lines().find_map(|l| l.strip_prefix("HASH=")) {
                 Some(h) => hashes.push(h.to_string()),
-                None => hashes.push(format!("CHILD FAILED: {}", String::from_utf8_lossy(&out.stderr))),
+                // A child that produced NO hash must never be folded into the
+                // agreement test as a string. Four identically-failing children
+                // are four equal strings, and "all equal" would read as
+                // DETERMINISTIC — the exact hole this harness claims to close.
+                None => failures.push(String::from_utf8_lossy(&out.stderr).trim().to_string()),
             }
         }
-        // A battery that fails to run produces an identical error transcript in
-        // every process, which is indistinguishable from a pass by hash alone.
-        // v2 of this spike did exactly that for one run. Score it as invalid.
-        let ran = !local.contains("BATTERY ERROR") && !local.contains("INIT ERROR");
-        if !ran {
-            println!("verdict    : INVALID — the battery did not run; hashes agree on an error");
-            verdicts.push((engine, false));
-            continue;
-        }
-        let agree = hashes.iter().all(|h| *h == hashes[0]);
         println!("child hashes ({CHILD_RUNS} fresh processes):");
         for h in &hashes {
             println!("  {h}");
         }
-        let verdict = if agree { "DETERMINISTIC across processes" } else { "NONDETERMINISTIC across processes" };
+        for f in &failures {
+            println!("  CHILD FAILED: {f}");
+        }
+
+        // A battery that fails to run produces an identical error transcript in
+        // every process, which is indistinguishable from a pass by hash alone.
+        // v2 of this spike did exactly that for one run. Score it as invalid —
+        // and check BOTH halves: the parent's transcript, and whether every
+        // child actually produced a hash.
+        let ran = !local.contains("BATTERY ERROR") && !local.contains("INIT ERROR");
+        let verdict = if !ran {
+            "INVALID — the battery did not run in this process"
+        } else if !failures.is_empty() {
+            "INVALID — a child produced no hash at all"
+        } else if hashes.iter().all(|h| *h == local_hash) {
+            // Compared against the PARENT's hash, not merely against each
+            // other: four children can agree with one another and all disagree
+            // with the parent, and that is a desync too.
+            "DETERMINISTIC across processes"
+        } else {
+            "NONDETERMINISTIC across processes"
+        };
         println!("verdict    : {verdict}");
-        verdicts.push((engine, agree));
+        verdicts.push((engine, verdict.starts_with("DETERMINISTIC")));
     }
 
     rhai_throughput();

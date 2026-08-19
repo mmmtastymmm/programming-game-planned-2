@@ -30,8 +30,10 @@ it because it looks settled — the predecessor's characteristic failure.
 
 Answering a question moves it out of [../../QUESTIONS.md](../../QUESTIONS.md)
 entirely. `scripts/check-registers.mjs` rejects a number that is open and
-answered at once, a file whose heading disagrees with its name, and any gap in
-the numbering.
+answered at once, a file whose heading disagrees with its name, and gaps in the
+numbering — with one honest limit: the range it checks is derived from the entry
+count, so deleting the *highest*-numbered entry outright shrinks the range and
+goes unnoticed. Gaps below the top are caught.
 
 An amended ruling gets a **new number and a new file**, never an edit to an old
 one — citations to the pre-amendment meaning outlive the amendment, and the only

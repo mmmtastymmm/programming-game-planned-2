@@ -23,6 +23,18 @@ run_rust() {
   step "cargo clippy (deny warnings)"
   cargo clippy --workspace --all-targets -- -D warnings || FAILED+=("clippy")
 
+  # spikes/ are detached workspaces so that `cargo test` at the root never
+  # builds a scripting runtime. That also put their Rust outside every gate
+  # above. Formatting is free to check (fmt does not build), so it is checked;
+  # clippy is not, because linting a spike would pull in the dependency the
+  # detachment exists to avoid. A spike is throwaway code — but unformatted
+  # throwaway code still gets read.
+  for spike in spikes/*/Cargo.toml; do
+    [ -f "$spike" ] || continue
+    step "cargo fmt --check ($spike)"
+    cargo fmt --manifest-path "$spike" --check || FAILED+=("fmt:$spike")
+  done
+
   step "cargo test (incl. golden replays and the determinism scan)"
   cargo test --workspace || FAILED+=("rust")
 }
