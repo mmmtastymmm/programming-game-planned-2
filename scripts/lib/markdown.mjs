@@ -19,9 +19,19 @@ export function stripFences(text) {
   });
 }
 
-/** Cells of a markdown table row, with the leading/trailing empties dropped. */
+/**
+ * Cells of a markdown table row, with the leading/trailing empties dropped.
+ *
+ * Inline code spans and escaped pipes are blanked first. A row like
+ * `| \`a \\| b\` | bitwise or |` is two columns, not three — and this corpus
+ * documents its own syntax, so an operator table is a realistic addition rather
+ * than a hypothetical one.
+ */
 export function cells(line) {
-  const parts = line.split("|");
+  const safe = line
+    .replace(/\\\|/g, "\u0000")
+    .replace(/`[^`]*`/g, (m) => m.replace(/\|/g, "\u0000"));
+  const parts = safe.split("|").map((c) => c.replace(/\u0000/g, "|"));
   if (parts.length && parts[0].trim() === "") parts.shift();
   if (parts.length && parts[parts.length - 1].trim() === "") parts.pop();
   return parts.map((c) => c.trim());

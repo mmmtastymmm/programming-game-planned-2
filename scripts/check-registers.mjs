@@ -266,7 +266,6 @@ for (const reg of REGISTERS) {
 
 // ── A cited number must resolve ─────────────────────────────────────────────
 for (const c of cited) {
-  const reg = REGISTERS.find((r) => r.what === c.what);
   const { open, closed } = entriesOf(c.what);
   const known = new Set([...open, ...closed].map((e) => e.n));
   if (!known.has(c.n)) {

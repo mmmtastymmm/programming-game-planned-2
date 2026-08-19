@@ -116,3 +116,26 @@ fn out_of_order_commands_are_rejected_loudly() {
     r.commands.swap(0, 1);
     r.run();
 }
+
+#[test]
+#[should_panic(expected = "outside the")]
+fn a_spawn_outside_the_map_is_rejected_at_construction() {
+    // `Command::Spawn` refuses an off-map position, so `MapSpec::spawns` must
+    // too — otherwise a replay carries an entity that consumes an id, enters the
+    // state hash, and can never move, and the two entity-creation paths disagree
+    // about the bounds rule.
+    let mut spec = MapSpec::empty(4, 4);
+    spec.spawns.push(TilePos::new(-5, 99));
+    Sim::new(&spec);
+}
+
+#[test]
+#[should_panic(expected = "over the")]
+fn an_absurd_tick_count_is_rejected_before_allocating() {
+    // `ticks` arrives from a .replay.ron, which is untrusted: the artifact is
+    // what gets attached to a desync report. u64::MAX would ask the allocator
+    // for ~147 exabytes.
+    let mut r = scenario(1);
+    r.ticks = u64::MAX;
+    r.run();
+}

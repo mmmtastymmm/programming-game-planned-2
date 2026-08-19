@@ -30,8 +30,8 @@
 // ADDING A CHECK MEANS ADDING MUTATIONS HERE. A check with no mutation is a
 // check nobody has ever seen fail.
 
-import { cpSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, renameSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, readdirSync, renameSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
@@ -164,29 +164,71 @@ function run(check, dir) {
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
-// The fixture is the TRACKED corpus, copied file by file — not a hand-written
-// miniature that would drift, and not a directory copy that would drag in
-// build output. `git ls-files` is also exactly what CI checks out, so a green
-// suite here means the same inputs CI sees.
-const TRACKED = spawnSync("git", ["ls-files", "-z"], { encoding: "utf8", cwd: repo })
-  .stdout.split("\0")
-  .filter(Boolean);
-if (TRACKED.length === 0) {
-  console.error("✗ check-checks: git ls-files returned nothing — the suite would test nothing");
-  process.exit(2);
+// The fixture is the WORKING TREE, minus build and VCS directories.
+//
+// It used to be `git ls-files` (tracked paths) copied from the working tree
+// (current content), and the two disagree in both directions. Delete a tracked
+// file without staging and cpSync threw an uncaught ENOENT, killing the run with
+// a raw stack trace. Worse, the ordinary way to close a task — remove the entry
+// from TASKS.md, add an untracked task-completed-NNNN.md — made the baseline
+// block report "registers rejects the unmutated corpus", accusing the checks of
+// being broken when the real answer was `git add`.
+//
+// Copying the working tree makes the fixture identical to what every other
+// check in `scripts/ci.sh docs` looks at, so the baseline can only disagree with
+// them for a real reason.
+const SKIP = new Set([".git", "node_modules", "target"]);
+
+function copyTree(src, dst) {
+  mkdirSync(dst, { recursive: true });
+  let n = 0;
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    if (SKIP.has(entry.name)) continue;
+    const from = join(src, entry.name);
+    const to = join(dst, entry.name);
+    if (entry.isDirectory()) n += copyTree(from, to);
+    else if (entry.isFile()) {
+      cpSync(from, to);
+      n++;
+    }
+  }
+  return n;
 }
 
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), "check-checks-"));
-  for (const rel of TRACKED) {
-    const dest = join(dir, rel);
-    mkdirSync(join(dest, ".."), { recursive: true });
-    cpSync(join(repo, rel), dest);
+  if (copyTree(resolve(repo), dir) === 0) {
+    console.error("✗ check-checks: copied an empty corpus — the suite would test nothing");
+    process.exit(2);
   }
   return dir;
 }
 
 const failures = [];
+
+// ── Workspace lints are actually in force ──────────────────────────────────
+// `[workspace.lints]` does nothing for a crate that omits `[lints] workspace =
+// true`, and clippy stays green either way. The deny exists so the coming
+// language crate is covered; a silent opt-out would defeat it exactly when it
+// starts to matter.
+{
+  const rootManifest = readFileSync(join(repo, "Cargo.toml"), "utf8");
+  if (!/\[workspace\.lints\.clippy\]/.test(rootManifest)) {
+    failures.push("Cargo.toml: no [workspace.lints.clippy] section");
+  }
+  const members = /members\s*=\s*\[([^\]]*)\]/.exec(rootManifest);
+  const paths = members ? [...members[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [];
+  if (paths.length === 0) failures.push("Cargo.toml: could not read workspace members");
+  for (const rel of paths) {
+    const manifest = readFileSync(join(repo, rel, "Cargo.toml"), "utf8");
+    if (!/\[lints\][\s\S]*?workspace\s*=\s*true/.test(manifest)) {
+      failures.push(
+        `${rel}/Cargo.toml: does not opt into the workspace lints ` +
+          `([lints] workspace = true) — the arithmetic_side_effects deny is inert here`,
+      );
+    }
+  }
+}
 
 // ── The staged-size gate, exercised in a throwaway repository ───────────────
 // It has no corpus to mutate, so it gets its own section. It needs one: shipped
@@ -197,7 +239,7 @@ const failures = [];
   const dir = mkdtempSync(join(tmpdir(), "check-size-"));
   const git = (...a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
   const gate = () =>
-    spawnSync("bash", [join(process.cwd(), repo, "scripts/check-staged-size.sh")], {
+    spawnSync("bash", [resolve(repo, "scripts/check-staged-size.sh")], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, MAX_KB: "512" },

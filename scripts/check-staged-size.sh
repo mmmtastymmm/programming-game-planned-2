@@ -19,18 +19,30 @@ set -euo pipefail
 MAX_KB="${MAX_KB:-512}"
 cd "$(git rev-parse --show-toplevel)"
 
+# Written to a file FIRST, not piped in from a process substitution: a failure
+# inside `< <(...)` is invisible to `set -e`, so a git error would leave the loop
+# reading nothing and the gate would report success having inspected zero files.
+# That is the same silent-success shape this script's own header is about.
+#
+# A file rather than `$(...)` because command substitution CANNOT carry NUL
+# bytes — it silently drops them, which would concatenate every path in the -z
+# output into one string. The meta-check caught that within a minute of it being
+# written, which is the entire argument for the meta-check.
+list=$(mktemp)
+trap 'rm -f "$list"' EXIT
+git diff --cached --name-only -z --diff-filter=ACMR > "$list"
+
 oversized=""
-# -z, and the STAGED blob size via `git cat-file -s :path` rather than the
-# working tree: `git add big.bin && rm big.bin` still commits the blob, and a
-# working-tree stat would have waved it through. -z also survives paths git
-# would otherwise quote.
+# The STAGED blob size via `git cat-file -s :path` rather than the working tree:
+# `git add big.bin && rm big.bin` still commits the blob, and a working-tree stat
+# would have waved it through. -z also survives paths git would otherwise quote.
 while IFS= read -r -d '' f; do
   size=$(git cat-file -s ":$f" 2>/dev/null) || continue
   kb=$((size / 1024))
   if [ "$kb" -gt "$MAX_KB" ]; then
     oversized="${oversized}  ${kb} KB  ${f}"$'\n'
   fi
-done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+done < "$list"
 
 if [ -n "$oversized" ]; then
   echo "refusing to stage file(s) over ${MAX_KB} KB:" >&2
