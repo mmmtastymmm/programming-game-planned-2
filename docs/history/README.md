@@ -21,10 +21,10 @@ correct history to leave alone.
 
 | Directory | Files | Holds |
 |---|---|---|
-| [questions-answered/](questions-answered/README.md) | `question-answered-0013.md` | The ruling for Q13, then the worksheet behind it |
-| [problems-fixed/](problems-fixed/README.md) | `problem-fixed-0007.md` | P7 as recorded, and the commit that closed it |
-| [tasks-completed/](tasks-completed/README.md) | `task-completed-0007.md` | T7 and the commit that finished it |
-| [inbox-triaged/](inbox-triaged/README.md) | `inbox-triaged-0007.md` | I7 as written, and where it went |
+| [questions-answered/](questions-answered/README.md) | `question-answered-0013.md` | The ruling for Q13, its **Outcome**, then the worksheet |
+| [problems-fixed/](problems-fixed/README.md) | `problem-fixed-NNNN.md` | the entry as recorded, and the commit that closed it |
+| [tasks-completed/](tasks-completed/README.md) | `task-completed-0003.md` | T3 and the commit that finished it |
+| [inbox-triaged/](inbox-triaged/README.md) | `inbox-triaged-NNNN.md` | the observation as written, and where it went |
 
 There is deliberately **no status log**. An earlier version archived the dated
 status blocks displaced from `QUESTIONS.md`, and they turned out to restate what

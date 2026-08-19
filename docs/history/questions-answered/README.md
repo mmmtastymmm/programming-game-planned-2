@@ -13,10 +13,14 @@ behind it, read rarely and only to recover *why* a call was made.
 The **Outcome** section is the one that keeps this directory from becoming a
 graveyard. A ruling must land somewhere — it declares at least one of:
 
-- `- **Docs:**` — edits made in the same commit, with links.
-- `- **Problem:**` — a `P<n>` opened because existing text or code is now wrong.
-  The number must be a real register entry.
-- `- **Task:**` — work created, because the consequence is not a doc edit.
+- `- **Docs:**` — edits made in the same commit. It must link them.
+- `- **Question:**` — a `Q<n>` opened, because the ruling raised something new.
+- `- **Problem:**` — a `P<n>` opened, because existing text or code is now wrong.
+- `- **Task:**` — a `T<n>` opened, because the consequence is not a doc edit.
+
+Every cited number must be a real register entry, and every bullet must carry
+something to resolve — a bare `- **Docs:**` with no links asserts a propagation
+that may never have happened, which is the state this section exists to catch.
 
 Two of the three is normal: a ruling that lands in a Decided section often also
 creates work. Zero is not allowed, and that is the point. A ruling recorded here

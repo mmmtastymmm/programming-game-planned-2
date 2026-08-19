@@ -3,7 +3,8 @@
 # Triaged inbox entries
 
 **One file per triaged observation**, named for its number:
-`inbox-triaged-0007.md` holds I7 and nothing else.
+`inbox-triaged-0007.md` would hold I7 and nothing else. Nothing is triaged yet,
+so this directory holds only this file.
 
 Each file carries the observation as it was written — unedited, because the
 wording someone reached for under time pressure is often the useful part — and an

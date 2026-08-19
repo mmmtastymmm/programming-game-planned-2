@@ -8,8 +8,9 @@ individual unit. The simulation runs identically on every machine.
 
 The design is in its first pass. The framing rulings and the language decisions
 are made and live in [docs/00-overview.md](docs/00-overview.md)'s Decided
-section; the tick rate, sensing, fault behavior, unit production and the number
-model are still open in [docs/QUESTIONS.md](docs/QUESTIONS.md). The corpus
+section; **everything still undecided is in
+[docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
+list of open topics repeated here would drift on every ruling. The corpus
 scaffolding and the determinism gate are ported from the predecessor project
 `../programming_game_planned` and proven in CI.
 

@@ -3,7 +3,7 @@
 # Completed tasks
 
 **One file per completed task**, named for its number:
-`task-completed-0007.md` holds T7 and nothing else.
+`task-completed-0003.md` holds T3 and nothing else.
 
 Each file carries what the task was and the commit that finished it. A task
 leaves [../../TASKS.md](../../TASKS.md) when it is done, so anything still in

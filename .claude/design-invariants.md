@@ -5,9 +5,12 @@ is proposed, and against the whole corpus periodically. Edit them here rather
 than in any skill or checklist that consumes them.
 
 Each invariant was written after something got through — in this corpus or in
-the predecessor project it was ported from. `Q<n>` refers to
-[docs/QUESTIONS.md](../docs/QUESTIONS.md) and its history shards; `P<n>` to
-[docs/PROBLEMS.md](../docs/PROBLEMS.md) and its.
+the predecessor project it was ported from. `Q<n>`, `P<n>`, `T<n>` and `I<n>`
+refer to the four registers described in [CLAUDE.md](../CLAUDE.md): open entries
+live in [docs/QUESTIONS.md](../docs/QUESTIONS.md),
+[docs/PROBLEMS.md](../docs/PROBLEMS.md), [docs/TASKS.md](../docs/TASKS.md) and
+[docs/INBOX.md](../docs/INBOX.md); closed ones live one per file under
+`docs/history/`.
 
 Some invariants name a structure the design does not have yet — an economy
 graph, a canonical stat sheet, programs printed as shipped source. Each says so
@@ -96,9 +99,11 @@ prose review.
 
 ## I9 — Citations resolve
 
-A doc citing `Q42`, `docs/NN-name.md` or an amended ruling ("Q42-R2") must match
-what is actually there. Rulings get amended, and citations to the pre-amendment
-meaning survive the amendment.
+A doc citing `Q42`, `T7` or `docs/NN-name.md` must match what is actually there.
+Rulings get amended, and citations to the pre-amendment meaning survive the
+amendment — under this repo's scheme an amendment is a *new number*, so a
+citation to the old one keeps resolving while silently meaning the wrong thing.
+That is the case to hunt.
 
 **Check:** resolve citations in changed regions; sample them elsewhere. Pay
 attention to a citation whose *summary* of the cited ruling has drifted from what

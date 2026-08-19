@@ -146,13 +146,25 @@ const OUTCOME_KINDS = {
   Dropped: null,
 };
 
-function checkSize(path) {
-  const bytes = statSync(path).size;
-  if (bytes > MAX_BYTES) {
-    note(
-      `${path}  is ${Math.round(bytes / 1024)} KB, over the ${MAX_BYTES / 1024} KB cap — ` +
-        `split the entry, or sweep closed entries out of the live register`,
-    );
+// Every markdown file under the corpus, not just the registers. The split
+// convention ("Splitting a doc") argues that a threshold is what makes splitting
+// mechanical rather than a judgment call nobody makes until the file is already
+// 166 KB — but until now the numbered design docs, the ones that convention
+// exists for, were the only files with no threshold at all.
+function checkSizes(dir) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      checkSizes(p);
+    } else if (e.name.endsWith(".md")) {
+      const bytes = statSync(p).size;
+      if (bytes > MAX_BYTES) {
+        note(
+          `${p}  is ${Math.round(bytes / 1024)} KB, over the ${MAX_BYTES / 1024} KB cap — ` +
+            `split it (CLAUDE.md, "Splitting a doc"), or sweep closed entries into history`,
+        );
+      }
+    }
   }
 }
 
@@ -173,7 +185,14 @@ const cited = [];
 
 function historyEntries(dir, filePrefix, prefix, { numbered = true, outcome = null } = {}) {
   const path = join(historyDir, dir);
-  if (!existsSync(path)) return [];
+  if (!existsSync(path)) {
+    // Silence here is how a renamed or typo'd directory stays invisible for any
+    // register that happens to have no closed entries yet — and two of the four
+    // are empty today. The directory names are load-bearing for the scheme, so
+    // their absence is a failure, not an empty result.
+    note(`${path}  does not exist — every register keeps its closed entries in one`);
+    return [];
+  }
   const nameRe = new RegExp(`^${filePrefix}-(\\d{4})\\.md$`);
   const found = [];
   for (const name of readdirSync(path).sort()) {
@@ -188,7 +207,6 @@ function historyEntries(dir, filePrefix, prefix, { numbered = true, outcome = nu
       note(`${file}  is misnamed — expected ${filePrefix}-NNNN.md (four digits)`);
       continue;
     }
-    checkSize(file);
     if (!numbered) continue;
 
     const n = Number(m[1]);
@@ -227,40 +245,70 @@ function historyEntries(dir, filePrefix, prefix, { numbered = true, outcome = nu
         const rest = body.slice(at + 1);
         const stop = rest.findIndex((l) => /^## /.test(l));
         const lines = stop === -1 ? rest : rest.slice(0, stop);
-        let declared = 0;
-        for (const line of lines) {
-          const m = /^- \*\*(\w+):\*\*(.*)$/.exec(line);
+
+        // Bullets WRAP. Accumulate each bullet's indented continuation lines
+        // before looking at it: scanning only the marker line silently skips
+        // every citation past the first, which is most of them in prose wrapped
+        // at 80 columns. An earlier version of this check had exactly that hole
+        // while its comment claimed the opposite.
+        const bullets = [];
+        for (let i = 0; i < lines.length; i++) {
+          const m = /^- \*\*(\w+):\*\*(.*)$/.exec(lines[i]);
           if (!m) continue;
-          const [, kind, tail] = m;
-          if (!outcome.includes(kind)) {
+          let text = m[2];
+          let j = i + 1;
+          while (j < lines.length && /^\s+\S/.test(lines[j])) {
+            text += " " + lines[j].trim();
+            j++;
+          }
+          bullets.push({ kind: m[1], text, line: at + 2 + i });
+          i = j - 1;
+        }
+
+        let declared = 0;
+        for (const b of bullets) {
+          if (!outcome.includes(b.kind)) {
             note(
-              `${file}:${at + 1}  Outcome declares "${kind}", which is not one of ` +
+              `${file}:${b.line}  Outcome declares "${b.kind}", which is not one of ` +
                 outcome.join(", "),
             );
             continue;
           }
           declared++;
-          // A dropped entry cites nothing, so the reason IS the record. An
-          // empty one is indistinguishable from never having triaged it.
-          if (kind === "Dropped" && tail.trim().length < 12) {
-            note(
-              `${file}:${at + 1}  Dropped without a reason — say why it was not real, ` +
-                `or the entry reads as untriaged`,
-            );
-          }
-          // EVERY number on the line, not just the first: "T11, T12 and T13" is
-          // the normal shape for a ruling that creates several staged items, and
-          // a check that validated only T11 would be quietly worthless there.
-          const kindSpec = OUTCOME_KINDS[kind];
-          if (kindSpec) {
-            for (const c of line.matchAll(kindSpec.re)) {
+          const spec = OUTCOME_KINDS[b.kind];
+          if (spec) {
+            const hits = [...b.text.matchAll(spec.re)];
+            if (hits.length === 0) {
+              note(
+                `${file}:${b.line}  "${b.kind}:" cites no ${spec.what.slice(0, -1)} number — ` +
+                  `a declared consequence with nothing to resolve is not a consequence`,
+              );
+            }
+            for (const c of hits) {
               cited.push({
-                what: kindSpec.what,
+                what: spec.what,
                 id: c[1],
                 n: Number(c[2]),
                 file,
-                line: at + 1,
+                line: b.line,
               });
+            }
+          } else if (b.kind === "Docs") {
+            // The cheapest way to satisfy this gate used to be a bare
+            // "- **Docs:**", which is precisely the un-propagated state the
+            // gate exists to catch. Name the edits.
+            if (!/\]\(/.test(b.text)) {
+              note(
+                `${file}:${b.line}  "Docs:" links nothing — link the edits it claims, ` +
+                  `or the bullet asserts a propagation that may never have happened`,
+              );
+            }
+          } else if (b.kind === "Dropped") {
+            if (b.text.trim().length < 12) {
+              note(
+                `${file}:${b.line}  Dropped without a reason — say why it was not real, ` +
+                  `or the entry reads as untriaged`,
+              );
             }
           }
         }
@@ -285,7 +333,6 @@ for (const reg of REGISTERS) {
     reg.closedEntries = [];
     continue;
   }
-  checkSize(livePath);
   const open = liveEntries(livePath, reg.prefix);
   const closed = historyEntries(reg.dir, reg.filePrefix, reg.prefix, {
     outcome: reg.outcome ?? null,
@@ -373,8 +420,16 @@ if (existsSync(registerPath)) {
 }
 
 // ── Nobody else states the totals ───────────────────────────────────────────
+const NUMBER_WORD = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|" +
+  "thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty";
 const TOTALS = [
   /\b\d+ opened, \d+ fixed\b/,
+  // "Eight questions are open." is the same hand-maintained derived value as a
+  // problem-register total, in the file the tooling is supposed to protect. It
+  // drifted twice in the session that introduced it. The checker's own summary
+  // line prints these counts; no prose needs to.
+  new RegExp(`\\b(\\d+|${NUMBER_WORD})\\s+(questions?|tasks?|problems?|entries)\\s+` +
+    `(?:are|is|remain|remains)\\s+open\\b`, "i"),
   /problem register carries [\w-]+ open entr/i,
   /\bregister (?:carries|holds) \d+\b/i,
 ];
@@ -403,6 +458,7 @@ function walk(dir) {
   }
 }
 if (existsSync(root)) walk(root);
+if (existsSync(root)) checkSizes(root);
 
 if (problems.length) {
   console.error(`✗ ${problems.length} register problem(s):\n`);

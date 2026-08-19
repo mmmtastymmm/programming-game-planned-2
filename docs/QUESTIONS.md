@@ -8,8 +8,9 @@ of them.
 Answering a question empties it out of this file in three directions: the ruling
 and its worksheet become one new file in
 [history/questions-answered/](history/questions-answered/README.md), which must
-declare its **Outcome**: docs changed now, a problem opened, or a task created.
-A ruling that changes nothing anywhere was not a ruling. Nothing answered stays here. That discipline is
+declare its **Outcome**: docs changed now, or a question, problem or task opened.
+A ruling that changes nothing anywhere was not a ruling. Nothing answered stays
+here. That discipline is
 the whole reason this file is readable: the predecessor project let answered
 material stack up and reached 166 KB, at which point everyone was reading it in
 full to find the handful of things still open.
@@ -31,8 +32,8 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-Eight questions are open. **Q14 is the last thing `docs/01` waits on.** Two
-others carry live dependencies on Q13: **Q11** must clear variables on a
+**Q14 is the last thing `docs/01` waits on.** Two of the open questions below
+carry live dependencies on Q13: **Q11** must clear variables on a
 hot-swap or Q13's boundary reopens, and **Q8**'s static-rejection option got
 harder rather than easier, because classes and duck-typed attribute access need
 type inference to analyse even with no reflection in the language.
@@ -50,9 +51,11 @@ Lockstep pins this early and every tuning constant in the corpus inherits it.
 | Fast tick (60/s) | Renderer and sim agree; no interpolation needed. Leaves very little room per unit per tick at fleet scale. |
 | Decouple: slow sim tick, interpolating renderer | Best of both, at the cost of a rendering layer that must never feed anything back into the sim. |
 
-Blocked on nothing, but pointless to fix before Q5 — the interpreter's cost per
-unit per tick is the input that decides it. A slow tick also widens the window
-Q12 needs for scheduling updates, which is a second reason not to guess.
+**Unblocked.** The language spike measured 4.4 µs per unit-tick, putting 200
+units at 30 ticks/s near 2.6% of one core, so interpretation cost does not bound
+the tick rate at any fleet size contemplated. This is a game-feel and netcode
+decision, not a performance one. A slower tick also widens the window Q12 needs
+for scheduling updates, which is the remaining reason not to guess.
 
 **Q7 — What does a unit sense?**
 

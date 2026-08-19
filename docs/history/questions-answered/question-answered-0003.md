@@ -15,8 +15,8 @@ considered seriously was pure programming: submit a set, watch it play out. That
 buys real simplifications, and they compound (a match determined entirely by
 `(seed, program set)`, a replay of a few kilobytes, one code path for single- and
 multiplayer, PvP fairness independent of reaction speed). It was rejected anyway,
-because it removes the observe–diagnose–patch cycle that is the fantasy. A player
-who cannot intervene is watching a submission, not playing.
+because it removes the observe–diagnose–patch cycle that is the fantasy. A
+player who cannot intervene is watching a submission, not playing.
 
 The restriction that *survives* is the one that matters: updates are to
 **programs**, never to individual units. The player never issues an order. That

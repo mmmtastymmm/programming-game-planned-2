@@ -220,8 +220,9 @@ context managers did not.
 ## Outcome
 
 - **Docs:** [00-overview.md](../../00-overview.md) — Decided section.
-  [CLAUDE.md](../../../CLAUDE.md) — crate layout. [QUESTIONS.md](../../QUESTIONS.md)
-  — Q8 and Q11 both gained the dependencies this ruling created.
+  [CLAUDE.md](../../../CLAUDE.md) — crate layout.
+  [QUESTIONS.md](../../QUESTIONS.md) — Q8 and Q11 both gained the dependencies
+  this ruling created.
 - **Task:** [T11, T12, T13](../../TASKS.md) — `class`, `match` and `import`
   each become a staged, ⚠HASH implementation item.
 

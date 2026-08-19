@@ -46,10 +46,11 @@ run_docs() {
   # cross-references too, and the hook extracts every tracked .md.
   node scripts/check-links.mjs "$ROOT" || FAILED+=("links")
 
-  step "registers are consistent, ordered and bounded"
-  # Counts are derived from the entries (live + history shards), not read from
-  # prose. Also caps file size, which is what makes sharding automatic rather
-  # than something nobody does until a register is 166 KB.
+  step "registers are consistent and bounded"
+  # Counts are derived from the entries themselves — open ones in the live
+  # register, closed ones in docs/history/ — never read from prose. Also caps
+  # every doc's size, which is what makes splitting mechanical rather than
+  # something nobody does until a file is already 166 KB.
   node scripts/check-registers.mjs "$ROOT/docs" || FAILED+=("registers")
 
   step "split-doc part files open with their breadcrumb"

@@ -2,8 +2,9 @@
 
 # Fixed problems
 
-**One file per fixed problem**, named for its number:
-`problem-fixed-0007.md` holds P7 and nothing else.
+**One file per fixed problem**, named for its number: `problem-fixed-0007.md`
+would hold P7 and nothing else. Nothing is fixed yet, so this directory holds
+only this file.
 
 Each file carries the defect as it was recorded and the commit that closed it. A
 docs defect closes with the docs edit; an implementation-lag entry closes with

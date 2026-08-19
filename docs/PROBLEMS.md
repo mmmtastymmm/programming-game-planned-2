@@ -5,9 +5,10 @@ undecided about them. Each is a decision that was made and then contradicted, a
 number that does not survive arithmetic against the constants it derives from,
 or a ratified decision the implementation never caught up to.
 
-**This file holds open entries only.** Fixing one moves it out, into the current
-[history/problems-fixed/](history/problems-fixed/README.md) as its own file,
-with the commit that closed it. What stays here is the working set; what leaves is the record.
+**This file holds open entries only.** Fixing one moves it into
+[history/problems-fixed/](history/problems-fixed/README.md) as its own file, with
+the commit that closed it. What stays here is the working set; what leaves is the
+record.
 
 Numbering is stable — **append new problems, never renumber**, and never reuse a
 number after it moves to history. Open design questions still go in
