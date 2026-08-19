@@ -24,7 +24,7 @@ global.document = dom.window.document;
 const mermaid = (await import("mermaid")).default;
 mermaid.initialize({ startOnLoad: false });
 
-const root = path.resolve(process.argv[2] ?? "docs");
+const root = path.resolve(process.argv[2] ?? ".");
 
 // mermaid reports "Parse error on line N" relative to the block; block line 1
 // is the line after the fence, so absolute = fenceLine + N.
@@ -36,7 +36,16 @@ function absoluteLine(message, fenceLine) {
 let blocks = 0;
 const failures = [];
 
-for (const file of markdownFiles(root).sort()) {
+const files = markdownFiles(root).sort();
+// Scoring green on zero inputs is how a check that has lost its scope keeps
+// printing a tick — the failure the language spike hit with four processes that
+// ran nothing.
+if (files.length === 0) {
+  console.error(`✗ check-mermaid: no markdown under ${root} — the check is checking nothing`);
+  process.exit(2);
+}
+
+for (const file of files) {
   const lines = fs.readFileSync(file, "utf8").split("\n");
   let buf = null;
   let fenceLine = 0;

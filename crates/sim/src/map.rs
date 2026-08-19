@@ -18,10 +18,6 @@ impl TilePos {
     pub fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
-
-    pub fn manhattan(self, other: Self) -> i64 {
-        (self.x as i64 - other.x as i64).abs() + (self.y as i64 - other.y as i64).abs()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,7 +41,10 @@ impl MapSpec {
         }
     }
 
-    pub fn contains(&self, pos: TilePos) -> bool {
-        pos.x >= 0 && pos.y >= 0 && pos.x < self.width && pos.y < self.height
-    }
+    // No `contains` here. It was character-for-character `World::in_bounds` over
+    // the same width/height, i.e. two canonical statements of the bounds rule
+    // (design-invariant I1). If the rule ever changes — inclusive edges, a
+    // border margin — one copy gets edited and command validation starts
+    // disagreeing with movement, which is a desync. `World::in_bounds` is the
+    // single statement; the spec owns nothing else.
 }

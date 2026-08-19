@@ -196,7 +196,23 @@ for (const file of markdownFiles(root).sort()) {
 
           // `:NN` in backticks — nearest preceding citation wins.
           const bare = BARE_CITE.exec(ev.code);
-          if (bare) checkBare(file, i, bound, Number(bare[1]), `:${bare[1]}`);
+          if (bare) {
+            checkBare(file, i, bound, Number(bare[1]), `:${bare[1]}`);
+            continue;
+          }
+          // A span that carries a `:NN` but matches NEITHER shape — `see :24`,
+          // `PROBLEMS.md at :24` — used to fall through here unchecked and
+          // uncounted, while the CI step still reported "N line citations in
+          // range". That is the same "invisible to a check whose label claims
+          // otherwise" incident this rewrite exists to fix, one shape further
+          // in. Refuse it rather than skip it: the writer gets told which two
+          // forms are verified.
+          if (/(?<![\w/.]):\d+(?![\w:])/.test(ev.code)) {
+            problems.push(
+              `${file}:${i + 1}  unverifiable citation ${ev.code} — a line citation in a code ` +
+                `span must be exactly \`:NN\` or \`path.md:NN\`, or CI cannot resolve it`,
+            );
+          }
           continue;
         }
 

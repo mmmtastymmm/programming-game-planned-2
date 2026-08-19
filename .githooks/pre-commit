@@ -15,8 +15,12 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Nothing markdown staged → nothing to check.
-if ! git diff --cached --quiet --name-only --diff-filter=ACMR -- '*.md' 2>/dev/null; then
+# Nothing staged → nothing to check. NO --diff-filter: a commit that only
+# DELETES markdown is the change most likely to break links, and ACMR excluded
+# exactly that. No '*.md' pathspec either: deleting or renaming a source file a
+# doc links to (CLAUDE.md cites crates/sim/src/rng.rs) breaks links just as
+# thoroughly, and used not to trigger the hook at all.
+if ! git diff --cached --quiet --name-only 2>/dev/null; then
   :
 else
   exit 0

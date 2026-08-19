@@ -34,8 +34,9 @@ status block and it is rewritten in place: `git log -p` is the history.
 
 **Status 2026-08-18: 0 opened, 0 fixed — zero open.**
 
-The register is empty because the design corpus is empty. The first entries will
-arrive with the first rulings.
+Nothing is open. Rulings so far have landed straight in their owning doc's
+Decided section, so none has left a gap behind it — which is what an empty
+register is supposed to mean.
 
 ## Open
 

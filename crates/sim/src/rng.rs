@@ -33,10 +33,6 @@ impl Stream {
         Self { name, state }
     }
 
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-
     pub fn next_u64(&mut self) -> u64 {
         next_rand(&mut self.state)
     }

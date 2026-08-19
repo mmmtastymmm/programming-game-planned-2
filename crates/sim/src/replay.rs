@@ -37,6 +37,17 @@ impl Replay {
     /// drifted, and both deserve a loud failure rather than a skipped command
     /// and a mystery hash.
     pub fn run(&self) -> Vec<u64> {
+        self.execute().1
+    }
+
+    /// Execute the replay, returning the finished sim *and* the hash stream.
+    ///
+    /// Tests that assert on end state go through here rather than rewriting the
+    /// apply-then-step loop. A second copy of the command boundary drifts from
+    /// this one silently, and then the golden fixture regenerates under the new
+    /// semantics while the liveness test keeps asserting against the old — and
+    /// passes, because the copy also skipped the sorted-by-tick assert below.
+    pub fn execute(&self) -> (Sim, Vec<u64>) {
         assert!(
             self.commands.windows(2).all(|w| w[0].tick <= w[1].tick),
             "replay commands must be sorted by tick"
@@ -57,7 +68,7 @@ impl Replay {
             next == self.commands.len(),
             "replay has commands past its tick count"
         );
-        hashes
+        (sim, hashes)
     }
 
     pub fn to_ron(&self) -> String {

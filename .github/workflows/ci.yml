@@ -16,6 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-registers verifies that the commit hashes cited in
+          # docs/history/ resolve — three of them rotted silently when history
+          # was rewritten. A shallow clone has no objects to resolve them
+          # against, so the check would fail on every hash.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

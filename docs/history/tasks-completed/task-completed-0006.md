@@ -11,4 +11,4 @@ argument was **rebutted rather than outweighed** — a swap clears all variables
 so nothing survives it in a broken state — and the boundary widened. The
 dependency now runs the other way and is recorded in both rulings.
 
-Completed in `dd6c700`.
+Completed in `f4af385`.

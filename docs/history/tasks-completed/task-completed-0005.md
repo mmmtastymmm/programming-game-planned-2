@@ -10,4 +10,4 @@ bit-identical across four fresh processes. The ruling is therefore a trade
 accepted rather than one forced, and the spike's findings survive as the
 checklist for our own implementation.
 
-Completed in `650b7aa` (spike) and `7576f35` (ruling).
+Completed in `b2dd859` (spike) and `3eb00ac` (ruling).

@@ -63,7 +63,7 @@ run_docs() {
   # register, closed ones in docs/history/ — never read from prose. Also caps
   # every doc's size, which is what makes splitting mechanical rather than
   # something nobody does until a file is already 166 KB.
-  node scripts/check-registers.mjs "$ROOT/docs" || FAILED+=("registers")
+  node scripts/check-registers.mjs "$ROOT" || FAILED+=("registers")
 
   step "split-doc part files open with their breadcrumb"
   node scripts/check-doc-layout.mjs "$ROOT/docs" || FAILED+=("doc-layout")
@@ -79,7 +79,7 @@ run_docs() {
       npm install --prefix scripts --silent --no-fund --no-audit
     fi
   fi
-  node scripts/check-mermaid.mjs "$ROOT/docs" || FAILED+=("mermaid")
+  node scripts/check-mermaid.mjs "$ROOT" || FAILED+=("mermaid")
 }
 
 # Optional $2: check this directory instead of the working tree (see run_docs).

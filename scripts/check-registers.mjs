@@ -51,9 +51,15 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { execFileSync } from "node:child_process";
 import { markdownFiles } from "./lib/md-files.mjs";
 
-const root = process.argv[2] ?? "docs";
+// Takes the REPO root, not docs/. The registers live under docs/, but the size
+// cap and the no-restated-totals rule have to cover CLAUDE.md and README.md too:
+// CLAUDE.md is the file that *describes* the register scheme and so the one most
+// likely to restate a total, and it was exempt from both while scoped to docs/.
+const repoRoot = process.argv[2] ?? ".";
+const root = join(repoRoot, "docs");
 const historyDir = join(root, "history");
 
 // Roughly 10k tokens. The threshold is arbitrary; having one is not.
@@ -61,6 +67,16 @@ const MAX_BYTES = 40 * 1024;
 
 const problems = [];
 const note = (msg) => problems.push(msg);
+
+// A check that scores green on zero inputs is the failure this repo keeps
+// naming and keeps committing: the language spike passed four processes that
+// ran nothing. crates/sim/tests/no_floats.rs guards this; the .mjs checks did
+// not.
+const allDocs = existsSync(repoRoot) ? markdownFiles(repoRoot) : [];
+if (allDocs.length === 0) {
+  console.error(`✗ check-registers: no markdown found under ${repoRoot} — the check is checking nothing`);
+  process.exit(2);
+}
 
 const REGISTERS = [
   {
@@ -322,6 +338,47 @@ for (const c of cited) {
   }
 }
 
+// ── A cited commit must exist ───────────────────────────────────────────────
+// Only inside history/, only backticked, 7-40 hex chars, and only if it contains
+// a digit — which excludes all-letter words that happen to be valid hex
+// ("defaced") while keeping every realistic short hash.
+{
+  const HASH = /`([0-9a-f]{7,40})`/g;
+  let gitWorks = true;
+  const seen = new Map();
+  for (const file of allDocs) {
+    if (!file.includes(`${sep}history${sep}`)) continue;
+    for (const m of readFileSync(file, "utf8").matchAll(HASH)) {
+      if (!/\d/.test(m[1])) continue;
+      if (!seen.has(m[1])) seen.set(m[1], file);
+    }
+  }
+  for (const [hash, file] of seen) {
+    if (!gitWorks) break;
+    try {
+      // Run in the repo, not in $root: the pre-commit hook points $root at an
+      // extracted index with no .git in it.
+      const kind = execFileSync("git", ["cat-file", "-t", hash], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (kind !== "commit") {
+        note(`${file}  cites \`${hash}\`, which is a ${kind}, not a commit`);
+      }
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        note("git not found — cannot verify the commit hashes cited in history/");
+        gitWorks = false;
+      } else {
+        note(
+          `${file}  cites \`${hash}\`, which is not a commit in this repository — ` +
+            `a history rewrite invalidates every hash recorded before it`,
+        );
+      }
+    }
+  }
+}
+
 // ── One status block per register, rewritten in place ───────────────────────
 const WORDS = [
   "zero","one","two","three","four","five","six","seven","eight","nine","ten",
@@ -399,8 +456,8 @@ const registerPath = join(root, "PROBLEMS.md");
 // One traversal, through the shared walker that already skips .git/node_modules/
 // target — rather than a third hand-rolled one. `md-files.mjs` exists to be "one
 // definition of which files are ours".
-if (existsSync(root)) {
-  for (const file of markdownFiles(root)) {
+{
+  for (const file of allDocs) {
     const bytes = statSync(file).size;
     if (bytes > MAX_BYTES) {
       note(
@@ -410,7 +467,8 @@ if (existsSync(root)) {
     }
     // history/ is exempt from the totals rule: a closed record of what was true
     // on its date is not a claim about today.
-    if (relative(root, file).split(sep)[0] === "history" || file === registerPath) continue;
+    const rel = relative(repoRoot, file).split(sep);
+    if ((rel[0] === "docs" && rel[1] === "history") || file === registerPath) continue;
     stripFences(readFileSync(file, "utf8")).forEach((l, i) => {
       // A doc explaining this very rule has to be able to quote the shape it
       // forbids. Backticked spans are quotation, not assertion.

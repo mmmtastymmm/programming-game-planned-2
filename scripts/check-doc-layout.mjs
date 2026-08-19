@@ -33,6 +33,15 @@ if (!existsSync(root)) {
 const problems = [];
 let checked = 0;
 
+// Zero part files is legitimate — no doc has been split yet — but an empty or
+// wrong ROOT is not, and the two are indistinguishable in a "✓ 0" line. Assert
+// the corpus is there; let the part-file count be zero honestly.
+const corpus = readdirSync(root).filter((f) => f.endsWith(".md"));
+if (corpus.length === 0) {
+  console.error(`✗ check-doc-layout: no markdown directly under ${root} — wrong root?`);
+  process.exit(2);
+}
+
 for (const entry of readdirSync(root, { withFileTypes: true })) {
   if (!entry.isDirectory() || entry.name === "history") continue;
   const dir = join(root, entry.name);
@@ -65,4 +74,8 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`✓ ${checked} part files open with their breadcrumb, then the H1`);
+console.log(
+  checked === 0
+    ? `✓ no split docs yet (${corpus.length} files at the top level, none with a parts directory)`
+    : `✓ ${checked} part files open with their breadcrumb, then the H1`,
+);
