@@ -31,6 +31,14 @@ if ! command -v node >/dev/null 2>&1; then
   exit 0
 fi
 
+# Size gate first: cheap, and it is the one failure that cannot be fixed later
+# without rewriting history. Lives in its own script so it can be tested — as an
+# inline loop it silently aborted every commit (see that file's header).
+if ! scripts/check-staged-size.sh; then
+  echo "pre-commit: aborted." >&2
+  exit 1
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

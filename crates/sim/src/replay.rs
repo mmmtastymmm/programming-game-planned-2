@@ -7,6 +7,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::map::MapSpec;
+
+/// Ceiling on a replay's declared length. At a plausible tick rate this is many
+/// hours of play — far more than any match — and it bounds what a corrupt or
+/// hostile artifact can ask the allocator for.
+pub const MAX_REPLAY_TICKS: u64 = 10_000_000;
 use crate::sim::{Command, Sim};
 
 /// A command agreed for a specific tick. Commands fire *before* the tick's
@@ -48,6 +53,15 @@ impl Replay {
     /// semantics while the liveness test keeps asserting against the old — and
     /// passes, because the copy also skipped the sorted-by-tick assert below.
     pub fn execute(&self) -> (Sim, Vec<u64>) {
+        // `ticks` comes straight out of a .replay.ron, which is untrusted:
+        // the artifact is what gets attached to a desync report. u64::MAX would
+        // ask `with_capacity` for ~147 exabytes and abort the process; 10^12
+        // would hang while `hashes` grew without bound.
+        assert!(
+            self.ticks <= MAX_REPLAY_TICKS,
+            "replay declares {} ticks, over the {MAX_REPLAY_TICKS} cap",
+            self.ticks
+        );
         assert!(
             self.commands.windows(2).all(|w| w[0].tick <= w[1].tick),
             "replay commands must be sorted by tick"
@@ -59,7 +73,7 @@ impl Replay {
             while next < self.commands.len() && self.commands[next].tick == tick {
                 sim.apply(&self.commands[next].command)
                     .expect("replayed command accepted");
-                next += 1;
+                next = next.saturating_add(1);
             }
             sim.step();
             hashes.push(sim.state_hash());

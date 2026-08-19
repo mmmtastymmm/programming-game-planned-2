@@ -53,6 +53,8 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { markdownFiles } from "./lib/md-files.mjs";
+import { stripFences } from "./lib/markdown.mjs";
+import { MAX_BYTES, OUTCOME_KINDS, REGISTERS } from "./lib/registers.mjs";
 
 // Takes the REPO root, not docs/. The registers live under docs/, but the size
 // cap and the no-restated-totals rule have to cover CLAUDE.md and README.md too:
@@ -62,87 +64,26 @@ const repoRoot = process.argv[2] ?? ".";
 const root = join(repoRoot, "docs");
 const historyDir = join(root, "history");
 
-// Roughly 10k tokens. The threshold is arbitrary; having one is not.
-const MAX_BYTES = 40 * 1024;
-
 const problems = [];
 const note = (msg) => problems.push(msg);
 
 // A check that scores green on zero inputs is the failure this repo keeps
-// naming and keeps committing: the language spike passed four processes that
-// ran nothing. crates/sim/tests/no_floats.rs guards this; the .mjs checks did
-// not.
+// naming and keeps committing: the language spike passed four processes that ran
+// nothing. crates/sim/tests/no_floats.rs guards this; the .mjs checks did not.
 const allDocs = existsSync(repoRoot) ? markdownFiles(repoRoot) : [];
 if (allDocs.length === 0) {
   console.error(`✗ check-registers: no markdown found under ${repoRoot} — the check is checking nothing`);
   process.exit(2);
 }
 
-const REGISTERS = [
-  {
-    what: "problems",
-    prefix: "P",
-    live: "PROBLEMS.md",
-    dir: "problems-fixed",
-    filePrefix: "problem-fixed",
-    status: "counted",
-  },
-  {
-    what: "questions",
-    prefix: "Q",
-    live: "QUESTIONS.md",
-    dir: "questions-answered",
-    filePrefix: "question-answered",
-    status: "dated",
-    // No `Dropped`: a ruling that changes nothing anywhere is a forgotten
-    // propagation, which is the failure this section exists to catch.
-    outcome: ["Docs", "Question", "Problem", "Task"],
-  },
-  {
-    what: "tasks",
-    prefix: "T",
-    live: "TASKS.md",
-    dir: "tasks-completed",
-    filePrefix: "task-completed",
-  },
-  {
-    what: "inbox",
-    prefix: "I",
-    live: "INBOX.md",
-    dir: "inbox-triaged",
-    filePrefix: "inbox-triaged",
-    outcome: ["Docs", "Question", "Problem", "Task", "Dropped"],
-  },
-];
-
-// Which register each Outcome kind points at. `Docs` must link its edits;
-// `Dropped` cites nothing and must instead say why.
-const OUTCOME_KINDS = {
-  Question: { what: "questions", re: /\b(Q(\d+))\b/g },
-  Problem: { what: "problems", re: /\b(P(\d+))\b/g },
-  Task: { what: "tasks", re: /\b(T(\d+))\b/g },
-  Docs: null,
-  Dropped: null,
-};
-
 const cited = [];
-
-// ── Fenced blocks are quotation, not assertion ──────────────────────────────
-// This corpus documents its own formats constantly, so a doc quoting
-// "# T99 — illustration" inside a fence must not read as a second entry, and a
-// fenced "Three questions are open." must not read as a restated total. Blank
-// the fenced lines out and keep line numbering intact. Same carve-out the
-// single-backtick handling below makes, one level up.
-function stripFences(text) {
-  let open = false;
-  return text.split("\n").map((line) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      open = !open;
-      return "";
-    }
-    return open ? "" : line;
-  });
-}
+// Derived per-run state lives here, NOT on the objects exported by
+// lib/registers.mjs. That module is documented as the authoritative description
+// of the scheme and is now shared with check-vocabulary; a consumer writing scan
+// results into it means reading it no longer tells you an entry's shape, and two
+// checks sharing a process would see each other's data.
+const scanned = new Map();
+const entriesOf = (what) => scanned.get(what) ?? { open: [], closed: [] };
 
 // ── Entries ─────────────────────────────────────────────────────────────────
 /** Live-register entries are `**P12 — title**` at the start of a line. */
@@ -294,8 +235,7 @@ for (const reg of REGISTERS) {
   const livePath = join(root, reg.live);
   if (!existsSync(livePath)) {
     note(`missing register: ${livePath}`);
-    reg.openEntries = [];
-    reg.closedEntries = [];
+    scanned.set(reg.what, { open: [], closed: [] });
     continue;
   }
   const open = liveEntries(livePath, reg.prefix);
@@ -321,14 +261,14 @@ for (const reg of REGISTERS) {
     }
   }
 
-  reg.openEntries = open;
-  reg.closedEntries = closed;
+  scanned.set(reg.what, { open, closed });
 }
 
 // ── A cited number must resolve ─────────────────────────────────────────────
 for (const c of cited) {
   const reg = REGISTERS.find((r) => r.what === c.what);
-  const known = new Set([...reg.openEntries, ...reg.closedEntries].map((e) => e.n));
+  const { open, closed } = entriesOf(c.what);
+  const known = new Set([...open, ...closed].map((e) => e.n));
   if (!known.has(c.n)) {
     note(
       `${c.file}:${c.line}  the Outcome cites ${c.id}, which is not in the ${c.what} ` +
@@ -407,6 +347,7 @@ for (const reg of REGISTERS.filter((r) => r.status)) {
   }
   if (reg.status !== "counted") continue;
 
+  const here = entriesOf(reg.what);
   const m = COUNTED.exec(blocks[0].l);
   if (!m) {
     note(
@@ -423,15 +364,15 @@ for (const reg of REGISTERS.filter((r) => r.status)) {
     openNum = null;
   }
   const want = [
-    ["opened", Number(opened), reg.openEntries.length + reg.closedEntries.length],
-    ["fixed", Number(fixedSaid), reg.closedEntries.length],
-    ["open", openNum, reg.openEntries.length],
+    ["opened", Number(opened), here.open.length + here.closed.length],
+    ["fixed", Number(fixedSaid), here.closed.length],
+    ["open", openNum, here.open.length],
   ];
   for (const [what, said, real] of want) {
     if (said !== null && said !== real) {
       note(
         `${at}  the ${date} headline says ${said} ${what}, the register has ${real}` +
-          (what === "open" ? ` (${reg.openEntries.map((e) => e.id).join(", ")})` : ""),
+          (what === "open" ? ` (${here.open.map((e) => e.id).join(", ")})` : ""),
       );
     }
   }
@@ -489,7 +430,8 @@ if (problems.length) {
   process.exit(1);
 }
 
-const summary = REGISTERS.map(
-  (r) => `${r.what} ${r.openEntries.length} open / ${r.closedEntries.length} closed`,
-).join(", ");
+const summary = REGISTERS.map((r) => {
+  const { open, closed } = entriesOf(r.what);
+  return `${r.what} ${open.length} open / ${closed.length} closed`;
+}).join(", ");
 console.log(`✓ registers consistent and within size: ${summary}`);

@@ -59,6 +59,20 @@ impl World {
             wander: Stream::new(spec.seed, "wander"),
         };
         for &pos in &spec.spawns {
+            // Validated through the SAME predicate `Command::Spawn` uses.
+            // Without this the two entity-creation paths disagreed: a replay
+            // whose spec placed a unit off-map got an entity that consumed an
+            // id, entered the state hash, and could never move — while an
+            // identical Spawn command was rejected. A replay artifact is
+            // untrusted input; it arrives attached to bug reports.
+            assert!(
+                world.in_bounds(pos),
+                "spawn ({}, {}) is outside the {}x{} map",
+                pos.x,
+                pos.y,
+                spec.width,
+                spec.height
+            );
             world.spawn(pos);
         }
         world

@@ -65,8 +65,19 @@ which is indistinguishable from agreement.
 - `scripts/ci.sh` runs the whole suite locally; it is exactly what CI runs, so
   the two cannot drift. `scripts/ci.sh docs` is the fast half (seconds, no Rust
   build); `scripts/ci.sh rust` is fmt, clippy and tests.
-- `scripts/install-hooks.sh` once per clone installs the pre-commit doc gate,
-  which runs the docs half against the **staged** content.
+  - `scripts/install-hooks.sh` once per clone installs the pre-commit doc gate,
+    which runs the docs half against the **staged** content and refuses an
+    oversized file — a large file is permanent once pushed, and
+    `scripts/check-staged-size.sh` owns the limit.
+- **`scripts/check-checks.mjs` is the check on the checks.** It seeds known
+  defects into a copy of the tracked corpus and asserts each is caught by the
+  right check with a message that names the real problem. Three review rounds of
+  this repo found checks that were green while validating nothing — citations
+  scanned on one line of a wrapped bullet, fenced examples read as entries,
+  success reported on zero inputs. Each was found by mutating a corpus copy by
+  hand, and the round that step was skipped is the round three of them shipped.
+  **Adding a check means adding mutations there**; a check with no mutation is a
+  check nobody has ever seen fail.
 - [.claude/design-invariants.md](.claude/design-invariants.md) lists the
   properties the design corpus must have, each with how to check it. Some bind
   only once the design grows the structure they describe; each says so.

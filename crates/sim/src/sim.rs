@@ -107,32 +107,45 @@ impl Sim {
                 // Close the larger axis first, x on a tie. Arbitrary, but
                 // *stated* — an unstated tiebreak is the classic desync.
                 Some(g) if g != pos => {
-                    let dx = g.x - pos.x;
-                    let dy = g.y - pos.y;
-                    if dx.abs() >= dy.abs() {
-                        TilePos::new(pos.x + dx.signum(), pos.y)
+                    // Saturating throughout: positions are bounded by the map,
+                    // so saturation is unreachable in practice — but "defined
+                    // on every peer" is the property that matters, and a bare
+                    // `-` is only defined in release.
+                    let dx = g.x.saturating_sub(pos.x);
+                    let dy = g.y.saturating_sub(pos.y);
+                    // unsigned_abs, not abs: `i32::MIN.abs()` panics in debug
+                    // and yields i32::MIN (negative!) in release, flipping this
+                    // tiebreak and moving the entity on a different axis. The
+                    // clippy deny does not cover method calls, so it gave no
+                    // warning here.
+                    if dx.unsigned_abs() >= dy.unsigned_abs() {
+                        TilePos::new(pos.x.saturating_add(dx.signum()), pos.y)
                     } else {
-                        TilePos::new(pos.x, pos.y + dy.signum())
+                        TilePos::new(pos.x, pos.y.saturating_add(dy.signum()))
                     }
                 }
                 // Arrived, or never had a goal: jitter.
                 _ => {
                     const STEPS: [(i32, i32); 5] = [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)];
                     let (dx, dy) = STEPS[self.world.wander.below(STEPS.len() as u64) as usize];
-                    TilePos::new(pos.x + dx, pos.y + dy)
+                    TilePos::new(pos.x.saturating_add(dx), pos.y.saturating_add(dy))
                 }
             };
             let moved = self.world.in_bounds(next) && next != pos;
             let e = self.world.entities.get_mut(&id).expect("entity exists");
             if moved {
                 e.pos = next;
-                e.distance_travelled += 1;
+                e.distance_travelled = e.distance_travelled.saturating_add(1);
             }
             if e.goal == Some(e.pos) {
                 e.goal = None;
             }
         }
-        self.world.tick += 1;
+        self.world.tick = self
+            .world
+            .tick
+            .checked_add(1)
+            .expect("tick counter overflowed u64");
     }
 
     pub fn state_hash(&self) -> u64 {

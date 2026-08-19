@@ -21,6 +21,11 @@
 //!     through a dependency's API, or a `BTreeMap` iterated in an order that
 //!     depends on something nondeterministic upstream. Rules first, gate second.
 
+// Test-harness arithmetic is not sim state: it never runs on a peer, never
+// enters a state hash, and a panic here is a failing test rather than a desync.
+// The workspace deny exists for code on the hash-critical path.
+#![allow(clippy::arithmetic_side_effects)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -198,14 +203,22 @@ fn tokens(line: &str) -> impl Iterator<Item = &str> {
 fn has_float_literal(line: &str) -> bool {
     let c: Vec<char> = line.chars().collect();
     for i in 1..c.len().saturating_sub(1) {
-        if c[i] == '.'
-            && c[i - 1].is_ascii_digit()
-            && c[i + 1].is_ascii_digit()
-            && c.get(i.wrapping_sub(2)) != Some(&'.')
-            && c.get(i + 2) != Some(&'.')
-        {
-            return true;
+        if c[i] != '.' || !c[i - 1].is_ascii_digit() || !c[i + 1].is_ascii_digit() {
+            continue;
         }
+        // Walk back over the digit run. If a `.` sits before it, this is a
+        // tuple-access chain (`x.0.1`), not a literal. An earlier version
+        // instead checked the character two ahead, which also suppressed
+        // `1.0.floor()` — a real float literal — because the method dot looked
+        // like the second dot of a range.
+        let mut j = i - 1;
+        while j > 0 && c[j - 1].is_ascii_digit() {
+            j -= 1;
+        }
+        if j > 0 && c[j - 1] == '.' {
+            continue;
+        }
+        return true;
     }
     // `1f64` / `1.0f32`: the suffix never appears as its own token.
     tokens(line).any(|t| {

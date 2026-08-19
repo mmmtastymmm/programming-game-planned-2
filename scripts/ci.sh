@@ -68,6 +68,17 @@ run_docs() {
   step "split-doc part files open with their breadcrumb"
   node scripts/check-doc-layout.mjs "$ROOT/docs" || FAILED+=("doc-layout")
 
+  step "headings unique per file, tables well formed"
+  # A file that says the same thing twice is a splice, and the two copies
+  # disagree. The Q13 ruling carried both its narrow and its broad version for
+  # two commits before a human noticed.
+  node scripts/check-structure.mjs "$ROOT" || FAILED+=("structure")
+
+  step "docs describing the register scheme agree with the code enforcing it"
+  # Five doc/tooling drifts were found in a single review round; each was a fact
+  # about the tooling restated by hand elsewhere.
+  node scripts/check-vocabulary.mjs "$ROOT" || FAILED+=("vocabulary")
+
   step "mermaid diagrams parse"
   # Install on first run, or whenever the lockfile is newer than the tree.
   if [ ! -d scripts/node_modules ] \
@@ -80,6 +91,18 @@ run_docs() {
     fi
   fi
   node scripts/check-mermaid.mjs "$ROOT" || FAILED+=("mermaid")
+
+  # The meta-check builds its fixture from `git ls-files`, so it needs the
+  # repository — not the extracted index the pre-commit hook passes as $ROOT.
+  # Running it there would check the working tree while the hook is deliberately
+  # checking the staged content, and unstaged breakage would block a clean
+  # commit, which the hook's header explicitly promises it will not.
+  if [ "$ROOT" = "." ]; then
+    step "the checks themselves catch what they claim to"
+    node scripts/check-checks.mjs . || FAILED+=("check-checks")
+  else
+    step "the checks themselves (skipped: needs the repo, not an extracted index)"
+  fi
 }
 
 # Optional $2: check this directory instead of the working tree (see run_docs).

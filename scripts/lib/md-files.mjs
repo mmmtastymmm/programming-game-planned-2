@@ -1,5 +1,6 @@
-// Every .md file under a root, depth-first. Shared by check-links.mjs and
-// check-mermaid.mjs so there is one definition of "which files are ours".
+// Every .md file under a root, depth-first. Shared by check-links,
+// check-mermaid, check-registers and check-structure so there is one definition
+// of "which files are ours".
 //
 // `withFileTypes` gives one syscall per directory rather than a stat per entry,
 // which matters now that check-links walks the whole repo rather than docs/.
@@ -7,9 +8,11 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
-// check-links runs from the repo root and meets all three; check-mermaid only
-// ever walks docs/ and meets none. Kept in one place regardless — a walker that
-// descends into target/ is a bug waiting for the first caller who widens a root.
+// Every caller now walks the repo root, so all three of these are live: a
+// nested workspace's target/ once put 528 MB into this repo, node_modules sits
+// under scripts/, and .git is .git. A walker that descends into any of them is
+// a bug waiting for the first caller who widens a root — which is exactly what
+// happened when check-mermaid's default moved from docs/ to the repo root.
 const SKIP = new Set([".git", "node_modules", "target"]);
 
 export function markdownFiles(dir) {

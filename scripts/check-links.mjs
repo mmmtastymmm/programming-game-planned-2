@@ -92,6 +92,14 @@ const PROSE_CITE = /(?<![\w/.]):(\d+)(?![\w:])/g;
 // to: a heading, or the bolded opener of a register entry or status block.
 const SCOPE_BREAK = /^(#{1,6}\s|\*\*)/;
 
+// A check that scores green on zero inputs is this repo's recurring failure —
+// four checkers were guarded against it and this one, whose CI step runs first,
+// was missed.
+if (markdownFiles(root).length === 0) {
+  console.error(`✗ check-links: no markdown under ${root} — the check is checking nothing`);
+  process.exit(2);
+}
+
 const problems = [];
 let checked = 0;
 let skippedFragments = 0;
