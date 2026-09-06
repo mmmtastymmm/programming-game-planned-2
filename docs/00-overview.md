@@ -62,10 +62,12 @@ pass.
   programs. Programs are addressed to a role or group, never to an individual
   unit, so the language needs no unit-identity concept in its core. Difficulty
   is sourced from interaction between copies rather than from authored puzzles.
-- **The player updates programs while the match runs; nothing else (Q3).** A
-  program update is a lockstep-synchronized command, agreed for a future tick so
-  every peer applies it on the same tick. The player never commands an individual
-  unit — updates are to programs, which by Q2 address a role or group. So
+- **The player updates programs while the match runs, and never orders an
+  individual unit (Q3).** A program update is a lockstep-synchronized command,
+  agreed for a future tick so every peer applies it on the same tick. Updates
+  are to programs, which by Q2 address a role or group. Whether anything
+  *besides* a program update — match control such as resigning — enters the sim
+  mid-match is open (Q10); this ruling forbids unit orders, not that. So
   `Command` is a real ordered log whose principal variant is a program deploy, a
   replay is `(seed, timed command log)`, and determinism rule 7 is load-bearing:
   which byte-exact program version a unit runs is part of the state hash.

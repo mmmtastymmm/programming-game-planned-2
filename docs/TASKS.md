@@ -59,6 +59,18 @@ Q8 and Q11 fall inside T9's sweep, so that much of T9 lands first — the
 sequencing is recorded here because reading T8 alone once suggested Q14 was the
 only thing in the way.
 
+Two things `docs/01` must pin that no open question owns, recorded here so they
+are not left to the implementation:
+
+- **Every interpreter limit is spec, not a build default** — recursion depth,
+  the per-tick operation budget, and the size of every collection, including
+  `range`, which Q13 made eager. The language spike found Rhai's recursion limit
+  differing between debug and release builds, a desync produced by a build flag,
+  and owning the interpreter (Q5) removes the dependency, not the hazard.
+- **`isinstance` is the one permitted type query.** Q13 admits it as a builtin
+  and excludes introspection in the same ruling; `docs/01` states the line so
+  the two cannot be read against each other.
+
 **T9 — Answer Q6–Q12 and Q15, then write the numbered docs they unblock**
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
