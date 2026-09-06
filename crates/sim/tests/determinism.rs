@@ -118,7 +118,8 @@ fn out_of_order_commands_are_rejected_loudly() {
 }
 
 #[test]
-#[should_panic(expected = "outside the")]
+// The distinctive half of the message, not a fragment any panic could carry.
+#[should_panic(expected = ") is outside the")]
 fn a_spawn_outside_the_map_is_rejected_at_construction() {
     // `Command::Spawn` refuses an off-map position, so `MapSpec::spawns` must
     // too — otherwise a replay carries an entity that consumes an id, enters the
@@ -130,7 +131,7 @@ fn a_spawn_outside_the_map_is_rejected_at_construction() {
 }
 
 #[test]
-#[should_panic(expected = "over the")]
+#[should_panic(expected = "ticks, over the")]
 fn an_absurd_tick_count_is_rejected_before_allocating() {
     // `ticks` arrives from a .replay.ron, which is untrusted: the artifact is
     // what gets attached to a desync report. u64::MAX would ask the allocator

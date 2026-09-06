@@ -70,10 +70,15 @@ wall clock.
 5. **Throughput is not the constraint.** Between 4 and 7 µs per unit-tick in
    release across runs. 200 units at 30 ticks/s is 6000 unit-ticks/s, so
    6000 × 4 µs = 24 ms/s and 6000 × 7 µs = 42 ms/s — **2.4% to 4.2% of one
-   core**. The spread is machine load rather than measurement error, which is
-   why the useful claim is the order of magnitude: interpretation cost is
-   nowhere near bounding the tick rate (Q6) at any fleet size contemplated, and
-   that survives the whole range.
+   core**. Q6's fastest option doubles both ends and changes nothing else:
+   200 units at 60 ticks/s is 12000 unit-ticks/s, so 12000 × 4 µs = 48 ms/s and
+   12000 × 7 µs = 84 ms/s — **4.8% to 8.4% of one core**. Both rows are stated
+   here, and only here, because Q6 needs its whole table priced and a second copy
+   of a measured range drifts. The spread is machine load rather than measurement
+   error, which is why the useful claim is the order of magnitude: interpretation
+   cost is nowhere near bounding the tick rate (Q6) at any option in that
+   question's table or any fleet size contemplated, and that survives the whole
+   range.
 
 ## Not tested
 

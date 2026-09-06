@@ -124,6 +124,37 @@ export function workspaceMembers(dir) {
 }
 
 /**
+ * Does the workspace deny `arithmetic_side_effects`?
+ *
+ * The VALUE, not the section header. This tested only that
+ * `[workspace.lints.clippy]` existed, so deleting the one line the determinism
+ * rules depend on left the check green — and its success line went on saying
+ * "the arithmetic_side_effects deny reaches all of them" about a deny that was
+ * no longer written down anywhere. Clippy stays green either way, which is the
+ * whole reason this check exists.
+ *
+ * Both spellings Cargo accepts are read. The header-only test rejected the
+ * dotted one — `[workspace.lints]` + `clippy.arithmetic_side_effects = "deny"`
+ * — as "declared nowhere", which is a correct manifest failing CI.
+ */
+function deniesArithmetic(manifest) {
+  for (const [section, dotted] of [["workspace.lints.clippy", false], ["workspace.lints", true]]) {
+    const body = tomlSection(manifest, section);
+    if (body === null) continue;
+    for (const line of body.split("\n").map(uncomment)) {
+      const m = /^\s*(clippy\.)?arithmetic_side_effects\s*=\s*(.+)$/.exec(line);
+      // Inside [workspace.lints] the lint MUST carry the `clippy.` prefix, and
+      // inside [workspace.lints.clippy] it must not — the same string in the
+      // wrong section is a different lint, or no lint at all.
+      if (!m || Boolean(m[1]) !== dotted) continue;
+      // `= "deny"` and `= { level = "deny", priority = -1 }` are both Cargo.
+      if (/"deny"/.test(m[2])) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * `{ problems, paths }` — what is wrong, and the member paths that were checked.
  *
  * The paths come back rather than being recomputed by the caller: printing "N
@@ -139,12 +170,11 @@ export function lintOptInProblems(dir) {
   }
   const rootManifest = readFileSync(rootPath, "utf8");
 
-  const declaresDeny = rootManifest
-    .split("\n")
-    .map(uncomment)
-    .some((l) => l.trim() === "[workspace.lints.clippy]");
-  if (!declaresDeny) {
-    found.push("Cargo.toml: no [workspace.lints.clippy] section — the deny is declared nowhere");
+  if (!deniesArithmetic(rootManifest)) {
+    found.push(
+      "Cargo.toml: the workspace does not set arithmetic_side_effects to deny — " +
+        "the deny is declared nowhere, so every member's opt-in buys nothing",
+    );
   }
 
   const { listed, paths, problems: memberProblems } = workspaceMembers(dir);

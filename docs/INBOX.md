@@ -15,14 +15,18 @@ renumber**, and never reuse a number. Entries are written as
 `**I<n> — <short title>**` on their own line, which is how
 `scripts/check-registers.mjs` finds them.
 
-Triage means turning an entry into at least one of — two is common, since an
-observation that opens a task often gets a doc fix at the same time:
+Triage means turning an entry into at least one of the outcomes below — two is
+common, since an observation that opens a task often gets a doc fix at the same
+time. The triaged file's `## Outcome` declares which, in these spellings and no
+others:
 
-- a numbered question in [QUESTIONS.md](QUESTIONS.md) — something undecided;
-- a numbered entry in [PROBLEMS.md](PROBLEMS.md) — decided text that is wrong;
-- a numbered task in [TASKS.md](TASKS.md) — work to do;
-- a documentation fix made on the spot;
-- **nothing**, because it turned out to be a misreading.
+- `- **Question:**` — a numbered question in [QUESTIONS.md](QUESTIONS.md),
+  something undecided;
+- `- **Problem:**` — a numbered entry in [PROBLEMS.md](PROBLEMS.md), decided
+  text that is wrong;
+- `- **Task:**` — a numbered task in [TASKS.md](TASKS.md), work to do;
+- `- **Docs:**` — a documentation fix made on the spot, with the edits linked;
+- `- **Dropped:**` — nothing, because it turned out to be a misreading.
 
 That last outcome is the one this register has and the others do not, and it is
 deliberate: an inbox that cannot absorb a false alarm stops being cheap to write

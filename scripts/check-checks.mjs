@@ -5,8 +5,8 @@
 //
 // WHY THIS EXISTS — and it is the most load-bearing check in the repo.
 //
-// Three review rounds of this corpus found 45 issues. The damaging ones were
-// almost never wrong prose; they were checks that PASSED WHILE VALIDATING
+// Every review round of this corpus has found defects, and the damaging ones
+// were almost never wrong prose; they were checks that PASSED WHILE VALIDATING
 // NOTHING:
 //
 //   * Outcome citations were scanned on the marker line only, so every citation
@@ -42,6 +42,10 @@ import { tmpdir } from "node:os";
 // and nowhere else. Split the lists the moment that happens.
 import { SKIP as WALKER_SKIP } from "./lib/md-files.mjs";
 
+// Not extended here. The editor directories belong in the walker's list, where
+// both this fixture and the real run see the same tree: skipping `.idea/` here
+// alone meant a stray `.idea/notes.md` failed the real check-registers and
+// passed the baseline, which is the one disagreement this fixture may not have.
 const SKIP = new Set(WALKER_SKIP);
 import { spawnSync } from "node:child_process";
 // The member parser the `lints` check itself uses, for the manifest-only
@@ -49,6 +53,7 @@ import { spawnSync } from "node:child_process";
 // whole point: two parsers for one format is what made a commented-out member
 // kill this run with a raw ENOENT.
 import { workspaceMembers } from "./lib/workspace-lints.mjs";
+import { CITATION_CLAIMS, HISTORY_BANNER, TOTAL_CLAIMS } from "./lib/registers.mjs";
 
 const repo = process.argv[2] ?? ".";
 
@@ -57,21 +62,30 @@ const repo = process.argv[2] ?? ".";
 // the workspace-lints check was originally bolted on beside this table and
 // reimplemented fixture creation, mutation-failure handling, exit checking and
 // cleanup — getting each slightly wrong, and skipping `expect` entirely.
-const script = (name) => (dir) => {
-  const r = spawnSync("node", [`scripts/${name}`, dir], { encoding: "utf8", cwd: repo });
-  return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+const script = (name) => {
+  const run = (dir) => {
+    const r = spawnSync("node", [`scripts/${name}`, dir], { encoding: "utf8", cwd: repo });
+    return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  // Recorded so the table can be checked against scripts/ below, rather than
+  // trusted to have been updated.
+  run.script = name;
+  return run;
 };
 
 const CHECKS = {
   links: script("check-links.mjs"),
   registers: script("check-registers.mjs"),
-  layout: (dir) => {
-    const r = spawnSync("node", ["scripts/check-doc-layout.mjs", join(dir, "docs")], {
-      encoding: "utf8",
-      cwd: repo,
-    });
-    return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
-  },
+  layout: Object.assign(
+    (dir) => {
+      const r = spawnSync("node", ["scripts/check-doc-layout.mjs", join(dir, "docs")], {
+        encoding: "utf8",
+        cwd: repo,
+      });
+      return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+    },
+    { script: "check-doc-layout.mjs" },
+  ),
   structure: script("check-structure.mjs"),
   vocabulary: script("check-vocabulary.mjs"),
   mermaid: script("check-mermaid.mjs"),
@@ -92,43 +106,94 @@ function edit(path, from, to) {
   writeFileSync(path, after);
 }
 
+/** Write a closed-record file, banner and all — every file under history/ has one. */
+const closedFile = (dir, name, body) =>
+  writeFileSync(join(dir, name), `${HISTORY_BANNER}\n\n${body}`);
+
+/**
+ * A mutation that seeds ONE named pattern from lib/registers.mjs.
+ *
+ * `probe` is the exact text appended, and the coverage guard at the bottom of
+ * this file matches it against the whole pattern list rather than trusting the
+ * tag. A mutation tagged for a rule that a SIBLING rule also catches proves
+ * nothing about the rule it names: delete that rule and the suite stays green,
+ * which is how the untested patterns got in.
+ */
+const totalClaim = (name, id, probe, file = "docs/TASKS.md") => ({
+  name,
+  check: "registers",
+  expect: "restates a register total",
+  rule: `totals:${id}`,
+  probe,
+  mutate: (d) => appendFileSync(join(d, file), `\n${probe}\n`),
+});
+
+/**
+ * The same, for a claim ABOUT a cited entry. The seeded sentence is
+ * `${before}${cite}${after}`, and the two halves are the probe, because that is
+ * exactly how check-registers splits a paragraph around the citation it found.
+ */
+const citationClaim = ({ name, id, cite, before = "", after = "", expect, file = "docs/00-overview.md" }) => ({
+  name,
+  check: "registers",
+  expect,
+  rule: `citation:${id}`,
+  probe: { before, after },
+  mutate: (d) => appendFileSync(join(d, file), `\n${before}${cite}${after}\n`),
+});
+
 const qa = (d) => join(d, "docs/history/questions-answered");
 const tc = (d) => join(d, "docs/history/tasks-completed");
 const pf = (d) => join(d, "docs/history/problems-fixed");
+const it = (d) => join(d, "docs/history/inbox-triaged");
 
 const MUTATIONS = [
   // ── registers: entry identity ─────────────────────────────────────────────
   { name: "history file named for one entry, headed as another", check: "registers",
     expect: "the filename is the index",
-    mutate: (d) => writeFileSync(join(tc(d), "task-completed-0009.md"), "# T99 — mislabelled\n") },
+    mutate: (d) => closedFile(tc(d), "task-completed-0009.md", "# T99 — mislabelled\n") },
   { name: "two entries smuggled into one file", check: "registers",
     expect: "one entry per file",
-    mutate: (d) => writeFileSync(join(tc(d), "task-completed-0009.md"), "# T9 — one\n\n# T10 — two\n") },
+    mutate: (d) => closedFile(tc(d), "task-completed-0009.md", "# T9 — one\n\n# T10 — two\n") },
   { name: "entry numbered zero", check: "registers",
     expect: "registers number from 1",
-    mutate: (d) => writeFileSync(join(tc(d), "task-completed-0000.md"), "# T0 — zero\n") },
+    mutate: (d) => closedFile(tc(d), "task-completed-0000.md", "# T0 — zero\n") },
   { name: "misnamed entry file (three digits)", check: "registers",
     expect: "is misnamed",
-    mutate: (d) => writeFileSync(join(tc(d), "task-completed-009.md"), "# T9 — short name\n") },
+    mutate: (d) => closedFile(tc(d), "task-completed-009.md", "# T9 — short name\n") },
+  { name: "a loose file dropped straight into docs/history/", check: "registers",
+    expect: "loose file in docs/history/",
+    // Nothing walked docs/history/ itself, so this escaped the banner rule, the
+    // naming rule and one-entry-per-file at once — the shape of the batched
+    // shards this scheme replaced.
+    mutate: (d) => writeFileSync(join(d, "docs/history/questions-answered-001.md"),
+      "# Q1–Q6\n\nthe old shard scheme, back from the dead\n") },
+  { name: "an unexpected directory under docs/history/", check: "registers",
+    expect: "is not one of the register directories",
+    mutate: (d) => mkdirSync(join(d, "docs/history/decisions"), { recursive: true }) },
   { name: "a renamed history directory", check: "registers",
     expect: "does not exist",
     mutate: (d) => renameSync(join(d, "docs/history/problems-fixed"), join(d, "docs/history/problems-fixd")) },
 
   // ── registers: the Outcome contract ───────────────────────────────────────
+  // These pin "the Outcome cites T4242", not the looser "not in the tasks
+  // register" tail: the inline-citation scan reports the same dangling number
+  // with a different message, so the loose string let an Outcome-parser
+  // regression pass on the strength of an unrelated rule catching it.
   { name: "answered question with no Outcome section", check: "registers",
     expect: 'has no "## Outcome" section',
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"), "# Q6 — no outcome\n\nbody\n") },
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md", "# Q6 — no outcome\n\nbody\n") },
   { name: "Outcome citing a number that does not exist", check: "registers",
-    expect: "not in the tasks register",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    expect: "the Outcome cites T4242",
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — dangling\n\n## Outcome\n\n- **Task:** T4242 which is not real.\n") },
   { name: "Outcome citation on a wrapped continuation line", check: "registers",
-    expect: "not in the tasks register",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    expect: "the Outcome cites T4242",
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — wrapped\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md) is real, and so is\n  T4242 which is not.\n") },
   { name: "Outcome citation in a nested bullet", check: "registers",
-    expect: "not in the tasks register",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    expect: "the Outcome cites T4242",
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — nested\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n  - **Task:** T4242 nested\n") },
   { name: "a nested bullet's KIND is validated, not just its citation",
     check: "registers", expect: "which is not one of",
@@ -138,25 +203,25 @@ const MUTATIONS = [
     // suite stays green. Kind validation does NOT survive it — and that is the
     // path by which the inbox-only Dropped gets smuggled into a ruling. Pinning
     // it needs a forbidden kind and a different expected message.
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — nested kind\n\n## Outcome\n\n- **Docs:** [x](../../00-overview.md)\n" +
         "  - **Dropped:** smuggled in under a well-formed bullet.\n") },
   { name: "an Outcome bullet with the colon outside the bold", check: "registers",
-    expect: "not in the tasks register",
+    expect: "the Outcome cites T4242",
     // `- **Task**: …` renders the same and used to match nothing, so the
     // continuation loop absorbed it as prose belonging to the bullet above and
     // its kind went unvalidated and its citation unresolved.
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — loose colon\n\n## Outcome\n\n- **Docs:** [x](../../00-overview.md)\n" +
         "- **Task**: T4242 which is not real.\n") },
   { name: "an Outcome bullet with extra space after the list marker",
-    check: "registers", expect: "not in the tasks register",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    check: "registers", expect: "the Outcome cites T4242",
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — wide marker\n\n## Outcome\n\n- **Docs:** [x](../../00-overview.md)\n" +
         "-   **Task:** T4242 which is not real.\n") },
   { name: "the inbox-only Dropped, spelled with the colon outside the bold",
     check: "registers", expect: "which is not one of",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — loose dropped\n\n## Outcome\n\n- **Docs:** [x](../../00-overview.md)\n" +
         "- **Dropped**: turned out not to matter.\n") },
   { name: "a nested PROSE bullet is still continuation, not a new bullet",
@@ -166,68 +231,202 @@ const MUTATIONS = [
     // Written into the INBOX register, which has no open entries — a
     // question-answered file would collide with the still-open Q6 and fail for
     // an unrelated reason, which is not what this case is asking.
-    mutate: (d) => writeFileSync(join(d, "docs/history/inbox-triaged/inbox-triaged-0001.md"),
+    mutate: (d) => closedFile(it(d), "inbox-triaged-0001.md",
       "# I1 — a triaged note\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n" +
         "  - and some nested prose explaining it\n") },
+  { name: "an Outcome citation in an indented paragraph after a blank line",
+    check: "registers", expect: "the Outcome cites T4242",
+    // CommonMark keeps an indented paragraph inside the same list item, so this
+    // renders as part of the bullet above — and the parser stopped at the blank
+    // line, which is the fourth variant of "absorbed into something nothing
+    // scans" its own docstring catalogues.
+    mutate: (d) => closedFile(it(d), "inbox-triaged-0001.md",
+      "# I1 — a triaged note\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n\n" +
+        "  Also T4242, which is not a real task.\n") },
+  { name: "an Outcome bullet written with an em dash", check: "registers",
+    expect: "which is not one of",
+    // The corpus's own punctuation, rendering identically — so the kind went
+    // unvalidated and the inbox-only Dropped rode into a ruling, which is the
+    // worst case the two earlier spellings were added to stop.
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
+      "# Q6 — dash kind\n\n## Outcome\n\n- **Docs:** [x](../../00-overview.md)\n" +
+        "- **Dropped** — turned out not to matter after all.\n") },
+  { name: "an Outcome section that declares nothing", check: "registers",
+    expect: "declares nothing",
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
+      "# Q6 — empty outcome\n\n## Outcome\n\nNothing to declare, apparently.\n") },
+  { name: "a Dropped bullet with no reason", check: "registers",
+    expect: "Dropped without a reason",
+    mutate: (d) => closedFile(it(d), "inbox-triaged-0001.md",
+      "# I1 — a triaged note\n\n## Outcome\n\n- **Dropped:** no.\n") },
+  { name: "a non-markdown file in a register's history directory", check: "registers",
+    expect: "is not a markdown file",
+    mutate: (d) => writeFileSync(join(tc(d), "task-completed-0007.txt"), "notes\n") },
+  { name: "a directory README missing the closed-record banner", check: "registers",
+    expect: "closed-record banner",
+    mutate: (d) => {
+      const f = join(tc(d), "README.md");
+      writeFileSync(f, readFileSync(f, "utf8").split("\n").slice(1).join("\n"));
+    } },
+  { name: "a history file citing an object that is not a commit", check: "registers",
+    expect: "not a commit",
+    // The scan resolves every backticked hash; only the "does not exist" branch
+    // had ever been fired. A tree is a real object, so this pins the kind test
+    // rather than the existence test.
+    mutate: (d) => {
+      const tree = spawnSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: repo, encoding: "utf8" });
+      appendFileSync(join(tc(d), "task-completed-0001.md"), `\nAlso \`${tree.stdout.trim()}\`.\n`);
+    } },
   { name: "bare Docs bullet linking nothing", check: "registers",
     expect: "links nothing",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — empty docs\n\n## Outcome\n\n- **Docs:**\n") },
   { name: "a ruling using the inbox-only Dropped outcome", check: "registers",
     expect: "which is not one of",
-    mutate: (d) => writeFileSync(join(qa(d), "question-answered-0006.md"),
+    mutate: (d) => closedFile(qa(d), "question-answered-0006.md",
       "# Q6 — dropped\n\n## Outcome\n\n- **Dropped:** decided it did not matter after all.\n") },
 
   // ── registers: totals, size, commits ──────────────────────────────────────
-  { name: "a restated total in CLAUDE.md (outside docs/)", check: "registers",
-    expect: "restates a register total",
-    mutate: (d) => appendFileSync(join(d, "CLAUDE.md"), "\nEight questions are open.\n") },
-  { name: "a restated total with the adverb AFTER the verb", check: "registers",
-    expect: "restates a register total",
-    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\nThree tasks are still open.\n") },
-  { name: "a restated total with the adverb BETWEEN noun and verb", check: "registers",
-    expect: "restates a register total",
-    // This is the shape the regex's adverb slot exists for. The case above sits
-    // ENTIRELY inside the base pattern ("three tasks are"), so deleting the slot
-    // left the suite green — the mutation and the comment justifying the slot
-    // made the same mistake about where an adverb lands.
-    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\nThree tasks still remain open.\n") },
-  { name: "a restated total worded with zero", check: "registers",
-    expect: "restates a register total",
-    // PROBLEMS.md's own derived headline says "zero open", and this list could
-    // not spell it.
-    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\nZero questions are open.\n") },
-  { name: "a restated total with the adjective in front of the noun",
-    check: "registers", expect: "restates a register total",
-    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\nThere are 8 open questions right now.\n") },
-  { name: "a restated total with the label first", check: "registers",
-    expect: "restates a register total",
-    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\nOpen: 8 questions, 2 problems.\n") },
+  totalClaim("a restated total in CLAUDE.md (outside docs/)", "count-noun-verb",
+    "Eight questions are open.", "CLAUDE.md"),
+  totalClaim("a restated total with the adverb AFTER the verb", "count-noun-verb",
+    "Three tasks are still open."),
+  // The shape the pattern's adverb slot exists for. The case above sits ENTIRELY
+  // inside the base pattern ("three tasks are"), so deleting the slot left the
+  // suite green — the mutation and the comment justifying the slot made the same
+  // mistake about where an adverb lands.
+  totalClaim("a restated total with the adverb BETWEEN noun and verb", "count-noun-verb",
+    "Three tasks still remain open."),
+  // PROBLEMS.md's own derived headline says "zero open", and this list could not
+  // spell it.
+  totalClaim("a restated total worded with zero", "count-noun-verb",
+    "Zero questions are open."),
+  totalClaim("a restated total with the adjective in front of the noun", "count-adjective-noun",
+    "There are 8 open questions right now."),
+  totalClaim("a restated total with the label first", "label-first",
+    "Open: 8 questions, 2 problems."),
+  // THE REGISTER HEADLINE'S OWN SHAPE, which had no mutation at all — the
+  // per-check guard was satisfied by any one of the sixty register mutations, so
+  // nothing noticed. It matched digits only the whole time, sitting next to three
+  // siblings built on NUMBER_WORDS, and the word spelling is the one PROBLEMS.md
+  // itself writes.
+  totalClaim("the register headline's own shape, restated elsewhere", "opened-fixed",
+    "74 opened, 65 fixed."),
+  totalClaim("the register headline's own shape, worded", "opened-fixed",
+    "Zero opened, zero fixed."),
+  // Also unseeded, also digit-only, and also unable to spell the commonest verb
+  // for it: a register `has` a count as readily as it `holds` one.
+  totalClaim("a total worded as what the register holds", "register-holds",
+    "The problem register holds nine entries."),
+  totalClaim("a total worded as what the register has", "register-holds",
+    "The questions register has 9 open."),
   { name: "a restated total WRAPPED across two lines", check: "registers",
     expect: "restates a register total",
     // The corpus wraps at about 80 columns, so a per-line scan let the rule
     // CLAUDE.md spends the most words on be defeated by a line break.
     mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\nEight questions\nare open.\n") },
+  { name: "a restated total inside PROBLEMS.md itself", check: "registers",
+    expect: "restates a register total",
+    // The whole file was exempt, not just its derived headline — so the document
+    // most likely to restate a total was the one place any total passed, and
+    // question and task totals have no derived source there at all.
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"), "\nEight questions are open.\n") },
   { name: "a design doc over the size cap", check: "registers",
     expect: "over the 40 KB cap",
     mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"), "x".repeat(45000)) },
+  { name: "a doc ONE BYTE over the size cap", check: "registers",
+    expect: "is 41 KB, over the 40 KB cap",
+    // The message rounded down, so 40,961 bytes read as "is 40 KB, over the
+    // 40 KB cap" — a diagnostic contradicting itself, and the only seeded case
+    // was 45 KB, which no rounding error falls between.
+    mutate: (d) => writeFileSync(join(d, "docs/edge.md"), "x".repeat(40 * 1024 + 1)) },
+  { name: "a doc of exactly the size cap", check: "registers",
+    expect: "", skipIfClean: true,
+    mutate: (d) => writeFileSync(join(d, "docs/edge.md"), "x".repeat(40 * 1024)) },
   { name: "a cited commit that is not in this repository", check: "registers",
     expect: "not a commit in this repository",
     mutate: (d) => appendFileSync(join(tc(d), "task-completed-0001.md"), "\nAlso `0bad1ce`.\n") },
+  { name: "a `history` directory that is not docs/history/", check: "registers",
+    expect: "", skipIfClean: true,
+    // The commit-hash scan used a second, looser definition of "is this a closed
+    // record" than the inHistory() every other rule in the file uses: any path
+    // with a `history` segment anywhere counted. So this file's backticked hex
+    // would have been validated as a commit and failed CI, while the totals rule,
+    // the ⚠HASH rule and the open/closed claims all treated the same file as a
+    // live doc. One definition of which files are ours.
+    mutate: (d) => {
+      mkdirSync(join(d, "spikes/lang-determinism/history"), { recursive: true });
+      writeFileSync(join(d, "spikes/lang-determinism/history/notes.md"),
+        "# Bench notes\n\nThe run before this one hashed to `0bad1ce`, which is not a commit.\n");
+    } },
   { name: "stacked status blocks", check: "registers",
     expect: "states its status once",
     mutate: (d) => appendFileSync(join(d, "docs/QUESTIONS.md"), "\n**Status 2020-01-01.** stale\n") },
+  { name: "a register with no status block at all", check: "registers",
+    expect: "has no status block",
+    // The other branch of the same rule, and it had no mutation: the per-check
+    // coverage guard was satisfied by the stacked case above it. A register that
+    // states its status nowhere is the commoner accident of the two — a status
+    // block is deleted in a rewrite and simply not written back.
+    mutate: (d) => edit(join(d, "docs/QUESTIONS.md"), /^\*\*Status \d{4}-\d{2}-\d{2}[^\n]*\n/m, "") },
 
   // ── structure ─────────────────────────────────────────────────────────────
   { name: "the same heading twice in one file (a splice)", check: "structure",
     expect: "duplicate heading",
     mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"), "\n## Decided\n\nspliced\n") },
+  { name: "the same heading twice at DIFFERENT levels", check: "structure",
+    expect: "duplicate heading",
+    // The key was "level + text", so a splice that re-indented one of the two
+    // copies stopped being a duplicate. GitHub slugs `## M0 — Scaffolding` and
+    // `### M0 — Scaffolding` to the same anchor, so the two are not even
+    // distinguishable to a link — and the rule's own stated purpose, that the two
+    // copies disagree, has nothing to do with how deep either one sits.
+    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\n### M0 — Scaffolding\n\nspliced\n") },
   { name: "a table separator that lost its header", check: "structure",
     expect: "no header row above it",
     mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n---|---|\n| a | b |\n") },
+  { name: "a two-dash separator is still a table", check: "structure",
+    expect: "columns, header has",
+    // GFM wants one or more dashes per cell; demanding three meant a table
+    // written `|--|--|` was not a table at all — no header check, no column
+    // check, and not counted in the tick.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\n| a | b |\n|--|--|\n| x | y | z |\n") },
+  { name: "an alignment separator is still a table", check: "structure",
+    expect: "no header row above it",
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n|:-:|:-:|\n| x | y |\n") },
   { name: "a table row with the wrong column count", check: "structure",
     expect: "columns, header has",
     mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n| a | b |\n|---|---|\n| x | y | z |\n") },
+  { name: "a table that lost its SEPARATOR instead of its header", check: "structure",
+    expect: "no |---|---| separator among them",
+    // The mirror of the case above it, and the half nothing looked for: every
+    // table rule was reached through isTableSeparator, so a table with no
+    // separator was not a malformed table but no table at all — unchecked,
+    // unreported, and not counted in the "N tables well formed" tick, while it
+    // renders on GitHub as literal pipes.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n| a | b |\n| x | y |\n") },
+  { name: "a sentence containing a pipe, directly under a table, is not a row",
+    check: "structure", expect: "", skipIfClean: true,
+    // The body-row loop broke on a line with NO pipe in it, so an ordinary
+    // sentence that happens to contain one — with no blank line above it — was
+    // column-counted and reported as a broken table row. The separator run thirty
+    // lines up requires a LEADING pipe and says why; this loop did not, and the
+    // complaint it produced named the one line in the block that is not a row.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\n| a | b |\n|---|---|\n| x | y |\nWrite `a | b | c` when a union of three is meant.\n") },
+  { name: "a single stray pipe row is not a truncated table", check: "structure",
+    expect: "", skipIfClean: true,
+    // GFM needs a header AND a separator before anything is a table, so one line
+    // is not two-thirds of one. Flagging it would fire on ordinary prose.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n| a | b |\n") },
+  { name: "a separator-less table quoted in an indented code block stays inert",
+    check: "structure", expect: "", skipIfClean: true,
+    // The indented half of "this is code, not content", from the table side: the
+    // fenced spelling of this case has been inert since fences were consolidated,
+    // and writing the same example the four-space way used to fail CI.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nA broken table reads:\n\n    | a | b |\n    | x | y |\n") },
 
   // ── vocabulary ────────────────────────────────────────────────────────────
   { name: "a history README dropping an Outcome kind the checker accepts", check: "vocabulary",
@@ -240,6 +439,15 @@ const MUTATIONS = [
     expect: "which the checker rejects",
     mutate: (d) => appendFileSync(join(d, "docs/history/questions-answered/README.md"),
       "\n- `- **Dropped:**` — sure, why not.\n") },
+  { name: "INBOX.md dropping an Outcome kind its own register accepts",
+    check: "vocabulary", expect: 'does not name the "Dropped:" outcome',
+    // The file that explains triage described the outcomes in prose, so a writer
+    // following it produced a file CI rejects — and INBOX.md is one of the five
+    // this checker's header names as having drifted, and the one nothing opened.
+    mutate: (d) => {
+      const f = join(d, "docs/INBOX.md");
+      writeFileSync(f, readFileSync(f, "utf8").replace(/\*\*Dropped:\*\*/g, "Dropped"));
+    } },
   { name: "README miscounting the registers", check: "vocabulary",
     // Not the bare word "registers": that is also the tail of lib/registers.mjs,
     // so any stack trace out of that module satisfied it.
@@ -253,9 +461,51 @@ const MUTATIONS = [
   { name: "a link to a file that does not exist", check: "links",
     expect: "missing file",
     mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n[nope](does-not-exist.md)\n") },
+  { name: "a reference-style link, which this check cannot resolve", check: "links",
+    expect: "reference-style link",
+    // It left the "N relative links resolve" count unmoved, so a broken
+    // reference link was invisible to both the run and the reader of its tick.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [the doc][ref].\n\n[ref]: does-not-exist.md\n") },
+  { name: "an angle-bracket link destination, which this check cannot resolve",
+    check: "links", expect: "angle-bracket link destination",
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [the doc](<a b.md>).\n") },
+  { name: "a link destination with a raw space in it", check: "links",
+    expect: "unescaped space",
+    // Neither LINK nor the angle-bracket guard can match it, so it was SKIPPED
+    // rather than refused: the "N relative links resolve" count sat unmoved while
+    // CommonMark rendered the line as literal text. Same class as the two shapes
+    // above, and skipping it is the mislabelled-count failure they are refused
+    // to avoid.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [the doc](a b.md) here.\n") },
+  { name: "a link with a quoted title is not a spaced destination", check: "links",
+    expect: "", skipIfClean: true,
+    // The inverse. A title is the one legal reason for whitespace after the
+    // destination, and refusing the shape above must not start refusing it.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [the register](PROBLEMS.md \"the problems register\") here.\n") },
+  { name: "a link to a directory carries no citation and binds nothing",
+    check: "links", expect: "", skipIfClean: true,
+    // A directory has no lines. It is the one destination the citation half must
+    // still skip once the `.md` filter is gone.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [the closed records](history) for context.\n") },
   { name: "a code-span citation in neither supported form", check: "links",
     expect: "unverifiable citation",
     mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\nSee `PROBLEMS.md at :24` for context.\n") },
+  { name: "a misspelt file name leaving the PREVIOUS binding standing", check: "links",
+    expect: "bare citation names no file",
+    // A `path.md` span that resolves to nothing is skipped in silence — prose
+    // says `clippy.pedantic` without meaning a path — and it used to be skipped
+    // without clearing `bound`. So the `:5` below was resolved against
+    // PROBLEMS.md, reported under PROBLEMS.md's path if it failed, and passed
+    // silently whenever line 5 of PROBLEMS.md happened to be non-blank: the
+    // citation into the misspelt file was never checked at all. Naming a file
+    // ends the previous binding whether or not the new name resolves.
+    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"),
+      "\nSee [PROBLEMS.md](PROBLEMS.md), and then `PROBLMS.md`, at `:5`.\n") },
   { name: "a part file with an inverted breadcrumb", check: "layout",
     // Not the bare word "breadcrumb", which every layout message contains — this
     // case is specifically about the crumb being present but below the H1.
@@ -281,6 +531,20 @@ const MUTATIONS = [
   { name: "the root declaring no [workspace.lints.clippy] at all", check: "lints",
     fixture: "manifests", expect: "the deny is declared nowhere",
     mutate: (d) => edit(join(d, "Cargo.toml"), /^\[workspace\.lints\.clippy\]$/m, "[workspace.metadata.unused]") },
+  { name: "the deny value deleted while its section header stays", check: "lints",
+    fixture: "manifests", expect: "the deny is declared nowhere",
+    // The check tested that `[workspace.lints.clippy]` existed, so deleting the
+    // one line the determinism rules rest on left it green — while its success
+    // message went on naming the deny by name. Clippy stays green either way,
+    // which is the only reason this check exists at all.
+    mutate: (d) => edit(join(d, "Cargo.toml"), /^arithmetic_side_effects = "deny"$/m, "") },
+  { name: "the dotted [workspace.lints] spelling of the same deny", check: "lints",
+    fixture: "manifests", expect: "", skipIfClean: true,
+    // Valid Cargo, and the header-only test called it "declared nowhere" — a
+    // correct manifest failing CI.
+    mutate: (d) => edit(join(d, "Cargo.toml"),
+      /\[workspace\.lints\.clippy\]\narithmetic_side_effects = "deny"/,
+      '[workspace.lints]\nclippy.arithmetic_side_effects = "deny"') },
   { name: "a member glob that matches no crate", check: "lints",
     fixture: "manifests", expect: "matched no crate",
     mutate: (d) => edit(join(d, "Cargo.toml"), /members = \[[^\]]*\]/, 'members = ["crates/nonesuch-*"]') },
@@ -399,6 +663,26 @@ const MUTATIONS = [
   { name: "README miscounting the checks", check: "vocabulary",
     expect: 'checks"; scripts/ holds',
     mutate: (d) => edit(join(d, "README.md"), /eight checks \(/, "four checks (") },
+  { name: "a count written in digits, which the pattern accepts", check: "vocabulary",
+    expect: "", skipIfClean: true,
+    // The alternation takes `\\d+`, and the comparison took only the word form —
+    // so "the 8 checks" was rejected with "scripts/ holds 8", telling an author
+    // the number was wrong while printing it back at them.
+    mutate: (d) => edit(join(d, "README.md"), /the eight checks/, "the 8 checks") },
+  { name: "a number-plus-registers sentence elsewhere in README is not the anchor",
+    check: "vocabulary", expect: "", skipIfClean: true,
+    // The sibling of the case below. This count kept the bare noun after the
+    // other one was anchored, so an ordinary sentence mentioning registers was
+    // read as the Layout row and reported against it.
+    mutate: (d) => edit(join(d, "README.md"), /^## Getting set up$/m,
+      "Two registers matter most.\n\n## Getting set up") },
+  { name: "the count message names the phrase that would satisfy the check",
+    check: "vocabulary", expect: 'expected "eight checks (`check-*.mjs`)"',
+    // README saying "the eight checks" was answered with "expected eight
+    // checks" — an instruction that leaves the check red when followed, because
+    // the regex wants a parenthetical the message never mentioned.
+    mutate: (d) => edit(join(d, "README.md"), /the eight checks \(`check-\*\.mjs`\)/,
+      "the eight checks") },
   { name: "a number-plus-checks sentence elsewhere in README is not the anchor",
     check: "vocabulary", expect: "", skipIfClean: true,
     // `exec` takes the FIRST match in the file, so an unanchored `(\\d+) checks`
@@ -409,8 +693,70 @@ const MUTATIONS = [
   { name: "history/README dropping the size cap it restates by hand",
     check: "vocabulary", expect: "size cap",
     mutate: (d) => edit(join(d, "docs/history/README.md"), /40 KB/g, "a reasonable size") },
+  { name: "CLAUDE.md teaching a breadcrumb check-doc-layout would reject",
+    check: "vocabulary", expect: "does not print the breadcrumb",
+    // The two really had drifted: CLAUDE.md gave one formula for every part file
+    // while the checker builds the crumb from the immediate parent, so a nested
+    // part written to CLAUDE.md's letter failed CI with "names the wrong
+    // doorway". One string, in lib/doc-layout.mjs, and both sides cite it.
+    mutate: (d) => edit(join(d, "CLAUDE.md"),
+      /\*Part of \[NN-name\]\(\.\.\/NN-name\.md\)\.\*/, "*Part of NN-name.*") },
 
   // ── layout: parts nest ───────────────────────────────────────────────────
+  { name: "a part file whose breadcrumb is not followed by a blank line and an H1",
+    check: "layout", expect: "expected a blank line then the H1",
+    // The one part-file rule with no seeded defect.
+    mutate: (d) => {
+      mkdirSync(join(d, "docs/01-language"), { recursive: true });
+      writeFileSync(join(d, "docs/01-language/syntax.md"),
+        "*Part of [01-language](../01-language.md).*\n# Syntax\n");
+    } },
+  { name: "an ordinary docs subdirectory is not a parts directory",
+    check: "layout", expect: "", skipIfClean: true,
+    // Only `NN-name/` is a split doc. Descending into every non-history
+    // directory meant the first docs/assets/ holding a .md was told to grow a
+    // doorway that has no reason to exist.
+    mutate: (d) => {
+      mkdirSync(join(d, "docs/assets"), { recursive: true });
+      writeFileSync(join(d, "docs/assets/notes.md"), "# Notes\n\nnot a part file\n");
+    } },
+  { name: "a part file whose breadcrumb names the wrong doorway", check: "layout",
+    expect: "names the wrong doorway",
+    // The copy-paste a new part file actually makes, and the one shape whose
+    // message contradicted itself: "breadcrumb is on line 1, not line 1".
+    mutate: (d) => {
+      mkdirSync(join(d, "docs/01-language"), { recursive: true });
+      writeFileSync(join(d, "docs/01-language/syntax.md"),
+        "*Part of [02-units](../02-units.md).*\n\n# Syntax\n");
+    } },
+  { name: "a README.md inside a split doc's parts directory", check: "layout",
+    expect: "a second index beside the parts",
+    // Every .md under docs/NN-name/ was required to be a part file, so this was
+    // reported as missing a breadcrumb naming its own parent doorway — an
+    // instruction that, followed, produces a file claiming to be part of the
+    // directory it sits in. The doorway is already the index, so the right answer
+    // is neither a lie nor a pass.
+    mutate: (d) => {
+      mkdirSync(join(d, "docs/01-language"), { recursive: true });
+      writeFileSync(join(d, "docs/01-language.md"),
+        "# The unit language\n\n| Part | Owns |\n|---|---|\n" +
+          "| [syntax](01-language/syntax.md) | the grammar |\n");
+      writeFileSync(join(d, "docs/01-language/syntax.md"),
+        "*Part of [01-language](../01-language.md).*\n\n# Syntax\n");
+      writeFileSync(join(d, "docs/01-language/README.md"), "# Parts of the language doc\n");
+    } },
+  { name: "a parts directory with no doorway beside it", check: "layout",
+    expect: "no doorway beside it",
+    // The other half of the split convention, and the half nothing looked for.
+    // Every part file here is correct; what is missing is the doorway their
+    // breadcrumbs name — the file CLAUDE.md says owns the invariants that cross
+    // the parts. It was caught only incidentally, by check-links resolving the
+    // crumb's href, so a part naming its doorway in prose was invisible to both.
+    mutate: (d) => {
+      mkdirSync(join(d, "docs/01-language"), { recursive: true });
+      writeFileSync(join(d, "docs/01-language/syntax.md"),
+        "*Part of [01-language](../01-language.md).*\n\n# Syntax\n");
+    } },
   { name: "a part file two levels down with no breadcrumb", check: "layout",
     expect: "no breadcrumb",
     // Discovery stopped one level down, so this file was never opened AND never
@@ -434,13 +780,13 @@ const MUTATIONS = [
     // one or the other: with a closed P1 and an open P2 the three arms read 2,
     // 1 and 1, so no two of them can be confused.
     mutate: (d) => {
-      writeFileSync(join(pf(d), "problem-fixed-0001.md"), "# P1 — fixed\n\nbody\n");
+      closedFile(pf(d), "problem-fixed-0001.md", "# P1 — fixed\n\nbody\n");
       appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P2 — still open**\n\nbody\n");
     } },
   { name: "the headline's FIXED total", check: "registers",
     expect: "says 0 fixed, the register has 1",
     mutate: (d) => {
-      writeFileSync(join(pf(d), "problem-fixed-0001.md"), "# P1 — fixed\n\nbody\n");
+      closedFile(pf(d), "problem-fixed-0001.md", "# P1 — fixed\n\nbody\n");
       edit(join(d, "docs/PROBLEMS.md"), /0 opened, 0 fixed/, "1 opened, 0 fixed");
     } },
   { name: "the headline's OPEN total", check: "registers",
@@ -459,6 +805,177 @@ const MUTATIONS = [
     check: "registers", expect: "is not a number this checker knows",
     mutate: (d) => edit(join(d, "docs/PROBLEMS.md"), /— zero open/, "— twenty-one open") },
 
+  // ── registers: the entry line itself ─────────────────────────────────────
+  { name: "a live entry written with a hyphen instead of an em dash", check: "registers",
+    expect: 'opens with "-"',
+    // Every register rule keys on that line, so a dash typo used to make the
+    // entry a non-event: not counted, not deduped, not density-checked, and the
+    // derived headline went on validating "zero open" against a file that
+    // visibly had one open problem.
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P1 - a real open problem**\n") },
+  { name: "an entry written as a list item", check: "registers",
+    expect: "the register has 1 (P1)",
+    // Anchored at column 0, the opener treated a list marker as an opt-out: the
+    // live register visibly listed an open P1 and the derived headline went on
+    // validating "zero open" against it.
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\n- **P1 — reopened, quietly**\n") },
+  { name: "an entry indented under a paragraph", check: "registers",
+    expect: "the register has 1 (P1)",
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\n  **P1 — indented into invisibility**\n") },
+  { name: "an entry written as an ORDERED list item", check: "registers",
+    expect: "the register has 1 (P1)",
+    // The bullet markers were tolerated and the ordered one was not, so this
+    // spelling opted straight out of the register: uncounted, undeduped,
+    // undensity-checked, with the derived headline still validating "zero open"
+    // against a file that visibly listed it. Which marker a writer reaches for
+    // must not decide whether the line is an entry.
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\n1. **P1 — reopened inside a numbered list**\n") },
+  { name: "an entry written inside a blockquote", check: "registers",
+    expect: "the register has 1 (P1)",
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\n> **P1 — reopened inside a blockquote**\n") },
+  { name: "an entry written as the first cell of a table row", check: "registers",
+    expect: "the register has 1 (P1)",
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\n| a | b |\n|---|---|\n| **P1 — reopened in a table** | still open |\n") },
+  { name: "a register entry opened in a BLOCKQUOTE in a doc that is not a register",
+    check: "registers", expect: "in a doc that is not a register",
+    // The worse direction of the same widening. The number resolves, so the
+    // citation scan stays silent, and this is the "a question restated in two
+    // places gets answered in one of them" failure written as a contradiction.
+    mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"),
+      "\n> **Q6 — a second, contradictory statement of the tick question**\n") },
+  { name: "a LIVE entry numbered zero", check: "registers",
+    expect: "is numbered 0", reject: "is missing from",
+    // The history spelling of this is seeded above and takes a different path.
+    // Here the entry reached the density map, so the range grew to 1 and the run
+    // ALSO reported "P1 is missing" — an instruction that, followed, invents a
+    // P1 beside a P0, which is what `reject` is for. Same phantom the
+    // open-and-closed-at-once case carries, one entry apart.
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\n**P0 — numbered from zero**\n") },
+  { name: "the entry format quoted in a four-space indented block",
+    check: "registers", expect: "", skipIfClean: true,
+    // Indented code is code. Only the fenced spelling was blanked, so a doc
+    // showing the format this way declared a live P1 that no reader sees as one —
+    // and once the entry rule stopped reading it, the citation scan picked the
+    // same text up as a dangling number instead. lib/markdown.mjs owns the rule
+    // for both spellings now.
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
+      "\nAn entry is written like this:\n\n    **P1 — a worked example**\n") },
+  { name: "a register entry opened inside a numbered design doc", check: "registers",
+    expect: "in a doc that is not a register",
+    // The number resolves, so the citation scan says nothing; openers() read only
+    // the four live registers, so a question restated in 00-overview was a
+    // non-event — and every doc T8 and T9 will write was unguarded.
+    mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"),
+      "\n**Q6 — a second, contradictory statement of the tick question**\n") },
+  { name: "an entry filed into the wrong register's live doc", check: "registers",
+    expect: "belongs in docs/QUESTIONS.md",
+    // Each doc was scanned only for its own prefix, so an open question living
+    // in TASKS.md was invisible rather than misfiled — with QUESTIONS.md still
+    // claiming to be the only place an open question may be.
+    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"),
+      "\n**Q99 — an open question hiding in the tasks register**\n") },
+
+  // ── registers: inline citations, the corpus's dominant form ──────────────
+  { name: "an inline citation to a number that does not exist", check: "registers",
+    expect: "neither open nor closed",
+    mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"), "\nSee Q99 for the rest.\n") },
+  // The shape design-invariant DI9 calls the case to hunt: the number keeps
+  // resolving while the ruling has moved to history and means the opposite.
+  citationClaim({ name: "an inline citation calling an answered question open",
+    id: "open-before", cite: "Q13", before: "The subset boundary is still open — ", after: ".",
+    expect: "but it is closed" }),
+  // "open — Q12" is the phrasing CLAUDE.md sanctions; "…, which is still open" is
+  // the one the corpus writes, in two history files about a question that has not
+  // closed yet. Matching only the first ordering meant the check went green on
+  // the day it was written for.
+  citationClaim({ name: "an inline citation calling an answered question open, the other way round",
+    id: "open-after", cite: "Q13", after: " is still open as far as this doc is concerned.",
+    expect: "calls Q13 open" }),
+  // The article was the hole: `is still open` was inside the pattern and `is an
+  // open question` — the commonest spelling in prose — was not, because the
+  // pattern wanted the word adjacent to the copula. The sibling totals pattern
+  // one screen away had grown an adjective-before-noun variant for the identical
+  // shape.
+  citationClaim({ name: "an answered question called an open question",
+    id: "open-after", cite: "Q13", after: " is an open question.",
+    expect: "calls Q13 open" }),
+  // And the other half of that hole: `open` is not the only word for open.
+  citationClaim({ name: "an answered question described as undecided",
+    id: "open-after", cite: "Q13", after: " remains undecided.",
+    expect: "calls Q13 open" }),
+  // A negated closure is a claim of openness, and it fell between both patterns
+  // at once: the closed one wants the participle adjacent to the copula, and the
+  // open one knew only the word `open`. Its filler now refuses a negation, so
+  // this cannot be reported as its own opposite.
+  citationClaim({ name: "an answered question described as not yet answered",
+    id: "open-after-negated", cite: "Q13", after: " is not yet answered.",
+    expect: "calls Q13 open" }),
+  { name: "a closed record describing what was open on its date", check: "registers",
+    expect: "", skipIfClean: true,
+    // history/ is append-only and is expected to contradict current design, so
+    // the open/closed claim is not applied there — the same exemption the totals
+    // rule has, and for the same reason.
+    mutate: (d) => appendFileSync(join(qa(d), "question-answered-0003.md"),
+      "\nAt the time, the language was still open — Q5.\n") },
+  { name: "a backticked example number that WRAPS is still quotation",
+    check: "registers", expect: "", skipIfClean: true,
+    // The citation scan read code spans per line while the two scans beside it
+    // read paragraphs, so one rewrap turned legal text red.
+    mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"),
+      "\nA ruling would read `Q73\nand friends` in the scheme.\n") },
+  // The copula list stopped at `is|are|was|were`, and this is the phrasing the
+  // corpus itself writes ("which has since been ruled", in the spike README). So
+  // the sentence the case below calls the worst thing a Decided section can carry
+  // passed clean, in the tense a writer summarising a ruling reaches for.
+  citationClaim({ name: "an open question described as answered in the PERFECT tense",
+    id: "closed-after", cite: "Q14", after: " has been answered, so the number model is fixed.",
+    expect: "calls Q14 answered" }),
+  // `resolved` and `fixed` were both absent from the participle list, and `fixed`
+  // is the word the PROBLEMS register uses for its own closed state — so the
+  // register with the most to lose from a false closure claim was the one that
+  // could not express one.
+  citationClaim({ name: "an open question described as resolved",
+    id: "closed-after", cite: "Q14", after: " was resolved during the language spike.",
+    expect: "calls Q14 answered" }),
+  // THE ADVERB SLOT, in the direction this check calls the worse one. Between the
+  // copula and the participle the pattern allowed two hard-coded words, `already`
+  // and `since`, so `is now answered` and `has finally been ruled` both went green
+  // against an open question — while the totals pattern it was modelled on
+  // carried a general slot for exactly this.
+  citationClaim({ name: "an open question described as answered, with an adverb between",
+    id: "closed-after", cite: "Q14", after: " is now answered.",
+    expect: "calls Q14 answered" }),
+  citationClaim({ name: "the same, with the adverb inside the perfect tense",
+    id: "closed-after", cite: "Q14", after: " has finally been ruled.",
+    expect: "calls Q14 answered" }),
+  // A negated OPEN state asserts a closure as surely as `is answered` does, and
+  // it is the mirror of the open-after-negated case above.
+  citationClaim({ name: "an open question described as no longer open",
+    id: "closed-after-negated", cite: "Q14", after: " is no longer open.",
+    expect: "calls Q14 answered" }),
+  citationClaim({ name: "an answered question described as STAYING open",
+    id: "open-after", cite: "Q13", after: " stays open as far as this doc is concerned.",
+    expect: "calls Q13 open" }),
+  // The worse direction, and the one that had no rule: QUESTIONS.md is the only
+  // place an undecided thing may live, so a Decided section asserting a ruling
+  // nobody made is the stalest text in the most authoritative-looking place —
+  // which is what the register scheme exists to prevent.
+  citationClaim({ name: "an open question described as answered",
+    id: "closed-before", cite: "Q14", before: "The number model was settled in ", after: ".",
+    expect: "calls Q14 answered" }),
+  { name: "a backticked example number is quotation, not a citation",
+    check: "registers", expect: "", skipIfClean: true,
+    // The docs invent numbers to show the scheme: `P29`, `Q73`, `I7`. Same
+    // convention as the totals and marker scans — backticks are quotation.
+    mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"),
+      "\nA ruling would read `Q73` and its file `question-answered-0073.md`.\n") },
+
   // ── registers: the ⚠HASH marker has one owner ────────────────────────────
   { name: "the ⚠HASH marker used in a register that does not own it",
     check: "registers", expect: "which marks a task in",
@@ -471,6 +988,20 @@ const MUTATIONS = [
     // The docs that describe the rule have to be able to name the marker.
     mutate: (d) => appendFileSync(join(d, "docs/QUESTIONS.md"),
       "\nThe `⚠HASH` marker belongs to the tasks register.\n") },
+  { name: "the ⚠HASH marker in a numbered doc, outside any register",
+    check: "registers", expect: "which marks a task in",
+    // The rule is "it marks nothing else", and the loop covered the three other
+    // registers — not 00-overview, and not the docs/01–06 that T8 will write.
+    mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"),
+      "\n⚠HASH — this section changes the state hash.\n") },
+  { name: "a backticked mention that WRAPS is still quotation",
+    check: "registers", expect: "", skipIfClean: true,
+    // This corpus wraps at about 80 columns and markdown lets a code span cross
+    // a newline, so a line-at-a-time scan rejected the sentence above one line
+    // break later — while the totals scan in the same file joined paragraphs
+    // for exactly this reason.
+    mutate: (d) => appendFileSync(join(d, "docs/QUESTIONS.md"),
+      "\nThe `⚠HASH\nmarker` belongs to the tasks register.\n") },
 
   // ── registers: numbering ─────────────────────────────────────────────────
   // Both rules are enumerated in check-registers' own header and in CLAUDE.md's
@@ -478,9 +1009,25 @@ const MUTATIONS = [
   // mistake there is: closing an entry and forgetting to delete it from the live
   // register, which leaves it open and closed at once.
   { name: "an entry that is open and closed at once", check: "registers",
-    expect: "appears twice",
-    mutate: (d) => writeFileSync(join(tc(d), "task-completed-0007.md"),
+    expect: "appears twice", reject: "is missing from",
+    mutate: (d) => closedFile(tc(d), "task-completed-0007.md",
       "# T7 — closed while still listed as open\n") },
+  { name: "a history file missing the closed-record banner", check: "registers",
+    expect: "closed-record banner",
+    // Sixteen files carried it by imitation, documented nowhere and checked by
+    // nothing. It is what tells a reader who arrived mid-file that this is
+    // history rather than spec.
+    mutate: (d) => {
+      const f = join(qa(d), "question-answered-0002.md");
+      writeFileSync(f, readFileSync(f, "utf8").split("\n").slice(1).join("\n"));
+    } },
+  { name: "a completed task that names no commit", check: "registers",
+    expect: "records no commit",
+    // "Fixing one records the commit that closed it" is stated in CLAUDE.md and
+    // in two history READMEs, and was enforced nowhere: the hash scan validated
+    // hashes that were present, so only the branch that fires was ever exercised.
+    mutate: (d) => closedFile(tc(d), "task-completed-0016.md",
+      "# T16 — done, at some point, by someone\n\nNo commit recorded.\n") },
   { name: "a hole in the middle of the numbering", check: "registers",
     expect: "numbering must be dense",
     mutate: (d) => rmSync(join(tc(d), "task-completed-0003.md")) },
@@ -507,6 +1054,49 @@ const MUTATIONS = [
     // nothing is bound and the number is unresolvable to a reader too.
     mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
       "\nAnd the note at :24 explains it.\n") },
+  { name: "a citation into a SOURCE file, past its end", check: "links",
+    expect: "citation past EOF",
+    // The label scan sat below a `.md`-only filter, so a citation into the one
+    // non-markdown path this corpus actually links — CLAUDE.md links
+    // crates/sim/src/rng.rs — was neither verified nor counted, while the CI step
+    // reported "N line citations in range". Which KIND of file a writer cites
+    // must not decide whether the number is checked, for the same reason which
+    // SHAPE they write it in must not.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [rng.rs:9999](../crates/sim/src/rng.rs) for that.\n") },
+  { name: "a backticked `path.rs:NN` citation, past the end of the file",
+    check: "links", expect: "citation past EOF",
+    // PATH_CITE demanded `.md`, and the unverifiable-citation backstop cannot see
+    // this either: its lookbehind excludes a colon preceded by a word character.
+    // So the span fell through both, unchecked and uncounted.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee `../crates/sim/src/rng.rs:9999` for that.\n") },
+  { name: "a bare `:NN` binds to a source file, not to the markdown before it",
+    check: "links", expect: "crates/sim/src/rng.rs",
+    // The silent half, and the worst of the three: `bound` was only ever set by a
+    // `.md` link, so the number was resolved against a file the writer did not
+    // name. Past EOF it is merely reported against the wrong file; in range it
+    // would have certified one.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [PROBLEMS.md](PROBLEMS.md) and [rng](../crates/sim/src/rng.rs), at :9999.\n") },
+  { name: "a citation written mid-label, not at the end of it", check: "links",
+    expect: "citation past EOF",
+    // The label scan was anchored to end-of-label and the prose scan's lookbehind
+    // excludes a colon preceded by a word character, so this shape was neither
+    // checked NOR counted while the step reported "N line citations in range".
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [PROBLEMS.md:9999 for that](PROBLEMS.md) here.\n") },
+  { name: "a citation inside a link label is counted once, not twice",
+    check: "links", expect: "1 line citations in range", skipIfClean: true,
+    // Accepted either way — the number resolves. What the duplicate showed up in
+    // was the count, which is why this inverse case asserts the ✓ line.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [the note at :1](PROBLEMS.md) here.\n") },
+  { name: "a clock time in a link label is not a line citation", check: "links",
+    expect: "", skipIfClean: true,
+    // Widening the label scan must not start reading "12:30" as line 30.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nThe [12:30 standup](PROBLEMS.md) notes.\n") },
   { name: "a bare `:NN` that binds to the file named just before it",
     check: "links", expect: "", skipIfClean: true,
     // The inverse: nearest-preceding-citation-wins is the convention the
@@ -534,6 +1124,22 @@ const MUTATIONS = [
     expect: "error on line",
     mutate: (d) => appendFileSync(join(d, "docs/00-overview.md"),
       "\n```mermaid\nflowchart LR\n  a --> b\n  ]]] not valid\n```\n") },
+  { name: "a broken ```mermaid example quoted inside a ````markdown block stays inert",
+    check: "mermaid", expect: "", skipIfClean: true,
+    // check-structure has had this exact case since fences were consolidated;
+    // check-mermaid kept its own ```-prefix scan and read the quoted example as a
+    // live diagram, so writing ABOUT a broken diagram failed CI. Two checks
+    // disagreeing about what is content is what one shared matcher prevents.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\n````markdown\n```mermaid\nflowchart LR\n  ]]] not valid\n```\n````\n") },
+  { name: "an unterminated ```mermaid block", check: "mermaid",
+    expect: "unterminated",
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n```mermaid\nflowchart LR\n") },
+  { name: "the corpus losing its last mermaid block", check: "mermaid",
+    expect: "the check is checking nothing",
+    // Zero FILES was guarded and zero BLOCKS was not, so deleting or renaming
+    // the one diagram left the step printing a tick over nothing.
+    mutate: (d) => edit(join(d, "docs/00-overview.md"), /```mermaid[\s\S]*?```\n/, "") },
 ];
 
 const run = (check, dir) => CHECKS[check](dir);
@@ -590,8 +1196,8 @@ function manifests() {
 
 /**
  * Every workspace member path, for the manifest-only fixture. Read ONCE: the
- * member list cannot change between fixtures, and manifests() is built eight
- * times.
+ * member list cannot change between fixtures, and manifests() is built for every
+ * `fixture: "manifests"` mutation in the table.
  *
  * From lib/workspace-lints.mjs, the same module the `lints` check runs on the
  * other side of the spawn. This was a second, weaker copy of it — same regex, no
@@ -616,6 +1222,186 @@ function fresh() {
 
 const failures = [];
 
+// ── The table covers scripts/, and every check in it has a seeded defect ────
+// The table is hand-written, so a new check-*.mjs got no baseline run and no
+// mutations — and the only signal was an unrelated README mutation failing with
+// "the fixture drifted", which names the fixture as the problem. CLAUDE.md says
+// adding a check means adding mutations here; this is what makes that a failure
+// rather than an omission. Derived the same way check-vocabulary derives
+// README's count, so the two cannot disagree about what a check is.
+{
+  const SELF = "check-checks.mjs";
+  const covered = new Set(Object.values(CHECKS).map((run) => run.script));
+  const present = readdirSync(join(repo, "scripts")).filter((f) => /^check-.*\.mjs$/.test(f));
+  // The shell checks too. The coverage guard below filtered to `.mjs`, so
+  // deleting ci.sh's `check-file-size.sh repo` step — and the hook's staged one —
+  // left this file fully green, because its size-gate block spawns the script
+  // itself and never asks how CI reaches it. That is verbatim the regression the
+  // script's own header records: "scripts/ci.sh never called it and neither CI
+  // job ran it", for the one failure class this repo calls permanent.
+  const shellChecks = readdirSync(join(repo, "scripts")).filter((f) => /^check-.*\.sh$/.test(f));
+  for (const file of present) {
+    if (file === SELF) continue; // this file drives the table; it is not in it
+    if (!covered.has(file)) {
+      failures.push(
+        `scripts/${file} is not in this file's CHECKS table — it never runs against the ` +
+          `corpus here, and nothing can seed a defect for it`,
+      );
+    }
+  }
+  // …and scripts/ci.sh must actually run each of them. The table above proves a
+  // check is exercised HERE; nothing proved it runs in CI or the hook, and that
+  // is not hypothetical — the workspace-lint check shipped with mutations, no
+  // step in ci.sh, and no step label, reaching the real manifests only as a side
+  // effect of this file's baseline loop.
+  //
+  // ONE loop over every check, `.mjs` and `.sh`, and THIS FILE IS IN IT. It was
+  // excluded from `present` for the CHECKS-table rule, which is correct, and the
+  // exclusion then silently carried into the ci.sh rule, which is not: deleting
+  // `node scripts/check-checks.mjs .` from ci.sh left the whole suite green while
+  // CI stopped running the file CLAUDE.md calls the most load-bearing check in
+  // the repo. A check cannot notice its own step going missing unless it looks
+  // for it by name, so it looks for it by name.
+  //
+  // COMMANDS, not the file's text. A bare `includes()` over the whole script is
+  // satisfied by a COMMENT, and both files are heavily commented about the very
+  // checks they run: ci.sh explains that the workspace-lint check "lived inside
+  // check-checks.mjs for a while", and the hook's header names `scripts/ci.sh
+  // docs` in prose. So deleting either real invocation left this block green on
+  // the strength of the sentence describing it — a check passing because the repo
+  // documents the thing it stopped doing.
+  const commandsOf = (text) =>
+    text
+      .split("\n")
+      .filter((l) => !/^\s*#/.test(l))
+      .join("\n");
+  const ciText = commandsOf(readFileSync(join(repo, "scripts/ci.sh"), "utf8"));
+  const hookText = commandsOf(readFileSync(join(repo, ".githooks/pre-commit"), "utf8"));
+  for (const file of [...present, ...shellChecks]) {
+    if (!ciText.includes(file)) {
+      failures.push(
+        `scripts/${file} has no step in scripts/ci.sh — it is exercised here and never ` +
+          `runs in CI or the pre-commit hook`,
+      );
+    }
+  }
+  // The staged mode is the hook's half of the size gate, and the only half that
+  // can stop a blob being written at all.
+  if (!hookText.includes("check-file-size.sh staged")) {
+    failures.push(
+      ".githooks/pre-commit does not run `check-file-size.sh staged` — the mode that " +
+        "refuses the blob before it is committed exists only there",
+    );
+  }
+  // And the hook's OTHER half. Everything above establishes that ci.sh runs each
+  // check; the hook reaches all of them through one line, `scripts/ci.sh docs`,
+  // and only that line was never asserted. Delete it and the hook still exits 0
+  // after running the size gate alone — a gate that looks installed, passes, and
+  // checks a fraction of what its own header says it does.
+  if (!/scripts\/ci\.sh docs/.test(hookText)) {
+    failures.push(
+      '.githooks/pre-commit does not run `scripts/ci.sh docs` — that one line is how the ' +
+        "hook reaches every check above, and without it the hook is the size gate and nothing else",
+    );
+  }
+  // And how CI reaches ci.sh at all. Both rules above are satisfied by a
+  // workflow that never invokes the script: the two jobs are the only thing that
+  // makes a fresh clone — the only tree that sees what a reviewer sees — run any
+  // of this. The workflow deliberately holds no step list, so these two strings
+  // are the whole contract between it and the file above.
+  const workflowPath = join(repo, ".github/workflows/ci.yml");
+  if (!existsSync(workflowPath)) {
+    failures.push(
+      ".github/workflows/ci.yml is missing — nothing runs scripts/ci.sh on a fresh clone, " +
+        "which is the only tree that sees what CI sees",
+    );
+  } else {
+    // The `run:` values only, for the reason above one layer along: the docs job's
+    // step is NAMED "Fast checks (scripts/ci.sh docs)", so a workflow that had
+    // stopped invoking the script entirely still contained the string.
+    const workflow = [...readFileSync(workflowPath, "utf8").matchAll(/^\s*run:\s*(.+)$/gm)]
+      .map((m) => m[1])
+      .join("\n");
+    for (const half of ["docs", "rust"]) {
+      if (!workflow.includes(`scripts/ci.sh ${half}`)) {
+        failures.push(
+          `.github/workflows/ci.yml never runs \`scripts/ci.sh ${half}\` — that half of the ` +
+            `suite is exercised locally and gates nothing on a pull request`,
+        );
+      }
+    }
+  }
+
+  for (const [key, run] of Object.entries(CHECKS)) {
+    if (run.script && !present.includes(run.script)) {
+      failures.push(`CHECKS.${key} names scripts/${run.script}, which does not exist`);
+    }
+    if (!MUTATIONS.some((m) => m.check === key && !m.skipIfClean)) {
+      failures.push(`the ${key} check has no seeded defect — nobody has ever seen it fail`);
+    }
+  }
+
+  // ── …and per RULE, not just per check ────────────────────────────────────
+  // The loop above is satisfied for `registers` by any one of sixty mutations,
+  // so three of its rules shipped with no seeded defect at all behind a green
+  // tick — and two of those matched digits only, long after NUMBER_WORDS existed
+  // for exactly the case they missed. Every pattern lib/registers.mjs exports is
+  // iterated here, so ADDING one without a mutation fails, the same way the
+  // table-vs-scripts guard above makes adding a check without mutations fail.
+  //
+  // The tag is not taken on trust either: each mutation carries the exact text it
+  // seeds, and that text is matched against the WHOLE pattern list. A mutation
+  // tagged for a rule that a sibling rule also catches proves nothing about the
+  // rule it names — delete that rule and the suite stays green, which is the
+  // state these guards exist to make impossible.
+  const RULES = [
+    ...TOTAL_CLAIMS.map((t) => ({
+      id: `totals:${t.id}`,
+      hits: (probe) => TOTAL_CLAIMS.filter((x) => x.re.test(probe)).map((x) => `totals:${x.id}`),
+    })),
+    ...CITATION_CLAIMS.map((c) => ({
+      id: `citation:${c.id}`,
+      hits: (probe) =>
+        CITATION_CLAIMS.filter((x) => x.re.test(x.side === "before" ? probe.before : probe.after))
+          .map((x) => `citation:${x.id}`),
+    })),
+  ];
+  const known = new Set(RULES.map((r) => r.id));
+  for (const m of MUTATIONS) {
+    if (m.rule && !known.has(m.rule)) {
+      failures.push(
+        `${m.name}: is tagged rule "${m.rule}", which is not a pattern exported by ` +
+          `lib/registers.mjs — a tag naming nothing covers nothing`,
+      );
+    }
+  }
+  for (const rule of RULES) {
+    const seeded = MUTATIONS.filter((m) => m.rule === rule.id && !m.skipIfClean);
+    if (seeded.length === 0) {
+      failures.push(
+        `the "${rule.id}" pattern has no seeded defect — the per-check guard above is ` +
+          `satisfied by any other mutation of the same check, so nothing has ever seen ` +
+          `this rule fire`,
+      );
+      continue;
+    }
+    for (const m of seeded) {
+      const hits = rule.hits(m.probe);
+      if (!hits.includes(rule.id)) {
+        failures.push(
+          `${m.name}: is tagged "${rule.id}", but the text it seeds does not match that ` +
+            `pattern — the tag and the mutation disagree`,
+        );
+      } else if (hits.length > 1) {
+        failures.push(
+          `${m.name}: the text it seeds is also matched by ${hits.filter((h) => h !== rule.id).join(", ")} — ` +
+            `delete "${rule.id}" and this mutation is still caught, so it pins nothing`,
+        );
+      }
+    }
+  }
+}
+
 // ── The file-size gate, exercised in a throwaway repository ────────────────
 // It has no corpus to mutate, so it gets its own section. It needs one: shipped
 // inline in the hook, it aborted EVERY commit — `set -e` plus a while-loop whose
@@ -629,29 +1415,34 @@ const failures = [];
 // seen work.
 {
   const dir = mkdtempSync(join(tmpdir(), "check-size-"));
-  // Every setup command is checked. When `git commit` failed for an unrelated
-  // reason — a global `commit.gpgsign` with no key, a global `core.hooksPath` —
-  // the fixture left the blob in the index, the gate then behaved correctly, and
-  // this suite reported the gate as broken: a confident wrong diagnosis pointing
-  // at the script under test, which is the failure mode it exists to prevent.
-  // The two config overrides remove the commonest causes; the status check
-  // catches the rest and names the fixture.
+  // Every setup command is checked, and a failure THROWS rather than being
+  // recorded and walked past. When `git commit` failed for an unrelated reason —
+  // a global `commit.gpgsign` with no key, a template hook — the fixture left
+  // the blob in the index, the gate then behaved correctly, and this suite
+  // reported the gate as broken. Recording the setup failure and continuing only
+  // shortened that to three wrong accusations plus one right one; the run has to
+  // stop, because no conclusion about the script is available after it.
+  //
+  // `-c commit.gpgsign=false` covers signing; hooks are covered by `--no-verify`
+  // at the two commit sites, not by a config override.
   const git = (...a) => {
     const r = spawnSync("git", ["-c", "commit.gpgsign=false", ...a], { cwd: dir, encoding: "utf8" });
     if (r.status !== 0) {
-      failures.push(
-        `file-size gate: FIXTURE setup failed, not the gate — \`git ${a[0]}\` exited ${r.status}\n` +
-          `  ${(r.stderr ?? "").trim().split("\n")[0]}`,
+      const e = new Error(
+        `\`git ${a[0]}\` exited ${r.status}: ${(r.stderr ?? "").trim().split("\n")[0]}`,
       );
+      e.fixture = true;
+      throw e;
     }
     return r;
   };
-  const gate = (...args) =>
+  const gateEnv = (env, ...args) =>
     spawnSync("bash", [resolve(repo, "scripts/check-file-size.sh"), ...args], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...process.env, MAX_KB: "512" },
+      env: { ...process.env, MAX_KB: "512", ...env },
     });
+  const gate = (...args) => gateEnv({}, ...args);
   const write = (name, bytes) => writeFileSync(join(dir, name), "x".repeat(bytes));
 
   // A refusal has to be the RIGHT refusal. Exit 2 — an empty list, an unknown
@@ -660,6 +1451,7 @@ const failures = [];
   // matter. Demand exit 1 and the offending path in the message.
   const refuses = (r, path) => r.status === 1 && `${r.stdout}${r.stderr}`.includes(path);
 
+  try {
   git("init", "-q");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
@@ -750,6 +1542,22 @@ const failures = [];
     );
   }
 
+  // TWO DIFFERENT BLOBS AT ONE PATH: 700 KB committed, 800 KB staged over it.
+  // De-duplicated by path rather than by blob, the history entry was dropped as
+  // a repeat and the report understated what a clone would carry.
+  write("big.bin", 800 * 1024);
+  git("add", "-A");
+  {
+    const r = gate("repo");
+    const out = `${r.stdout}${r.stderr}`;
+    if (!out.includes("800 KB") || !out.includes("700 KB")) {
+      failures.push(
+        "file-size gate: reported only one of two oversized blobs at the same path\n" +
+          `  the index holds 800 KB and the history holds 700 KB; it said: ${out.trim().split("\n")[1] ?? ""}`,
+      );
+    }
+  }
+
   // AND THE ONE THE INDEX CANNOT SEE AT ALL: committed, then deleted in a later
   // commit. `git ls-files` no longer lists it, the working tree no longer has
   // it, and the blob is still in the history the merge would carry — which is
@@ -758,10 +1566,31 @@ const failures = [];
   rmSync(join(dir, "big.bin"));
   git("add", "-A");
   git("commit", "-qm", "drop big", "--no-verify");
-  if (gate("repo").status === 0) {
+  if (!refuses(gate("repo"), "big.bin")) {
     failures.push(
       "file-size gate: repo mode passed a branch whose history carries a 700 KB blob\n" +
         "  deleting the file in a later commit does not remove it from what a clone gets",
+    );
+  }
+
+  // AND THE SCOPE OF THAT WALK. Unbounded, it judges the base branch as well:
+  // one oversized blob anywhere in main's past then fails every PR forever, with
+  // a message telling the author to rewrite a branch that did not introduce it —
+  // a confident wrong diagnosis aimed at the wrong person. SIZE_BASE_REF bounds
+  // it to the commits under review, and the blob above now sits in the base.
+  const base = git("rev-parse", "HEAD").stdout.trim();
+  git("checkout", "-q", "-b", "feature");
+  writeFileSync(join(dir, "n.txt"), "new\n");
+  git("add", "-A");
+  git("commit", "-qm", "feature", "--no-verify");
+  if (!refuses(gate("repo"), "big.bin")) {
+    failures.push("file-size gate: unbounded repo mode stopped seeing the blob in the history");
+  }
+  if (gateEnv({ SIZE_BASE_REF: base }, "repo").status !== 0) {
+    failures.push(
+      "file-size gate: SIZE_BASE_REF did not bound the history walk\n" +
+        "  a blob inherited from the base branch fails a PR that did not add it, and the " +
+        "author cannot rewrite the base",
     );
   }
 
@@ -779,14 +1608,41 @@ const failures = [];
     );
   }
 
+  // THE SHIPPED LIMIT, not just the mechanism. Every assertion above forces
+  // MAX_KB=512 into the environment and is written against 512 * 1024, so the
+  // default in check-file-size.sh could be changed to anything — or dropped —
+  // with this file still reporting that the gate behaves.
+  {
+    const env = { ...process.env };
+    delete env.MAX_KB;
+    const r = spawnSync("bash", [resolve(repo, "scripts/check-file-size.sh"), "repo"], {
+      cwd: dir,
+      encoding: "utf8",
+      env,
+    });
+    if (!`${r.stdout}${r.stderr}`.includes("512 KB")) {
+      failures.push(
+        "file-size gate: with MAX_KB unset the run does not name a 512 KB cap — the " +
+          "shipped default is what a contributor without the env var actually gets",
+      );
+    }
+  }
+
   // An unknown mode must be refused, not silently treated as the default. A
   // typo'd argument that falls back to `staged` would make the CI step pass
   // while checking the index, which on a fresh checkout is empty.
   if (gate("bogus").status !== 2) {
     failures.push("file-size gate: an unknown mode was not refused");
   }
-
-  rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    if (!e.fixture) throw e;
+    failures.push(
+      `file-size gate: FIXTURE setup failed, not the gate — ${e.message}\n` +
+        `  the block stopped here; nothing about check-file-size.sh was established`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ── The corpus itself must pass every check ─────────────────────────────────
@@ -808,6 +1664,13 @@ const failures = [];
 
 // ── Every mutation must be caught, by the right check, with a real message ──
 for (const m of MUTATIONS) {
+  // A typo'd check name used to die as `CHECKS[check] is not a function`, mid
+  // table, taking every mutation after it with it — the truncation this loop's
+  // own comment refuses one line down.
+  if (!CHECKS[m.check]) {
+    failures.push(`${m.name}: names check "${m.check}", which is not in the CHECKS table`);
+    continue;
+  }
   // Fixture construction sat outside the try, so anything it threw took the
   // whole run down with a raw stack trace — and every mutation after the
   // offending one silently never ran. A suite that can be truncated without
@@ -831,6 +1694,14 @@ for (const m of MUTATIONS) {
     // An inverse case: this input is LEGAL and the check must accept it.
     if (code !== 0) {
       failures.push(`FALSE POSITIVE from ${m.check}: ${m.name}\n  ${out.trim().split("\n").slice(0, 3).join(" / ")}`);
+    } else if (m.expect && !out.includes(m.expect)) {
+      // An inverse case may also pin what the PASSING run says. Accepting an
+      // input is not the whole claim when the check reports a count: a citation
+      // seen twice is accepted twice, and only the ✓ line says so.
+      failures.push(
+        `WRONG REPORT from ${m.check}: ${m.name}\n  the input was accepted, but the run does ` +
+          `not say ${JSON.stringify(m.expect)}\n  got: ${out.trim().split("\n").slice(0, 3).join(" / ")}`,
+      );
     }
     rmSync(dir, { recursive: true, force: true });
     continue;
@@ -840,6 +1711,15 @@ for (const m of MUTATIONS) {
   } else if (m.expect && !out.includes(m.expect)) {
     failures.push(
       `WRONG MESSAGE from ${m.check}: ${m.name}\n  expected to see ${JSON.stringify(m.expect)}\n  got: ${out.trim().split("\n").slice(0, 3).join(" / ")}`,
+    );
+  } else if (m.reject && out.includes(m.reject)) {
+    // Catching the defect is not the whole claim when the run also says
+    // something false alongside it: a phantom "Q16 is missing" next to a real
+    // "Q6 appears twice" is an instruction that, followed, invents an entry the
+    // append-only rule forbids.
+    failures.push(
+      `EXTRA MESSAGE from ${m.check}: ${m.name}\n  the run also said ${JSON.stringify(m.reject)}, ` +
+        `which is not true of this corpus\n  got: ${out.trim().split("\n").slice(0, 4).join(" / ")}`,
     );
   }
   rmSync(dir, { recursive: true, force: true });
@@ -851,8 +1731,15 @@ if (failures.length) {
   process.exit(1);
 }
 
+// Inverse cases are NOT seeded defects: they assert the check stays quiet on a
+// legal input. Counting them in the defect total meant tightening a parser and
+// pinning it with a false-positive guard raised the advertised coverage while
+// catching nothing new — a success line naming a total that includes what it did
+// not do, which is the shape this file exists to refuse.
+const inverse = MUTATIONS.filter((m) => m.skipIfClean).length;
 console.log(
-  `✓ ${MUTATIONS.length} seeded defects each caught by the right check, ` +
+  `✓ ${MUTATIONS.length - inverse} seeded defects each caught by the right check, ` +
+    `${inverse} legal inputs each accepted, ` +
     `${Object.keys(CHECKS).length} checks pass the corpus clean, ` +
     `the file-size gate behaves in both modes, ` +
     `and the workspace lint opt-in is in force`,

@@ -13,7 +13,13 @@ import { join } from "node:path";
 // under scripts/, and .git is .git. A walker that descends into any of them is
 // a bug waiting for the first caller who widens a root — which is exactly what
 // happened when check-mermaid's default moved from docs/ to the repo root.
-export const SKIP = new Set([".git", "node_modules", "target"]);
+//
+// `.idea`/`.vscode` are here rather than only in check-checks' fixture list: a
+// stray `.idea/notes.md` is nobody's corpus, and skipping it in the fixture but
+// not in the walker made the meta-check's baseline pass a tree the real run
+// fails — while its failure message asserts the fixture "fails here for the same
+// reason it would fail on its own".
+export const SKIP = new Set([".git", "node_modules", "target", ".idea", ".vscode"]);
 
 export function markdownFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

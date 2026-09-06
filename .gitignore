@@ -15,12 +15,18 @@ core.*.[0-9]*
 # doc-check tooling (scripts/) — JS deps, not part of the Rust build
 scripts/node_modules/
 
-# macOS Finder droppings. The history directories are browsed in Finder, and a
-# stray .DS_Store there fails the register check on the working tree while CI
-# and the pre-commit hook (which read the index) pass — breaking the local/CI
-# parity ci.sh promises.
+# macOS Finder droppings. The history directories get browsed in Finder, so they
+# collect these. No check rejects one — the shared walker returns only .md and
+# the register scan skips dotfiles — which is the point: nothing but this line
+# stands between a `git add -A` and a committed .DS_Store.
 .DS_Store
 
 # Unanchored: spikes/ are standalone workspaces, and one opened as its own IDE
 # project root puts .idea/ there rather than at the repo root.
+#
+# BOTH editors, because the doc walker skips both: a tracked `.vscode/notes.md`
+# would be committed by `git add -A` and then scanned by nothing — no link check,
+# no size cap — while the identical file under .idea/ could not be committed at
+# all. Skipped and ignored have to be the same set.
 .idea/
+.vscode/

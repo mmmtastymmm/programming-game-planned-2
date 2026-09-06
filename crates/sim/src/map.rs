@@ -43,7 +43,7 @@ impl MapSpec {
 
     // No `contains` here. It was character-for-character `World::in_bounds` over
     // the same width/height, i.e. two canonical statements of the bounds rule
-    // (design-invariant I1). If the rule ever changes — inclusive edges, a
+    // (design-invariant DI1). If the rule ever changes — inclusive edges, a
     // border margin — one copy gets edited and command validation starts
     // disagreeing with movement, which is a desync. `World::in_bounds` is the
     // single statement; the spec owns nothing else.

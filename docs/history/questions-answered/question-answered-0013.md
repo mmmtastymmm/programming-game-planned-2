@@ -109,7 +109,8 @@ how that risk is managed without narrowing the target.
   variables. If Q11 later chooses any option that *resumes* — at an offset, at a
   declared re-entry point, or after finishing the current action — then classes
   and any future generators are carrying live state again and this boundary has
-  to be reopened. Q11's worksheet records the dependency in both directions.
+  to be reopened. Q11 records the dependency from its side, in
+  [QUESTIONS.md](../../QUESTIONS.md) — it is open, so it has no file here.
 - **Q8's strictest option got harder, not easier.** The first draft claimed
   excluding reflection made "reject programs that can fault" viable. With
   user-defined classes and duck-typed attribute access, `x.foo()` needs type
@@ -167,7 +168,8 @@ bought.
 
 Recorded because the shape recurs: the narrow line looked well-argued and was,
 right up until an answer to a *different* open question dissolved its premise.
-The dependency now runs the other way and is written into both rulings — if Q11
+The dependency now runs the other way and is written on both sides — here, and
+on Q11 in [QUESTIONS.md](../../QUESTIONS.md), which is still open — so if Q11
 ever chooses an option that resumes rather than clears, this boundary reopens.
 
 ### The remaining exclusions, and why they are unequal

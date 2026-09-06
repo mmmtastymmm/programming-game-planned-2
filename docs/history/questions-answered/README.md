@@ -18,6 +18,12 @@ graveyard. A ruling must land somewhere — it declares at least one of:
 - `- **Problem:**` — a `P<n>` opened, because existing text or code is now wrong.
 - `- **Task:**` — a `T<n>` opened, because the consequence is not a doc edit.
 
+There is deliberately no `- **Dropped:**` here. An inbox entry may turn out to be
+a misreading; a *ruling* that changed nothing anywhere was not a ruling, and the
+checker rejects the bullet in this directory for that reason. See
+[../inbox-triaged/](../inbox-triaged/README.md), which is the one register that
+has it.
+
 Every cited number must be a real register entry, and every bullet must carry
 something to resolve — a bare `- **Docs:**` with no links asserts a propagation
 that may never have happened, which is the state this section exists to catch.

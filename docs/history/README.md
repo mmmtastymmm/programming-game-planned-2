@@ -21,9 +21,9 @@ correct history to leave alone.
 
 | Directory | Files | Holds |
 |---|---|---|
-| [questions-answered/](questions-answered/README.md) | `question-answered-0013.md` | The ruling for Q13, its **Outcome**, then the worksheet |
+| [questions-answered/](questions-answered/README.md) | `question-answered-NNNN.md` | the ruling, its **Outcome**, then the worksheet |
 | [problems-fixed/](problems-fixed/README.md) | `problem-fixed-NNNN.md` | the entry as recorded, and the commit that closed it |
-| [tasks-completed/](tasks-completed/README.md) | `task-completed-0003.md` | T3 and the commit that finished it |
+| [tasks-completed/](tasks-completed/README.md) | `task-completed-NNNN.md` | the task as recorded, and the commit that finished it |
 | [inbox-triaged/](inbox-triaged/README.md) | `inbox-triaged-NNNN.md` | the observation as written, and where it went |
 
 There is deliberately **no status log**. An earlier version archived the dated
@@ -34,7 +34,7 @@ itself). `git log -p docs/QUESTIONS.md` records every status block ever written,
 dated and attached to its commit, which is a stricter record than a
 hand-maintained archive and cannot be forgotten.
 
-**The filename is the index.** Finding Q73 means opening
+**The filename is the index.** Finding `Q73` means opening
 `questions-answered/question-answered-0073.md` and nothing else — no table to
 consult, and no table to go stale. `ls` is the table of contents:
 
@@ -49,9 +49,19 @@ existed only because a shard held many entries. One file per entry deletes the
 category. It also removed a failure already approaching: the first shard reached
 24 KB at six entries and would have needed splitting at about ten.
 
-`scripts/check-registers.mjs` enforces what the scheme depends on: a file's name
-and its heading must agree, a file holds exactly one entry, numbering is dense,
-and nothing exceeds 40 KB.
+**Every file here opens with the closed-record banner** — line 1, exactly:
+
+```text
+*Closed record — see [../README.md](../README.md). Not spec.*
+```
+
+It is what tells a reader who arrived mid-file, from a grep or a link, that this
+is history rather than spec. This README is the exception; it is the thing being
+pointed at.
+
+`scripts/check-registers.mjs` enforces what the scheme depends on: that banner, a
+file's name and its heading agreeing, one entry per file, dense numbering, a
+closed problem or task naming the commit that closed it, and nothing over 40 KB.
 
 ## Working rules
 

@@ -7,10 +7,16 @@
 //! Catching them at review time requires someone to remember; catching them here
 //! does not.
 //!
-//! SCOPE: every `crates/*/src` in the workspace, not just this crate's. The
-//! language crate (Q5) will be a tree-walking interpreter sitting directly on
-//! the hash-critical path, and a scan rooted at `sim` alone would not see one
-//! line of it.
+//! SCOPE: every workspace MEMBER's `src/`, read from the root `Cargo.toml`, not
+//! just this crate's. The language crate (Q5) will be a tree-walking interpreter
+//! sitting directly on the hash-critical path, and a scan rooted at `sim` alone
+//! would not see one line of it.
+//!
+//! The member list is the authority on where crates live, and the directory
+//! layout is not: this used to walk `crates/*/src`, so a member added at
+//! `lang/` or `tools/lang/` would have been skipped in silence while the test
+//! went on passing — `files` is non-empty either way. Where the language crate
+//! lands is still open, which is exactly why the scope cannot be a guess.
 //!
 //! LIMITS, so a green run is not read as more than it is:
 //!   * Comments and string/char literals are both stripped, so a banned token
@@ -76,18 +82,155 @@ const BANNED: &[(&str, &str)] = &[
     ),
 ];
 
-fn crate_sources() -> Vec<PathBuf> {
-    // crates/sim/tests -> crates/sim -> crates
-    let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+/// CARGO_MANIFEST_DIR is the PACKAGE directory, not this test's: crates/sim ->
+/// crates -> the workspace root.
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("crates/ is the parent of this crate")
-        .to_path_buf();
-    let mut out = Vec::new();
-    for entry in fs::read_dir(&crates).expect("readable crates dir") {
-        let src = entry.expect("dir entry").path().join("src");
-        if src.is_dir() {
-            rust_files(&src, &mut out);
+        .and_then(Path::parent)
+        .expect("the workspace root is two levels above this crate")
+        .to_path_buf()
+}
+
+/// Strip a `#` comment, ignoring a `#` inside quotes.
+fn uncomment(line: &str) -> String {
+    let mut quote: Option<char> = None;
+    let mut out = String::new();
+    for c in line.chars() {
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            }
+        } else if c == '"' || c == '\'' {
+            quote = Some(c);
+        } else if c == '#' {
+            break;
         }
+        out.push(c);
+    }
+    out
+}
+
+/// Every quoted string in a fragment of TOML.
+fn quoted(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut quote: Option<char> = None;
+    let mut buf = String::new();
+    for c in s.chars() {
+        if let Some(q) = quote {
+            if c == q {
+                out.push(std::mem::take(&mut buf));
+                quote = None;
+            } else {
+                buf.push(c);
+            }
+        } else if c == '"' || c == '\'' {
+            quote = Some(c);
+        }
+    }
+    out
+}
+
+/// The `members = [...]` list, as written.
+///
+/// Anchored on a line whose first token is `members`, because `default-members`
+/// ends with the same word and reading it instead would validate a subset —
+/// the same trap `scripts/lib/workspace-lints.mjs` documents on its own copy of
+/// this parse. Comments are stripped first: `# "crates/lang",  # not yet` is an
+/// ordinary thing to write.
+fn parse_members(manifest: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for raw in manifest.lines() {
+        let line = uncomment(raw);
+        let scan: &str = if inside {
+            &line
+        } else {
+            let t = line.trim_start();
+            if !t.starts_with("members") {
+                continue;
+            }
+            match t.find('=') {
+                Some(eq) => {
+                    inside = true;
+                    &t[eq..]
+                }
+                None => continue,
+            }
+        };
+        out.extend(quoted(scan));
+        if scan.contains(']') {
+            break;
+        }
+    }
+    out
+}
+
+/// `crates/*` style globs, which Cargo allows in `members`.
+fn expand(root: &Path, member: &str) -> Vec<String> {
+    if !member.contains('*') {
+        return vec![member.to_string()];
+    }
+    let (parent, pattern) = member.rsplit_once('/').unwrap_or((".", member));
+    assert!(
+        !parent.contains('*'),
+        "workspace member `{member}` globs above its last segment — teach this test that \
+         shape rather than letting the determinism scan cover less than the workspace"
+    );
+    let mut out = Vec::new();
+    let entries = fs::read_dir(root.join(parent)).expect("readable member directory");
+    for entry in entries {
+        let path = entry.expect("dir entry").path();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let matches = match pattern.split_once('*') {
+            Some((pre, post)) => {
+                name.starts_with(pre)
+                    && name.ends_with(post)
+                    && name.len() >= pre.len() + post.len()
+            }
+            None => pattern == name,
+        };
+        if matches && path.join("Cargo.toml").is_file() {
+            out.push(format!("{parent}/{name}"));
+        }
+    }
+    out.sort();
+    // A glob that matches nothing would narrow the scan without saying so: the
+    // member is dropped here, so `every_workspace_member_is_scanned` never sees
+    // it and both tests would pass over less than the workspace. Cargo refuses
+    // an unmatched glob today, so this is a second line rather than the only
+    // one — and it keeps this parser saying what its JS twin says
+    // (`member "…" matched no crate`), which is the disagreement two parsers of
+    // one format are for.
+    assert!(
+        !out.is_empty(),
+        "workspace member `{member}` matched no crate — every member must be scanned"
+    );
+    out
+}
+
+/// Every workspace member path, expanded.
+fn workspace_members(root: &Path) -> Vec<String> {
+    let manifest = fs::read_to_string(root.join("Cargo.toml")).expect("readable root manifest");
+    parse_members(&manifest)
+        .iter()
+        .flat_map(|m| expand(root, m))
+        .collect()
+}
+
+fn crate_sources() -> Vec<PathBuf> {
+    let root = repo_root();
+    let mut out = Vec::new();
+    for member in workspace_members(&root) {
+        let src = root.join(&member).join("src");
+        assert!(
+            src.is_dir(),
+            "workspace member `{member}` has no src/ — the determinism scan cannot cover it"
+        );
+        rust_files(&src, &mut out);
     }
     out.sort();
     out
@@ -308,6 +451,56 @@ fn workspace_source_is_free_of_nondeterministic_constructs() {
          — not a deleted check.",
         violations.len(),
         violations.join("\n")
+    );
+}
+
+/// The SCOPE, checked — every workspace member contributes source to the scan.
+///
+/// `!files.is_empty()` was the only guard, and it is satisfied by `sim` alone:
+/// a member outside `crates/` was skipped in silence while the run stayed green,
+/// which is the shape of coverage loss this whole file exists to prevent one
+/// level down.
+#[test]
+fn every_workspace_member_is_scanned() {
+    let root = repo_root();
+    let members = workspace_members(&root);
+    assert!(
+        !members.is_empty(),
+        "read no workspace members from Cargo.toml — the scan's scope is a guess"
+    );
+
+    let files = crate_sources();
+    for member in &members {
+        let src = root.join(member).join("src");
+        assert!(
+            files.iter().any(|f| f.starts_with(&src)),
+            "workspace member `{member}` contributed no file to the determinism scan"
+        );
+    }
+}
+
+/// The member parser, on the shapes Cargo accepts and a person writes.
+#[test]
+fn member_parser_reads_the_shapes_cargo_accepts() {
+    let manifest = "[workspace]\n\
+         default-members = [\"crates/sim\"]\n\
+         members = [\n\
+         \x20   \"crates/sim\",\n\
+         \x20   # \"crates/lang\",  # not written yet\n\
+         \x20   \"tools/x\",\n\
+         ]\n";
+    assert_eq!(
+        parse_members(manifest),
+        vec!["crates/sim".to_string(), "tools/x".to_string()],
+        "default-members must not be read as the member list, and a commented-out \
+         member must not be read as one"
+    );
+
+    let inline = "members = [\"a\", \"b\"]\nsomething-else = [\"c\"]\n";
+    assert_eq!(
+        parse_members(inline),
+        vec!["a".to_string(), "b".to_string()],
+        "the list ends at its closing bracket"
     );
 }
 

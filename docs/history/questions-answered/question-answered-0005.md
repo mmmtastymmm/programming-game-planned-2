@@ -71,6 +71,8 @@ source scan are what keep that choice honest rather than aspirational.
 - **Task:** [T10, T11, T12, T13, T14](../../TASKS.md) — the language
   implementation, staged across M2. [T8](../../TASKS.md) — answer the language
   questions this ruling left open, then write `docs/01`.
+  [T15](../../TASKS.md) — the cross-architecture check the Consequences above
+  call still owed; owning the interpreter does not grant that property.
 
 ## Worksheet
 

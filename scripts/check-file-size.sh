@@ -4,14 +4,17 @@
 #   scripts/check-file-size.sh            # the STAGED blobs — the pre-commit hook
 #   scripts/check-file-size.sh repo       # the index AND this branch's history — CI
 #
+#   SIZE_BASE_REF=<ref>  bounds the history walk to commits not already in <ref>
+#
 # A large file is permanent once pushed. A nested workspace's target/ directory
 # put 2057 files and 528 MB into this repo, and the only reason it was ever
 # removed is that the branch had not been pushed yet.
 #
 # WHY TWO MODES. The staged mode is the one that can still save you — it fires
 # before the blob is written to a commit. But it runs only in the pre-commit
-# hook, which is opt-in per clone (scripts/install-hooks.sh), which
-# `--no-verify` skips, and which stands down when Node is absent. For a while
+# hook, which is opt-in per clone (scripts/install-hooks.sh) and which
+# `--no-verify` skips. (It runs before the hook's Node test, so a missing Node
+# disables everything after it and not this.) For a while
 # this was the ONLY size gate: `scripts/ci.sh` never called it and neither CI
 # job ran it, so a contributor who had not installed the hook could push 600 MB
 # and watch both jobs go green — for the one failure class this corpus describes
@@ -44,7 +47,16 @@ MAX_KB="${MAX_KB:-512}"
 # 512 KB accepted anything up to 525,311 bytes — and the only sizes ever tested
 # were 0 and 700 KB, which no rounding error can tell apart.
 MAX_BYTES=$((MAX_KB * 1024))
-cd "$(git rev-parse --show-toplevel)"
+# Guarded: with git absent or outside a repository, the substitution is empty and
+# `cd ""` is a silent no-op in bash, so the gate went on to run `git ls-files` in
+# whatever directory it inherited and died with git's own error and exit 128. A
+# check that names a specific culprit had better name the right one.
+if ! root=$(git rev-parse --show-toplevel 2>/dev/null) || [ -z "$root" ]; then
+  echo "check-file-size: not a git repository (or git is not installed) — this gate" >&2
+  echo "reads the index and the history, so it has nothing to check here." >&2
+  exit 2
+fi
+cd "$root"
 
 # Written to a file FIRST, not piped in from a process substitution: a failure
 # inside `< <(...)` is invisible to `set -e`, so a git error would leave the loop
@@ -56,69 +68,115 @@ cd "$(git rev-parse --show-toplevel)"
 # output into one string. The meta-check caught that within a minute of it being
 # written, which is the entire argument for the meta-check.
 list=$(mktemp)
+raw=$(mktemp)
 hist=$(mktemp)
-trap 'rm -f "$list" "$hist"' EXIT
+trap 'rm -f "$list" "$raw" "$hist"' EXIT
 
+TAB=$'\t'
+
+# One record per blob to inspect: "<key><TAB><label>", NUL-terminated. The key is
+# what `git cat-file -s` is given AND what de-duplicates the run, so the index
+# and the history cannot report the same blob twice or count it twice.
+#
+# A path containing a literal tab would split wrongly here. -z keeps newlines and
+# quoting safe; a tab in a path breaks enough git tooling that it is out of scope.
 case "$MODE" in
-  staged) git diff --cached --name-only -z --diff-filter=ACMR > "$list" ;;
-  repo)   git ls-files -z > "$list" ;;
+  staged)
+    git diff --cached --name-only -z --diff-filter=ACMR > "$raw"
+    while IFS= read -r -d '' f; do printf ':%s%s%s\0' "$f" "$TAB" "$f"; done < "$raw" > "$list"
+    ;;
+  repo)
+    # -s for the blob SHA. Keyed by path, a 700 KB blob committed at a path and
+    # an 800 KB one staged at the same path collapsed into one report, hiding
+    # what a clone would still carry.
+    git ls-files -s -z > "$raw"
+    while IFS= read -r -d '' rec; do
+      meta="${rec%%"$TAB"*}"
+      path="${rec#*"$TAB"}"
+      # mode SHA stage — unquoted on purpose, to split the three fields.
+      # shellcheck disable=SC2086
+      set -- $meta
+      printf '%s%s%s\0' "$2" "$TAB" "$path"
+    done < "$raw" > "$list"
+    ;;
   *) echo "usage: scripts/check-file-size.sh [staged|repo]" >&2; exit 2 ;;
 esac
 
 oversized=""
-oversized_paths=$'\n'
 unreadable=""
+blobs="|"
 seen=0
 
-# The blob size via `git cat-file -s :path` rather than the working tree:
-# `git add big.bin && rm big.bin` still commits the blob, and a working-tree stat
-# would have waved it through. -z also survives paths git would otherwise quote.
-while IFS= read -r -d '' f; do
-  # A path git cannot size — an unmerged path mid-merge, a corrupt object — is
-  # REPORTED, not skipped. It used to `continue` in silence and not count toward
-  # `seen`, so the success line named a total that quietly excluded it.
-  if ! size=$(git cat-file -s ":$f" 2>/dev/null); then
-    unreadable="${unreadable}  ${f}"$'\n'
-    continue
-  fi
+record() {
+  local key="$1" size="$2" label="$3"
+  case "$blobs" in *"|$key|"*) return 0 ;; esac
+  blobs="${blobs}${key}|"
   seen=$((seen + 1))
   if [ "$size" -gt "$MAX_BYTES" ]; then
-    oversized="${oversized}  $(((size + 1023) / 1024)) KB  ${f}"$'\n'
-    oversized_paths="${oversized_paths}${f}"$'\n'
+    oversized="${oversized}  $(((size + 1023) / 1024)) KB  ${label}"$'\n'
   fi
+}
+
+# The blob size from git, not from the working tree: `git add big.bin && rm
+# big.bin` still commits the blob, and a working-tree stat would have waved it
+# through.
+while IFS= read -r -d '' rec; do
+  key="${rec%%"$TAB"*}"
+  label="${rec#*"$TAB"}"
+  # A key git cannot size — an unmerged path mid-merge, a corrupt object — is
+  # REPORTED, not skipped. It used to `continue` in silence and not count toward
+  # `seen`, so the success line named a total that quietly excluded it.
+  if ! size=$(git cat-file -s "$key" 2>/dev/null); then
+    unreadable="${unreadable}  ${label}"$'\n'
+    continue
+  fi
+  record "$key" "$size" "$label"
 done < "$list"
 
 # Every blob this branch's history carries. `rev-list --objects` emits each
-# object once, so there is nothing to de-duplicate here; a path already reported
-# from the index is skipped so one file is not named twice.
+# object once, and `record` drops any blob the index already accounted for.
+#
+# SIZE_BASE_REF bounds the walk to the commits under review — CI passes the PR's
+# base — because an unbounded walk judges the whole base branch: one oversized
+# blob anywhere in main's past would fail every PR forever, with a message
+# telling authors to rewrite a branch that did not introduce it. Unset (a local
+# run, or a push to the default branch) means the whole of HEAD, which is the
+# right scope for the history you own.
 #
 # Line-based, unlike the loop above: `--objects` has no NUL form. A path
-# containing a newline would be misread — such a path breaks a great deal of git
-# tooling, and the alternative is not scanning history at all.
+# containing a newline would be misread — the alternative is not scanning history
+# at all.
 if [ "$MODE" = "repo" ] && git rev-parse --verify -q HEAD >/dev/null; then
-  git rev-list --objects HEAD \
+  range=(HEAD)
+  base="${SIZE_BASE_REF:-}"
+  if [ -n "$base" ] && git rev-parse --verify -q "${base}^{commit}" >/dev/null; then
+    range=(HEAD --not "$base")
+  fi
+  git rev-list --objects "${range[@]}" \
     | git cat-file --batch-check='%(objectname) %(objecttype) %(objectsize) %(rest)' > "$hist"
   while read -r sha type size rest; do
     [ "$type" = "blob" ] || continue
-    seen=$((seen + 1))
-    [ "$size" -gt "$MAX_BYTES" ] || continue
-    case "$oversized_paths" in *$'\n'"$rest"$'\n'*) continue ;; esac
-    oversized="${oversized}  $(((size + 1023) / 1024)) KB  ${rest:-$sha}  (in this branch's history)"$'\n'
+    record "$sha" "$size" "${rest:-$sha}  (in this branch's history)"
   done < "$hist"
 fi
 
-# Zero files inspected is a pass in staged mode — a commit that only deletes
-# stages nothing under ACMR — and is meaningless in repo mode, where it means
-# the gate ran against a repository with no files in it and said everything was
-# fine. Scoring green on zero inputs is this repo's recurring failure.
-if [ "$MODE" = "repo" ] && [ "$seen" -eq 0 ]; then
-  echo "check-file-size: no files in the index or the history — the gate is checking nothing" >&2
-  exit 2
-fi
-
+# Reported BEFORE the zero-input guard below: a repository whose objects git
+# cannot read has "no files" by that guard's arithmetic, and diagnosing a corrupt
+# or partial object store as an empty repository is the confident-wrong-answer
+# failure this script's header is about.
 if [ -n "$unreadable" ]; then
   echo "file(s) git could not size — the gate cannot vouch for these:" >&2
   printf '%s' "$unreadable" >&2
+  echo >&2
+fi
+
+# Zero blobs inspected is a pass in staged mode — a commit that only deletes
+# stages nothing under ACMR — and is meaningless in repo mode, where it means the
+# gate ran against a repository with nothing in it and said everything was fine.
+# Scoring green on zero inputs is this repo's recurring failure.
+if [ "$MODE" = "repo" ] && [ "$seen" -eq 0 ] && [ -z "$unreadable" ]; then
+  echo "check-file-size: no files in the index or the history — the gate is checking nothing" >&2
+  exit 2
 fi
 
 if [ -n "$oversized" ]; then
@@ -137,5 +195,5 @@ if [ -n "$oversized" ]; then
 fi
 
 [ -n "$unreadable" ] && exit 1
-[ "$MODE" = "repo" ] && echo "✓ ${seen} blob(s) in the index and history, none over the ${MAX_KB} KB cap"
+[ "$MODE" = "repo" ] && echo "✓ ${seen} distinct blob(s) in the index and history, none over the ${MAX_KB} KB cap"
 exit 0

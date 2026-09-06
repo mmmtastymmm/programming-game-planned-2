@@ -8,7 +8,10 @@ there are no checkboxes to keep in sync.
 Numbering is stable — **append new tasks, never renumber**, and never reuse a
 number after it moves to history. Entries are written as `**T<n> — <title>**` on
 their own line, which is how `scripts/check-registers.mjs` finds them; it rejects
-a number that is open and completed at once, and any gap in the sequence.
+a number that is open and completed at once, and any gap *below* the highest
+number recorded. Deleting the highest-numbered entry outright shrinks the range
+and goes unnoticed — the same honest limit
+[history/questions-answered/](history/questions-answered/README.md) states.
 
 Milestones below are groupings, not entries. A milestone is finished when every
 task under it has left the file.
@@ -17,10 +20,12 @@ Two conventions carried over from the predecessor project:
 
 - **`⚠HASH` marks a task that changes sim behavior**, and therefore the
   golden-replay hashes. Such a task's PR regenerates the fixture and says why
-  (CLAUDE.md). **This file is the only place the marker appears.** An open
-  question is not work, and nearly every open question would qualify while the
-  sim is unbuilt — a marker on all of them selects nothing. Where a *ruling* is
-  undiscoverable during implementation, the question says so in words.
+  (CLAUDE.md). **No other register carries it** — CLAUDE.md and
+  `.claude/design-invariants.md` define it, and `docs/history/` may narrate it,
+  but no entry outside this file is marked. An open question is not work, and
+  nearly every open question would qualify while the sim is unbuilt, so a marker
+  on all of them selects nothing. Where a *ruling* cannot be discovered during
+  implementation, the question says so in words.
 - **Decided-but-unbuilt** work — a ruling the code has not caught up to — is
   tracked here *and* as an entry in [PROBLEMS.md](PROBLEMS.md). The register owns
   the gap; this file owns the work. A task is only lag once it is actually
@@ -46,9 +51,9 @@ that being the hash-affecting path most likely to differ between peers.
 
 **T8 — Answer Q8, Q11 and Q14, then write `docs/01`**
 
-None of the three can be discovered during implementation: Q14 changes what the
-parser accepts, Q8 decides whether `try`/`except` is in the grammar, and Q11 is
-what keeps Q13's boundary sound. Q14 is the last of them in dependency order.
+None of the three can be discovered during implementation; the reason for each
+is with the question, in [QUESTIONS.md](QUESTIONS.md), and is deliberately not
+repeated here.
 
 Q8 and Q11 fall inside T9's sweep, so that much of T9 lands first — the
 sequencing is recorded here because reading T8 alone once suggested Q14 was the
@@ -59,9 +64,10 @@ only thing in the way.
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
 
-**Q11 must clear variables on hot-swap, or Q13's boundary reopens.** The
-dependency is recorded in both rulings; it is repeated here so the sequencing is
-not discovered late.
+**Q11 and Q13's boundary are coupled**, so answer Q11 before M2 leans on that
+boundary. [QUESTIONS.md](QUESTIONS.md) states the dependency and Q13's ruling
+records it; what belongs here is only the sequencing, which is easy to discover
+late.
 
 ## M2 — Language implementation
 
@@ -70,7 +76,7 @@ core. **Staging does not narrow the spec** — `docs/01` specifies all of it —
 this note exists so the first shipped subset does not quietly become the
 boundary.
 
-**T10 — Lexer with significant indentation, then the procedural core**
+**T10 — Lexer with significant indentation, then the procedural core** ⚠HASH
 
 INDENT/DEDENT, then functions, control flow, `list`/`dict`/`set`, comprehensions,
 f-strings, chained comparisons and `lambda`.
@@ -81,8 +87,10 @@ f-strings, chained comparisons and `lambda`.
 
 **T13 — `import` over a closed module set** ⚠HASH
 
-Program identity becomes the hash of every file's bytes in sorted name order;
-circular imports are rejected at load.
+Program identity and circular imports follow **determinism rule 7** (CLAUDE.md),
+which Q13 extended when it ruled `import` in; this task is what makes the sim
+honour it. The rule is not restated here — one canonical statement, per
+[design-invariant DI1](../.claude/design-invariants.md).
 
 **T14 — Determinism suite for the language**
 

@@ -77,9 +77,26 @@ pass.
   Python's *surface syntax*, not CPython's semantics.
 - **The subset is broad (Q13).** Procedural Python — functions, control flow,
   collections, comprehensions, the expression grammar — plus `class`, `set`,
-  `match` and `import`. Excluded: generators (on implementation cost) and dynamic
+  `match` and `import`. Excluded: generators (implementation cost); dynamic
   reflection (permanently, since it defeats static analysis and makes the module
-  graph dynamic). Familiarity is the point of choosing Python at all, so the
+  graph dynamic); decorators, `with` and `async`/`await` (grammar for use cases a
+  unit program does not have); nested `def`, `global` and `nonlocal`, which
+  removes closure capture as a question while leaving `lambda` and methods in a
+  `class` body; multiple inheritance; and floats, which Q14 owns and rule 2
+  forbids in state-affecting paths anyway. `try`/`except` is **deferred to Q8**,
+  not excluded.
+
+  Three additions are only deterministic once we diverge from Python, and these
+  are normative: **`set` iterates in insertion order** (and its operators
+  preserve that order — without this, `set` is a rule-3 violation wearing
+  familiar syntax); **`import` resolves within a closed module set**, which makes
+  a program a bundle of named files hashed in sorted name order (determinism rule
+  7) with circular imports rejected at load; and **`class` dispatches a closed
+  dunder set**, named in `docs/01`, since an open-ended dunder protocol is an
+  open-ended determinism surface. `match` needs no divergence: arms are tested
+  top to bottom, which is Python's rule already.
+
+  Familiarity is the point of choosing Python at all, so the
   divergence list, not the exclusion list, is what a player has to read. **This
   boundary depends on Q11 clearing all variables on a hot-swap** — if a swap ever
   resumes instead, `class` starts carrying live state across it and the boundary
@@ -107,11 +124,9 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 ## Where to go next
 
-[QUESTIONS.md](QUESTIONS.md) holds what is still open, in dependency order.
-**`01` waits on Q8 (faults), Q11 (hot-swap) and Q14 (the number model)**, and
-none of the three can be discovered during implementation: Q14 changes what the
-parser accepts, Q8 decides whether `try`/`except` exists to be parsed at all,
-and Q11 is what keeps Q13's boundary sound. Q14 is the last of them in
-dependency order — which is not the same as being the only one. Q6 (tick rate)
-came unblocked when the language spike showed interpretation cost is not what
-bounds it.
+[QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
+numbering is append-only, so it is not a reading order. The table above is the
+map from question to doc. **`01` waits on all three of the questions that table
+names for it, not on the last one alone** — the single-blocker misreading has
+happened, which is why the count is worth repeating even though the numbers
+themselves are one section up.

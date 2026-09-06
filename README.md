@@ -30,3 +30,4 @@ in `rust-toolchain.toml`.
 | `docs/history/` | Closed records: one file per answered question, fixed problem, completed task, triaged note |
 | `spikes/` | Standalone experiments answering a design question; not part of the build |
 | `.githooks/` | Pre-commit gate: file size, then the fast checks. Installed via `scripts/install-hooks.sh` |
+| `.claude/` | [design-invariants.md](.claude/design-invariants.md) — properties the corpus must have, and how to check each |

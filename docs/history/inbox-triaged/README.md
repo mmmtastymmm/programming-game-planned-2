@@ -3,8 +3,9 @@
 # Triaged inbox entries
 
 **One file per triaged observation**, named for its number:
-`inbox-triaged-0007.md` would hold I7 and nothing else. Nothing is triaged yet,
-so this directory holds only this file.
+`inbox-triaged-0007.md` would hold `I7` and nothing else. The filename is the
+index — `ls` is the table of contents, so nothing here restates what this
+directory holds.
 
 Each file carries the observation as it was written — unedited, because the
 wording someone reached for under time pressure is often the useful part — and an

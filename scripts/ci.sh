@@ -57,6 +57,8 @@ run_docs() {
   if [ "$ROOT" = "." ]; then
     step "no file over the size cap, in the index or the history"
     scripts/check-file-size.sh repo || FAILED+=("file size")
+  else
+    step "file size (skipped: needs the repo, not an extracted index)"
   fi
 
   step "relative links and line citations resolve"
