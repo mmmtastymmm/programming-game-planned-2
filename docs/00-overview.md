@@ -99,26 +99,44 @@ pass.
   top to bottom, which is Python's rule already.
 
   Familiarity is the point of choosing Python at all, so the
-  divergence list, not the exclusion list, is what a player has to read. **This
-  boundary depends on Q11 clearing all variables on a hot-swap** — if a swap ever
-  resumes instead, `class` starts carrying live state across it and the boundary
-  reopens. The number model is Q14.
+  divergence list, not the exclusion list, is what a player has to read. This
+  boundary is sound because a hot-swap clears all variables, which Q11 made so;
+  a swap that ever resumed instead would reopen it. The number model is Q14.
 - **An uncaught exception is an interrupt (Q8).** A unit runs in main flow
   until an interrupt is delivered. A handler is a locked system prologue, the
   player's code, then a locked system epilogue that runs unconditionally —
   whether the player's code returned, faulted, ran out of budget, or was
   preempted. Interrupt kinds are a closed, totally ordered set, and higher
   priority always takes effect: the preempted handler is abandoned, never
-  resumed, so there is no handler stack. Two kinds exist. `death`, the highest,
-  is raised by the world, and its epilogue removes the unit. `fault` is an
-  exception nothing caught; its handler `on_fault(e)` runs to completion and
-  its epilogue restarts main flow from the top with all variables cleared. A
-  unit with no `on_fault` halts, visibly, until the next redeploy — there is no
-  system default. A fault inside `on_fault` escalates to `death`; a fault inside
-  `on_death` is absorbed. `try`/`except`/`raise` are in, Python-shaped. Nothing
-  resumes across an interrupt, which is what keeps Q13's boundary intact;
-  pushed world events, which would resume, are Q16. The mechanism is
-  `docs/01`'s; what each prologue and epilogue does is `docs/02`'s.
+  resumed, so there is no handler stack. The kinds, highest first, are `death`
+  and `dying` (Q17), `fault` (this ruling) and `redeploy` (Q11). `fault` is an
+  exception nothing caught; its hook `on_fault(e)` runs to completion and its
+  epilogue restarts main flow from the top with all variables cleared. A unit
+  with no `on_fault` halts, visibly, until the next redeploy — there is no
+  system default. A fault inside `on_fault` escalates to `dying`.
+  `try`/`except`/`raise` are in, Python-shaped. Nothing resumes across an
+  interrupt, which is what keeps Q13's boundary intact; pushed world events,
+  which would resume, are Q16. The mechanism is `docs/01`'s; what each prologue
+  and epilogue does is `docs/02`'s.
+- **Death is two kinds, and every hook has a budget (Q17).** `dying` is where
+  last words live: its hook `on_dying()` may act within what `docs/02` allows,
+  and its epilogue raises `death`. `death` has no hook — prologue, epilogue,
+  and the unit leaves the world — so nothing the player writes can delay or
+  handle it. The world raises `dying` in the ordinary case and `death` directly
+  when things are bad enough; which causes are which is `docs/02`'s list. Every
+  hook — a handler's player code — has a total operation budget per invocation,
+  a tuning constant `docs/01` pins; exhausting it abandons the code and runs the
+  epilogue. So a handler holds off a lower-priority interrupt by at most its
+  budget, and a fault inside `on_dying` is absorbed.
+- **A redeploy is an interrupt (Q11)** — the lowest kind, `redeploy`, below
+  `fault`, and the one with no player hook. The role's program slot changes on
+  the tick Q12 agrees; each unit takes the interrupt at its own next operation
+  boundary, and the boundary before the first operation counts. The epilogue is
+  the swap: the unit takes its role's current program, every variable is
+  cleared, and main flow restarts from the top. A unit inside a handler finishes
+  that handler first, which Q17's hook budget bounds; a halted unit takes the
+  swap at the start of its next slice. Nothing survives a swap, which
+  discharges the dependency Q13's boundary carried.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -130,7 +148,7 @@ inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | Q11, Q14 |
+| `01` | The unit language — syntax, execution model, cost model | Q14 |
 | `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | — |
@@ -144,7 +162,7 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01` waits on both of the questions that table
-names for it, not on the last one alone** — the single-blocker misreading has
-happened, which is why the count is worth repeating even though the numbers
-themselves are one section up.
+map from question to doc. **`01` waits on Q14, and now genuinely on Q14
+alone** — earlier passes misread it as the single blocker while Q8 and Q11 were
+still open, which is why the table above, not this sentence, is the authority
+on what blocks what.

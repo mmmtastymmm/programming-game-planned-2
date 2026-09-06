@@ -26,9 +26,10 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-06.** Q1 through Q5 are answered, and Q8 and Q13 with them.
-Every other number this file has issued is still undecided, and each one is
-below under **Open**. Those rulings are owned by
+**Status 2026-09-06.** Q1 through Q5 are answered, and Q8, Q11, Q13 and Q17
+with them — Q17 was opened and answered in one commit, as the amendment to Q8
+that the history rules require to be a new number. Every other number this
+file has issued is still undecided, and each one is below under **Open**. Those rulings are owned by
 [00-overview.md](00-overview.md)'s Decided section and are not repeated here;
 each worksheet is a file of its own in
 [history/questions-answered/](history/questions-answered/README.md), and the
@@ -39,12 +40,9 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**`docs/01` waits on Q11 and Q14** — Q14 last of the two in dependency order,
-which is not the same as being the only one. Q11 carries a live dependency on
-Q13 and a constraint from Q8, and states both in its own entry below rather than
-here: what this block owns is only that the two pull the same way. Q11's answer
-can reopen Q13's boundary, and it can make a redeploy recover differently from a
-fault, which Q8's ruling fixed for faults.
+**`docs/01` waits on Q14 alone.** The other two blockers, Q8 and Q11, moved to
+history on 2026-09-06, so the single-blocker reading that earlier status blocks
+warned against is simply true now, and the overview's table says the same.
 
 ## Open
 
@@ -102,41 +100,14 @@ else* does, and it decides how many categories of command the netcode carries.
 | Plus match-control only (resign, agreed draw) | Keeps every sim-affecting input a program update while remaining playable. A second command category with different rules is a permanent small complication. |
 | Plus spectator-visible annotations | Nice for streaming and teaching. Anything visible risks becoming load-bearing, and then it is unit-level live input by another name — which Q3 forbids. |
 
-**Q11 — What happens to a unit mid-execution when its program is swapped?**
-
-Q3 permits the swap; this decides what it does to fifty units that are
-each somewhere in the middle of the old program. Every option below changes the
-state hash, so this cannot be discovered during implementation.
-
-**Q13 depends on the answer.** Its broad subset — `class`, and any later
-admission of generators — is sound *because* a swap clears all variables, so
-nothing survives it in a half-valid state. Choosing any option here that
-**resumes** rather than clears reopens Q13's boundary. The leaning is therefore
-to clear, and this note exists so that choosing otherwise is a deliberate act
-rather than an oversight.
-
-**Q8 adds a constraint from the other side.** A fault already restarts main
-flow from the top with all variables cleared (its rule 1); a redeploy that
-resumed would make fault recovery and redeploy diverge, and a player would have
-to learn two recovery models. Clearing is now also the consistent choice.
-
-| Option | What it costs |
-|---|---|
-| Restart from the top, clearing all variables | Trivially defined, easy to explain, the option Q13's boundary assumes, and what Q8 already does after a fault. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
-| Resume at the same instruction offset | Feels continuous, and is meaningless the moment the edit changes the program's shape — offset 12 of the new text is not the old offset 12. |
-| Resume at a named re-entry point the program declares | Predictable and authorable, and gives the player real control over patch cost. Requires the language to carry the concept, which is outside Q13's boundary and would be a widening under a new number. |
-| Finish the current action, then restart | A compromise that keeps in-flight work. "Current action" must then be a precisely defined boundary in the sim, which is a rule-7-grade specification burden. |
-
-Whatever wins must also say what happens to a unit's **local state** — variables,
-accumulated position in a loop — across the swap. Discarding it is simple;
-preserving it means the new program must be type-compatible with the old one's
-state, which is a language decision, not a sim decision.
-
 **Q12 — How is a program update scheduled in lockstep?**
 
 The player presses deploy at some wall-clock moment; every peer must apply the
 update on the *same tick*. The standard answer is to agree it for a future tick,
-far enough ahead that every peer holds it in time.
+far enough ahead that every peer holds it in time. Q11 fixed what *applying*
+means — the role's program slot changes on the agreed tick, and each unit takes
+the `redeploy` interrupt at its next operation boundary — so what this question
+owns is the tick.
 
 | Option | What it costs |
 |---|---|
@@ -195,12 +166,14 @@ shape the sim has to offer deliberately.
 
 Q8 built the interrupt mechanism — a locked prologue, the player's code, a
 locked epilogue; a closed priority set; preemption that abandons the preempted
-handler — and scoped it to two kinds, `fault` and `death`, neither of which
-resumes anything. Pushed world events (damage taken, enemy sighted, low energy)
-fit the same mechanism, but a unit would expect to *resume* main flow after
-handling one, and that is a suspended frame carrying live state across the
-interrupt: the case Q13's boundary and Q11 are both careful about. Whether
-events exist at all is also a sensing decision, so this is coupled to Q7.
+handler — with two kinds, `fault` and `death`; Q11 added `redeploy` below
+them and Q17 split death into `dying` and `death`. None of the four resumes
+anything. Pushed world events (damage taken,
+enemy sighted, low energy) fit the same mechanism, but a unit would expect to
+*resume* main flow after handling one, and that is a suspended frame carrying
+live state across the interrupt: the case Q13's boundary assumes away and Q11
+declined to introduce. Whether events exist at all is also a sensing decision,
+so this is coupled to Q7.
 
 | Option | What it costs |
 |---|---|
@@ -210,4 +183,5 @@ events exist at all is also a sensing decision, so this is coupled to Q7.
 | Events are queued values that main flow drains itself | No preemption at all: the program reads a queue when it chooses. Deterministic and simple, and not an interrupt — latency is whatever the program's loop is, and an unread queue needs a bound and a drop rule. |
 
 Whatever wins has to say which events exist and their priorities relative to
-`fault` and `death`, which is `docs/02`'s list and Q7's sensing model.
+`death`, `dying`, `fault` and `redeploy`, which is `docs/02`'s list and Q7's
+sensing model.

@@ -17,7 +17,7 @@ scaffolding and the determinism gate are ported from the predecessor project
 Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
 unit-language crate is ruled in — Q5 and Q13, whose rulings
 [docs/00-overview.md](docs/00-overview.md)'s Decided section owns and this file
-does not repeat — but unbuilt, pending Q11 and Q14. A renderer crate is
+does not repeat — but unbuilt, pending Q14. A renderer crate is
 open — Q15. Neither is needed for the determinism gate to be real.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
