@@ -85,8 +85,8 @@ pass.
   unit program does not have); nested `def`, `global` and `nonlocal`, which
   removes closure capture as a question while leaving `lambda` and methods in a
   `class` body; multiple inheritance; and floats, which Q14 owns and rule 2
-  forbids in state-affecting paths anyway. `try`/`except` is **deferred to Q8**,
-  not excluded.
+  forbids in state-affecting paths anyway. `try`/`except` was deferred to Q8,
+  which admits it — see that bullet.
 
   Three additions are only deterministic once we diverge from Python, and these
   are normative: **`set` iterates in insertion order** (and its operators
@@ -103,6 +103,22 @@ pass.
   boundary depends on Q11 clearing all variables on a hot-swap** — if a swap ever
   resumes instead, `class` starts carrying live state across it and the boundary
   reopens. The number model is Q14.
+- **An uncaught exception is an interrupt (Q8).** A unit runs in main flow
+  until an interrupt is delivered. A handler is a locked system prologue, the
+  player's code, then a locked system epilogue that runs unconditionally —
+  whether the player's code returned, faulted, ran out of budget, or was
+  preempted. Interrupt kinds are a closed, totally ordered set, and higher
+  priority always takes effect: the preempted handler is abandoned, never
+  resumed, so there is no handler stack. Two kinds exist. `death`, the highest,
+  is raised by the world, and its epilogue removes the unit. `fault` is an
+  exception nothing caught; its handler `on_fault(e)` runs to completion and
+  its epilogue restarts main flow from the top with all variables cleared. A
+  unit with no `on_fault` halts, visibly, until the next redeploy — there is no
+  system default. A fault inside `on_fault` escalates to `death`; a fault inside
+  `on_death` is absorbed. `try`/`except`/`raise` are in, Python-shaped. Nothing
+  resumes across an interrupt, which is what keeps Q13's boundary intact;
+  pushed world events, which would resume, are Q16. The mechanism is
+  `docs/01`'s; what each prologue and epilogue does is `docs/02`'s.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -114,7 +130,7 @@ inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | Q8, Q11, Q14 |
+| `01` | The unit language — syntax, execution model, cost model | Q11, Q14 |
 | `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | — |
@@ -128,7 +144,7 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01` waits on all three of the questions that table
+map from question to doc. **`01` waits on both of the questions that table
 names for it, not on the last one alone** — the single-blocker misreading has
 happened, which is why the count is worth repeating even though the numbers
 themselves are one section up.

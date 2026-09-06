@@ -49,29 +49,35 @@ that being the hash-affecting path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T8 — Answer Q8, Q11 and Q14, then write `docs/01`**
+**T8 — Answer Q11 and Q14, then write `docs/01`**
 
-None of the three can be discovered during implementation; the reason for each
-is with the question, in [QUESTIONS.md](QUESTIONS.md), and is deliberately not
-repeated here.
+Neither can be discovered during implementation; the reason for each is with
+the question, in [QUESTIONS.md](QUESTIONS.md), and is deliberately not repeated
+here.
 
-Q8 and Q11 fall inside T9's sweep, so that much of T9 lands first — the
-sequencing is recorded here because reading T8 alone once suggested Q14 was the
-only thing in the way.
+Q11 falls inside T9's sweep, so that much of T9 lands first — the sequencing is
+recorded here because reading T8 alone once suggested Q14 was the only thing in
+the way.
 
-Two things `docs/01` must pin that no open question owns, recorded here so they
-are not left to the implementation:
+Three things `docs/01` must pin that no open question owns, recorded here so
+they are not left to the implementation:
 
 - **Every interpreter limit is spec, not a build default** — recursion depth,
-  the per-tick operation budget, and the size of every collection, including
-  `range`, which Q13 made eager. The language spike found Rhai's recursion limit
+  the per-tick operation budget, the size of every collection, including
+  `range`, which Q13 made eager, and the pending-interrupt set, which Q8 bounded
+  at one entry per kind. The language spike found Rhai's recursion limit
   differing between debug and release builds, a desync produced by a build flag,
   and owning the interpreter (Q5) removes the dependency, not the hazard.
 - **`isinstance` is the one permitted type query.** Q13 admits it as a builtin
   and excludes introspection in the same ruling; `docs/01` states the line so
   the two cannot be read against each other.
+- **The interrupt mechanism, as Q8 ruled it** — the two modes; prologue, player
+  code and unconditional epilogue; the priority order over the closed kind set;
+  preemption abandoning the preempted handler; delivery points; coalescing; the
+  halt state; and the exact shape of the value `on_fault` receives. The rules
+  are in Q8's file; `docs/01` is where they become spec.
 
-**T9 — Answer Q6–Q12 and Q15, then write the numbered docs they unblock**
+**T9 — Answer Q6, Q7, Q9–Q12 and Q15, then write the numbered docs they unblock**
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
