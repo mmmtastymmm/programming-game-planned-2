@@ -26,9 +26,9 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-08-23.** Q1 through Q5 are answered, and Q13 with them. Every
-other number this file has issued is still undecided, and each one is below
-under **Open**. Those rulings are owned by
+**Status 2026-09-06.** Q1 through Q5 are answered, and Q8 and Q13 with them.
+Every other number this file has issued is still undecided, and each one is
+below under **Open**. Those rulings are owned by
 [00-overview.md](00-overview.md)'s Decided section and are not repeated here;
 each worksheet is a file of its own in
 [history/questions-answered/](history/questions-answered/README.md), and the
@@ -39,13 +39,12 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**`docs/01` waits on Q8, Q11 and Q14** — Q14 last of the three in dependency
-order, which is not the same as being the only one. Q8 and Q11 each carry a live
-dependency on Q13, and each states it in its own entry below rather than here:
-what this block owns is the *shape* of the two, which is that they point opposite
-ways. Q11's answer can reopen Q13's boundary; Q13's answer has already narrowed
-Q8's. Q8 also owns whether `try`/`except` is in the grammar at all, which
-`docs/01` cannot specify around.
+**`docs/01` waits on Q11 and Q14** — Q14 last of the two in dependency order,
+which is not the same as being the only one. Q11 carries a live dependency on
+Q13 and a constraint from Q8, and states both in its own entry below rather than
+here: what this block owns is only that the two pull the same way. Q11's answer
+can reopen Q13's boundary, and it can make a redeploy recover differently from a
+fault, which Q8's ruling fixed for faults.
 
 ## Open
 
@@ -82,19 +81,6 @@ its ordering are one decision, not two.
 | Shared fleet vision | One visibility set per player rather than per unit. Cheaper to hash, and makes the fleet feel like one organism rather than many agents. |
 | Explicit sensors as equipment | Sensing becomes a build choice with costs and trade-offs. Most design surface, most tuning, most to get wrong. |
 
-**Q8 — What happens when a program faults?**
-
-Q2's failure mode is "one bad program, fifty dead units". Q3 softens it — the
-player can patch mid-match — but that makes the *diagnosis* path matter as much
-as the failure semantics: a fault the player cannot see is a fault they cannot fix.
-
-| Option | What it costs |
-|---|---|
-| Hard fault — the unit stops dead | Brutal, legible, teaches fast. Fifty stopped units is a dramatic and readable signal to patch. |
-| Fault, then fall back to a default behavior | Forgiving, keeps a match alive. The fallback becomes a hidden second program every player must learn, and masks the signal that something is wrong. |
-| Faults are values — the program handles them | Most expressive and most in the spirit of a programming game. Requires an error model in the language from day one — Q13 deferred `try`/`except` here rather than ruling on it, so this option is what would admit it. |
-| Static rejection — programs that can fault do not compile | Strongest guarantee a player can rely on. Demands real analysis in the toolchain, and a slow compile is punishing when editing under fire (Q3). **Q13 made this materially harder**: with user-defined classes and duck-typed attribute access, `x.foo()` needs type inference to check statically even though reflection is excluded. |
-
 **Q9 — Where do units come from?**
 
 Fixed roster at match start, or produced during it.
@@ -129,9 +115,14 @@ nothing survives it in a half-valid state. Choosing any option here that
 to clear, and this note exists so that choosing otherwise is a deliberate act
 rather than an oversight.
 
+**Q8 adds a constraint from the other side.** A fault already restarts main
+flow from the top with all variables cleared (its rule 1); a redeploy that
+resumed would make fault recovery and redeploy diverge, and a player would have
+to learn two recovery models. Clearing is now also the consistent choice.
+
 | Option | What it costs |
 |---|---|
-| Restart from the top, clearing all variables | Trivially defined, easy to explain, and the option Q13's boundary assumes. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
+| Restart from the top, clearing all variables | Trivially defined, easy to explain, the option Q13's boundary assumes, and what Q8 already does after a fault. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
 | Resume at the same instruction offset | Feels continuous, and is meaningless the moment the edit changes the program's shape — offset 12 of the new text is not the old offset 12. |
 | Resume at a named re-entry point the program declares | Predictable and authorable, and gives the player real control over patch cost. Requires the language to carry the concept, which is outside Q13's boundary and would be a widening under a new number. |
 | Finish the current action, then restart | A compromise that keeps in-flight work. "Current action" must then be a precisely defined boundary in the sim, which is a rule-7-grade specification burden. |
@@ -168,7 +159,7 @@ not available to us.
 
 | Option | What it costs |
 |---|---|
-| Fixed-width `i64`, overflow faults | One number type, no surprises, and overflow is a legible in-game failure. The fault is hash-affecting, so the fault *boundary* becomes spec (Q8). |
+| Fixed-width `i64`, overflow faults | One number type, no surprises, and overflow is a legible in-game failure. Q8 already makes it a `fault` interrupt delivered at the overflowing operation, so the boundary is spec. |
 | Fixed-width `i64`, overflow wraps | Never faults, never surprises the sim. Silently wrong answers are worse than loud ones in a language players debug under time pressure. |
 | Arbitrary-precision integers | No overflow to specify at all, and deterministic. Unbounded memory and time per operation, which fights the per-tick cost model Q5 chose to own. |
 | Fixed-point rationals for fractional values | Makes division expressible without floats. A second numeric type, and every mixed-type operation is a rule someone has to remember. |
@@ -199,3 +190,24 @@ Also to settle here: whether the renderer runs in the sim's process at all, and
 what it is allowed to read. A renderer that samples state mid-tick sees a torn
 world; one that reads only a completed tick's snapshot does not, and that is a
 shape the sim has to offer deliberately.
+
+**Q16 — Event interrupts: do world events dispatch to handlers, and what resumes afterwards?**
+
+Q8 built the interrupt mechanism — a locked prologue, the player's code, a
+locked epilogue; a closed priority set; preemption that abandons the preempted
+handler — and scoped it to two kinds, `fault` and `death`, neither of which
+resumes anything. Pushed world events (damage taken, enemy sighted, low energy)
+fit the same mechanism, but a unit would expect to *resume* main flow after
+handling one, and that is a suspended frame carrying live state across the
+interrupt: the case Q13's boundary and Q11 are both careful about. Whether
+events exist at all is also a sensing decision, so this is coupled to Q7.
+
+| Option | What it costs |
+|---|---|
+| No events — programs poll the world | Q8's property survives untouched: nothing ever resumes. Every reaction is a poll in main flow, paid for in budget every tick whether anything happened or not. |
+| Events resume main flow where it was interrupted | The natural reading of an interrupt. Main flow becomes a suspended frame across a handler, so a handler that touches the same variables races with it — a rule set of its own, and the one Q13's boundary assumed away. |
+| Events restart main flow from the top, like a fault | Keeps Q8's no-resumption property: an event handler is a fault handler with a different epilogue. A unit mid-task loses the task every time anything happens, which may make events unusable for anything frequent. |
+| Events are queued values that main flow drains itself | No preemption at all: the program reads a queue when it chooses. Deterministic and simple, and not an interrupt — latency is whatever the program's loop is, and an unread queue needs a bound and a drop rule. |
+
+Whatever wins has to say which events exist and their priorities relative to
+`fault` and `death`, which is `docs/02`'s list and Q7's sensing model.
