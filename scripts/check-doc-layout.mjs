@@ -16,12 +16,20 @@
 // expensive way to check a mechanical property.
 //
 // SCOPE: doorways (docs/NN-name.md) and the registers are exempt — they have no
-// parent to point at. Only files one level down inside a doc directory are
-// checked, and docs/history/ is skipped: it holds closed records that are
-// deliberately kept as they were received.
+// parent to point at. Every OTHER .md under docs/ is checked, at any depth, and
+// docs/history/ is skipped: it holds closed records that are deliberately kept
+// as they were received.
+//
+// Depth matters. Discovery used to stop one level down, which is not what the
+// convention describes: CLAUDE.md's split is Rust-module style, and Rust modules
+// nest. A part at docs/01-language/runtime/vm.md was never opened — and, worse,
+// never counted, so the run reported "✓ 1 part files" while silently skipping
+// one. A doc directory holding only subdirectories produced an affirmatively
+// false "no split docs yet". A nested part names its immediate parent doorway
+// (runtime/vm.md points at ../runtime.md), which check-links then resolves.
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
+import { join, basename } from "node:path";
 
 const root = process.argv[2] ?? "docs";
 if (!existsSync(root)) {
@@ -42,30 +50,41 @@ if (corpus.length === 0) {
   process.exit(2);
 }
 
-for (const entry of readdirSync(root, { withFileTypes: true })) {
-  if (!entry.isDirectory() || entry.name === "history") continue;
-  const dir = join(root, entry.name);
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith(".md")) continue;
-    const file = join(dir, f);
-    const lines = readFileSync(file, "utf8").split("\n");
+/** Every part file under a doc directory, at any depth. */
+function checkDir(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      checkDir(full);
+      continue;
+    }
+    if (!entry.name.endsWith(".md")) continue;
+    const lines = readFileSync(full, "utf8").split("\n");
     checked++;
 
-    const want = `*Part of [${entry.name}](../${entry.name}.md).*`;
+    // The doorway a part points at is its IMMEDIATE parent directory, so this
+    // reads the same at any depth.
+    const parent = basename(dir);
+    const want = `*Part of [${parent}](../${parent}.md).*`;
     if (lines[0] !== want) {
       const where = lines.findIndex((l) => l.startsWith("*Part of "));
       problems.push(
         where === -1
-          ? `${file}:1  no breadcrumb — expected ${want}`
-          : `${file}:1  breadcrumb is on line ${where + 1}, not line 1` +
+          ? `${full}:1  no breadcrumb — expected ${want}`
+          : `${full}:1  breadcrumb is on line ${where + 1}, not line 1` +
             (lines[where] === want ? "" : `, and reads ${lines[where]}`),
       );
       continue;
     }
     if (!(lines[1] === "" && lines[2]?.startsWith("# "))) {
-      problems.push(`${file}:3  expected a blank line then the H1 under the breadcrumb`);
+      problems.push(`${full}:3  expected a blank line then the H1 under the breadcrumb`);
     }
   }
+}
+
+for (const entry of readdirSync(root, { withFileTypes: true })) {
+  if (!entry.isDirectory() || entry.name === "history") continue;
+  checkDir(join(root, entry.name));
 }
 
 if (problems.length) {

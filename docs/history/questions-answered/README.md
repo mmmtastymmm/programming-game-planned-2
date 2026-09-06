@@ -22,7 +22,7 @@ Every cited number must be a real register entry, and every bullet must carry
 something to resolve — a bare `- **Docs:**` with no links asserts a propagation
 that may never have happened, which is the state this section exists to catch.
 
-Two of the three is normal: a ruling that lands in a Decided section often also
+Two is normal: a ruling that lands in a Decided section often also
 creates work. Zero is not allowed, and that is the point. A ruling recorded here
 but never propagated to the doc that owns it leaves the stalest text in the
 corpus sitting in the most authoritative-looking place, where reading passes skim

@@ -32,11 +32,13 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**Q14 is the last thing `docs/01` waits on.** Two of the open questions below
-carry live dependencies on Q13: **Q11** must clear variables on a
-hot-swap or Q13's boundary reopens, and **Q8**'s static-rejection option got
-harder rather than easier, because classes and duck-typed attribute access need
-type inference to analyse even with no reflection in the language.
+**`docs/01` waits on Q8, Q11 and Q14** — Q14 last of the three in dependency
+order, which is not the same as being the only one. Q8 and Q11 below each carry
+a live dependency on Q13: **Q11** must clear variables on a hot-swap or Q13's
+boundary reopens, and **Q8**'s static-rejection option got harder rather than
+easier, because classes and duck-typed attribute access need type inference to
+analyse even with no reflection in the language. Q8 also owns whether
+`try`/`except` is in the grammar at all, which `docs/01` cannot specify around.
 
 ## Open
 

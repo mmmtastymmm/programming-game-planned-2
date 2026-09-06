@@ -57,6 +57,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { markdownFiles } from "./lib/md-files.mjs";
+import { stripFences } from "./lib/markdown.mjs";
 
 const root = process.argv[2] ?? "docs";
 if (!existsSync(root)) {
@@ -108,19 +109,34 @@ let bareCitations = 0;
 
 // A bare `:NN`, in backticks or in prose. With nothing bound, the number is
 // unresolvable to a reader too, so that is the finding rather than a skip.
-function checkBare(file, i, bound, n, shown) {
+function checkBare(file, i, bound, raw, shown) {
   bareCitations++;
   if (!bound) {
     problems.push(`${file}:${i + 1}  bare citation names no file  ${shown}`);
     return;
   }
-  checkCitation(file, i, bound.dest, n, `${bound.shown}${shown}`);
+  checkCitation(file, i, bound.dest, raw, `${bound.shown}${shown}`);
 }
 
 // One citation, wherever its number came from. `bound` is the file a following
 // bare `:NN` resolves against, so the checks below stay in source order.
-function checkCitation(file, i, dest, n, shown) {
+//
+// `raw` is the digits AS WRITTEN, never a Number. Every citation shape captures
+// `(\d+)`, which happily matches "0" and "012" — and the range guard used to
+// test only the upper bound, so `:0` indexed lines[-1] and threw a TypeError
+// that aborted the whole scan, leaving every file sorted after it unchecked. A
+// leading zero was worse than a crash: `Number("012")` is 12, so the citation
+// silently pointed somewhere the writer never wrote.
+function checkCitation(file, i, dest, raw, shown) {
   citations++;
+  if (!/^[1-9][0-9]*$/.test(raw)) {
+    problems.push(
+      `${file}:${i + 1}  malformed line citation ${shown} — line numbers start at 1 ` +
+        `and carry no leading zero`,
+    );
+    return;
+  }
+  const n = Number(raw);
   const lines = linesOf(dest);
   if (n > lines.length) {
     problems.push(
@@ -132,17 +148,15 @@ function checkCitation(file, i, dest, n, shown) {
 }
 
 for (const file of markdownFiles(root).sort()) {
-  let inFence = false;
   let bound = null; // { dest, shown } — the last file named in this scope
 
-  readFileSync(file, "utf8")
-    .split("\n")
+  // Fenced lines arrive already blanked, by the SAME matcher the other checks
+  // use. This file used to carry its own parity toggle, so a fence shape that
+  // fooled one checker fooled a different set of lines here — and an
+  // unterminated fence silently ended the scan. lib/markdown.mjs owns the rule
+  // now, and check-structure reports the unterminated case.
+  stripFences(readFileSync(file, "utf8"))
     .forEach((rawLine, i) => {
-      if (/^\s*(```|~~~)/.test(rawLine)) {
-        inFence = !inFence;
-        return;
-      }
-      if (inFence) return;
       if (SCOPE_BREAK.test(rawLine)) bound = null;
 
       // Docs quote link syntax constantly — a register entry explaining why
@@ -181,7 +195,7 @@ for (const file of markdownFiles(root).sort()) {
           // `[path.md:NN](path.md)` — the number lives in the label, so nothing
           // else notices when it drifts off the end or onto a blank line.
           const cite = /:(\d+)\s*$/.exec(label);
-          if (cite) checkCitation(file, i, dest, Number(cite[1]), label);
+          if (cite) checkCitation(file, i, dest, cite[1], label);
           continue;
         }
 
@@ -198,14 +212,14 @@ for (const file of markdownFiles(root).sort()) {
               continue;
             }
             bound = { dest, shown: pathCite[1] };
-            if (pathCite[2]) checkCitation(file, i, dest, Number(pathCite[2]), ev.code);
+            if (pathCite[2]) checkCitation(file, i, dest, pathCite[2], ev.code);
             continue;
           }
 
           // `:NN` in backticks — nearest preceding citation wins.
           const bare = BARE_CITE.exec(ev.code);
           if (bare) {
-            checkBare(file, i, bound, Number(bare[1]), `:${bare[1]}`);
+            checkBare(file, i, bound, bare[1], `:${bare[1]}`);
             continue;
           }
           // A span that carries a `:NN` but matches NEITHER shape — `see :24`,
@@ -227,7 +241,7 @@ for (const file of markdownFiles(root).sort()) {
         // The same thing written in running prose: "the same entry's rationale
         // at :24". Identical rule, and it has to be, or the shape a writer
         // reaches for decides whether the number is checked.
-        checkBare(file, i, bound, Number(ev.prose[1]), `:${ev.prose[1]}`);
+        checkBare(file, i, bound, ev.prose[1], `:${ev.prose[1]}`);
       }
     });
 }

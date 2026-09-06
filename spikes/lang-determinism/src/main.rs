@@ -95,7 +95,7 @@ out += (7 / 2).to_string() + "," + (-7 / 2).to_string() + ",";
 out += (7 % 3).to_string() + "," + (-7 % 3).to_string();
 out += "|";
 
-// Sort with many ties, then a custom comparator.
+// Sort with many ties — where an unstable sort's tie order can differ.
 let a = [];
 let j = 0;
 while j < 40 { a.push((j * 7) % 5); j += 1; }

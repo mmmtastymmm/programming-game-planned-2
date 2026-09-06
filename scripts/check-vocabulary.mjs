@@ -28,7 +28,7 @@
 // present, no kind invented. It cannot check that the surrounding prose is
 // accurate, only that the vocabulary matches.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { MAX_BYTES, OUTCOME_KINDS, REGISTERS } from "./lib/registers.mjs";
 
@@ -49,13 +49,19 @@ const ALL_KINDS = Object.keys(OUTCOME_KINDS);
 let checks = 0;
 
 // ── Each history README enumerates exactly its register's Outcome kinds ─────
-for (const reg of REGISTERS.filter((r) => r.outcome)) {
+// EVERY register, not just the two with an Outcome contract. Filtering on
+// `r.outcome` meant problems-fixed/README.md and tasks-completed/README.md were
+// never opened at all — half the history READMEs this check exists to keep
+// honest — so an invented `- **Dropped:**` in either passed clean while the
+// identical line in questions-answered/ was correctly rejected. A README with no
+// contract is not a README with no rule: its rule is that it offers no kinds.
+for (const reg of REGISTERS) {
   const doc = read(join("docs", "history", reg.dir, "README.md"));
   if (!doc) continue;
   for (const kind of ALL_KINDS) {
     checks++;
     const mentioned = doc.text.includes(`**${kind}:**`);
-    const allowed = reg.outcome.includes(kind);
+    const allowed = (reg.outcome ?? []).includes(kind);
     if (allowed && !mentioned) {
       note(
         `${doc.path}  does not document the "${kind}:" outcome, which the checker ` +
@@ -64,8 +70,11 @@ for (const reg of REGISTERS.filter((r) => r.outcome)) {
     }
     if (!allowed && mentioned) {
       note(
-        `${doc.path}  documents the "${kind}:" outcome, which the checker rejects ` +
-          `for the ${reg.what} register`,
+        reg.outcome
+          ? `${doc.path}  documents the "${kind}:" outcome, which the checker rejects ` +
+              `for the ${reg.what} register`
+          : `${doc.path}  documents the "${kind}:" outcome, but the ${reg.what} register ` +
+              `has no Outcome section at all — the checker will never read it`,
       );
     }
   }
@@ -116,6 +125,31 @@ if (readme) {
   }
 }
 
+// ── The front door counts the doc checks correctly ──────────────────────────
+// README.md said "the four doc checks" while scripts/ held seven, and it drifted
+// inside the very commit that added three of them — two lines below the
+// "registers" count this file already guards. Same failure, same file, one row
+// down; the fix is to derive this number too rather than to correct it once.
+if (readme) {
+  const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+  const scriptsDir = join(root, "scripts");
+  const real = existsSync(scriptsDir)
+    ? readdirSync(scriptsDir).filter((f) => /^check-.*\.mjs$/.test(f)).length
+    : 0;
+  const want = WORDS[real] ?? String(real);
+  checks++;
+  const COUNT = new RegExp(`\\b(${WORDS.join("|")}|\\d+)\\s+doc checks\\b`, "i");
+  const m = real === 0 ? "skip" : COUNT.exec(readme.text);
+  if (real === 0) {
+    note(`${scriptsDir}  holds no check-*.mjs — cannot verify README.md's count of the doc checks`);
+  } else
+  if (!m) {
+    note(`README.md  does not say how many doc checks there are — expected "${want} doc checks"`);
+  } else if (m[1].toLowerCase() !== want) {
+    note(`README.md  says "${m[1].toLowerCase()} doc checks"; scripts/ holds ${real} (${want})`);
+  }
+}
+
 // ── history/README.md describes the answered-question file completely ───────
 const hist = read(join("docs", "history", "README.md"));
 if (hist) {
@@ -131,6 +165,13 @@ if (hist) {
     if (!hist.text.includes(`${reg.dir}/`)) {
       note(`${hist.path}  omits the ${reg.dir}/ directory`);
     }
+  }
+  // It states the cap by hand too, exactly as CLAUDE.md does, and only
+  // CLAUDE.md's copy was guarded.
+  checks++;
+  const capKb = `${MAX_BYTES / 1024} KB`;
+  if (!hist.text.includes(capKb)) {
+    note(`${hist.path}  does not state the size cap as "${capKb}" — the checker enforces that number`);
   }
 }
 

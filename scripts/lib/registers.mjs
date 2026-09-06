@@ -22,6 +22,7 @@ export const REGISTERS = [
     dir: "problems-fixed",
     filePrefix: "problem-fixed",
     status: "counted",
+    outcome: null,
   },
   {
     what: "questions",
@@ -40,6 +41,8 @@ export const REGISTERS = [
     live: "TASKS.md",
     dir: "tasks-completed",
     filePrefix: "task-completed",
+    status: null,
+    outcome: null,
   },
   {
     what: "inbox",
@@ -47,6 +50,7 @@ export const REGISTERS = [
     live: "INBOX.md",
     dir: "inbox-triaged",
     filePrefix: "inbox-triaged",
+    status: null,
     // `Dropped` exists here and nowhere else: an inbox that cannot absorb a
     // false alarm stops being cheap to write to, and then it goes unused.
     outcome: ["Docs", "Question", "Problem", "Task", "Dropped"],
@@ -61,3 +65,23 @@ export const OUTCOME_KINDS = {
   Docs: null,
   Dropped: null,
 };
+
+// ── Every field is declared, `null` where it does not apply ─────────────────
+// Both consumers gate on truthiness (`if (reg.outcome)`, `filter(r => r.status)`),
+// so an OMITTED key reads exactly like a deliberately disabled check. Deleting
+// `outcome` from the inbox register did not fail anything: it silently retired
+// the `Dropped` rule AND check-vocabulary's agreement check for it, behind three
+// green ticks and a fact count that quietly dropped by five. Requiring the key
+// turns that omission into a crash on import, which is the only outcome nobody
+// mistakes for a pass.
+const FIELDS = ["what", "prefix", "live", "dir", "filePrefix", "status", "outcome"];
+for (const reg of REGISTERS) {
+  for (const key of FIELDS) {
+    if (!(key in reg)) {
+      throw new Error(
+        `lib/registers.mjs: register "${reg.what ?? "?"}" omits "${key}" — declare every ` +
+          `field, using null where it does not apply; an absent key disables a check silently`,
+      );
+    }
+  }
+}

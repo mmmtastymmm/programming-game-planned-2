@@ -41,10 +41,15 @@ that being the hash-affecting path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T8 — Answer Q14, then write `docs/01`**
+**T8 — Answer Q8, Q11 and Q14, then write `docs/01`**
 
-Q14 changes what the parser accepts, so it cannot be discovered during
-implementation. It is the last thing `docs/01` waits on.
+None of the three can be discovered during implementation: Q14 changes what the
+parser accepts, Q8 decides whether `try`/`except` is in the grammar, and Q11 is
+what keeps Q13's boundary sound. Q14 is the last of them in dependency order.
+
+Q8 and Q11 fall inside T9's sweep, so that much of T9 lands first — the
+sequencing is recorded here because reading T8 alone once suggested Q14 was the
+only thing in the way.
 
 **T9 — Answer Q6–Q12 and write the numbered docs they unblock**
 

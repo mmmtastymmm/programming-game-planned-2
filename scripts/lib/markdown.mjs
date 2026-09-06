@@ -6,17 +6,48 @@
  *
  * This corpus documents its own formats constantly, so a doc quoting
  * "# T99 — illustration" inside a fence must not read as a register entry, and a
- * fenced table must not be checked as a table. Returns an array of lines.
+ * fenced table must not be checked as a table.
+ *
+ * Returns `{ lines, unterminated }`. It MATCHES fences rather than counting
+ * them, and it reports an unclosed one, because the earlier bare parity toggle
+ * failed open in the worst possible direction: one odd marker blanked the whole
+ * rest of the file, and check-structure, check-registers and check-links each
+ * went on printing their unchanged ✓ counts over a corpus they could no longer
+ * see. No forgotten fence was even required. A `~~~text` block quoting the act
+ * of opening a ```mermaid fence is three markers — odd — and a ````markdown
+ * block containing ``` inverted the toggle instead, making quoted example
+ * content live. CommonMark's actual rules close both holes: a fence closes only
+ * on the SAME character, at least as long as the opener, with nothing after it.
  */
-export function stripFences(text) {
-  let open = false;
-  return text.split("\n").map((line) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      open = !open;
-      return "";
+export function scanFences(text) {
+  // The info string is m[2]. A backtick fence may not carry a backtick in it —
+  // that is CommonMark's rule, and it is what keeps a lone `` `x` `` span in
+  // running prose from ever reading as an opener.
+  const FENCE = /^\s*(`{3,}|~{3,})(.*)$/;
+  let open = null; // { char, len, line }
+  const lines = text.split("\n").map((line, i) => {
+    const m = FENCE.exec(line);
+    if (m) {
+      const char = m[1][0];
+      const len = m[1].length;
+      if (!open) {
+        if (!(char === "`" && m[2].includes("`"))) {
+          open = { char, len, line: i + 1 };
+          return "";
+        }
+      } else if (char === open.char && len >= open.len && m[2].trim() === "") {
+        open = null;
+        return "";
+      }
     }
     return open ? "" : line;
   });
+  return { lines, unterminated: open };
+}
+
+/** Just the blanked lines. Callers that report the unterminated case use scanFences. */
+export function stripFences(text) {
+  return scanFences(text).lines;
 }
 
 /**

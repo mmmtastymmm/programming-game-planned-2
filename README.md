@@ -26,7 +26,7 @@ Node 20+ is needed for the doc checks; the Rust toolchain is pinned in
 |---|---|
 | `docs/` | The design corpus, plus the four registers — questions, problems, tasks, inbox |
 | `crates/sim/` | Deterministic world simulation. Placeholder model, real determinism gate |
-| `scripts/` | CI entry point and the four doc checks |
+| `scripts/` | CI entry point and the seven doc checks (`check-*.mjs`) |
 | `docs/history/` | Closed records: one file per answered question, fixed problem, completed task, triaged note |
 | `spikes/` | Standalone experiments answering a design question; not part of the build |
 | `.githooks/` | Pre-commit doc gate, installed via `scripts/install-hooks.sh` |

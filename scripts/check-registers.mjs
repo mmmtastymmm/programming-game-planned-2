@@ -105,20 +105,48 @@ function liveEntries(path, prefix) {
  * starts at column 0 swallows nested bullets as prose, so their kind is never
  * validated and their citations never resolve. Both holes shipped before this
  * was written as one loop.
+ *
+ * A THIRD hole shipped after that: the start pattern demanded the colon inside
+ * the bold and exactly one space after the list marker, so a near miss —
+ * `- **Task**: T4242`, or `-   **Task:** …` — matched nothing, got absorbed by
+ * the continuation loop as prose belonging to the bullet above, and had its
+ * kind unvalidated and its citations unresolved. It needed only one well-formed
+ * bullet above it, and CLAUDE.md says two bullets is normal. The worst shape was
+ * `- **Dropped**: …` inside an answered question, which is exactly the
+ * inbox-only rule this section exists to enforce. Both spellings are now read as
+ * the same kind: they render alike, so accepting one and silently ignoring the
+ * other is the failure, not the leniency.
  */
+const BULLET = /^\s*[-*+]\s+(.*)$/;
+const KIND = /^\*\*(\w+):\*\*(.*)$/; // canonical: colon inside the bold
+const KIND_LOOSE = /^\*\*(\w+)\*\*\s*:(.*)$/; // colon just outside it
+
+/** The kind a bullet declares, or null for an ordinary prose bullet. */
+function bulletKind(line) {
+  const b = BULLET.exec(line);
+  if (!b) return null;
+  return KIND.exec(b[1]) ?? KIND_LOOSE.exec(b[1]);
+}
+
 function parseBullets(lines, firstLineNo) {
-  const START = /^\s*[-*+] \*\*(\w+):\*\*(.*)$/;
   const out = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = START.exec(lines[i]);
-    if (!m) continue;
-    let text = m[2];
+    const k = bulletKind(lines[i]);
+    if (!k) continue;
+    let text = k[2];
     let j = i + 1;
-    while (j < lines.length && lines[j].trim() !== "" && !START.test(lines[j]) && !/^#/.test(lines[j])) {
+    // A nested PROSE bullet is still continuation of this one — only another
+    // kind-bearing bullet ends it.
+    while (
+      j < lines.length &&
+      lines[j].trim() !== "" &&
+      !bulletKind(lines[j]) &&
+      !/^#/.test(lines[j])
+    ) {
       text += " " + lines[j].trim();
       j++;
     }
-    out.push({ kind: m[1], text, line: firstLineNo + i });
+    out.push({ kind: k[1], text, line: firstLineNo + i });
     i = j - 1;
   }
   return out;
@@ -292,6 +320,37 @@ for (const c of cited) {
       if (!seen.has(m[1])) seen.set(m[1], file);
     }
   }
+  // Everything git can fail for that is NOT "this hash rotted" is established
+  // ONCE, up front. The catch below used to special-case only ENOENT and report
+  // every other failure as rot — so "not a git repository" and a `--depth 1`
+  // clone both accused the author of a history rewrite, with git's own stderr
+  // discarded. A wrong diagnosis in a check that names a specific culprit costs
+  // more than no diagnosis.
+  const git = (...args) => {
+    try {
+      return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch (err) {
+      return err.code === "ENOENT" ? null : "";
+    }
+  };
+  const inRepo = git("rev-parse", "--git-dir");
+  if (inRepo === null) {
+    note("git not found — cannot verify the commit hashes cited in history/");
+    gitWorks = false;
+  } else if (inRepo === "") {
+    note(
+      "not a git repository — cannot verify the commit hashes cited in history/ " +
+        "(this is a limit of where the check is running, not a defect in the corpus)",
+    );
+    gitWorks = false;
+  } else if (git("rev-parse", "--is-shallow-repository") === "true" && seen.size > 0) {
+    note(
+      "shallow clone — cannot verify the commit hashes cited in history/; " +
+        "fetch with depth 0 before trusting this check",
+    );
+    gitWorks = false;
+  }
+
   for (const [hash, file] of seen) {
     if (!gitWorks) break;
     try {
@@ -304,16 +363,11 @@ for (const c of cited) {
       if (kind !== "commit") {
         note(`${file}  cites \`${hash}\`, which is a ${kind}, not a commit`);
       }
-    } catch (err) {
-      if (err.code === "ENOENT") {
-        note("git not found — cannot verify the commit hashes cited in history/");
-        gitWorks = false;
-      } else {
-        note(
-          `${file}  cites \`${hash}\`, which is not a commit in this repository — ` +
-            `a history rewrite invalidates every hash recorded before it`,
-        );
-      }
+    } catch {
+      note(
+        `${file}  cites \`${hash}\`, which is not a commit in this repository — ` +
+          `a history rewrite invalidates every hash recorded before it`,
+      );
     }
   }
 }
@@ -378,8 +432,13 @@ for (const reg of REGISTERS.filter((r) => r.status)) {
 }
 
 // ── Nobody else states the totals ───────────────────────────────────────────
-const NUM = "\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|" +
+// "zero" belongs here: PROBLEMS.md's own derived headline reads "zero open", so
+// a checker that cannot spell it rejects "one question is open" and waves
+// "Zero questions are open." straight through. The sibling WORDS list above had
+// it; this one did not.
+const NUM = "\\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|" +
   "thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty";
+const NOUN = "questions?|tasks?|problems?|entries";
 const TOTALS = [
   /\b\d+ opened, \d+ fixed\b/,
   /problem register carries [\w-]+ open entr/i,
@@ -387,11 +446,35 @@ const TOTALS = [
   // "Eight questions are open." is the same hand-maintained derived value as a
   // problem-register total, in the file the tooling is supposed to protect. It
   // drifted twice in the session that introduced it. The adverb slot is there
-  // because "three questions are STILL open" is the same claim.
-  new RegExp(`\\b(${NUM})\\s+(questions?|tasks?|problems?|entries)\\s+(?:\\w+\\s+)?` +
-    `(?:are|is|remain|remains)\\b`, "i"),
+  // because "three questions STILL remain open" is the same claim.
+  new RegExp(`\\b(${NUM})\\s+(${NOUN})\\s+(?:\\w+\\s+)?(?:are|is|remain|remains)\\b`, "i"),
+  // The same total with the adjective in front of the noun instead — "there are
+  // 8 open questions right now" — which the shape above cannot see, because it
+  // wants the numeral adjacent to the noun.
+  new RegExp(`\\b(${NUM})\\s+(?:\\w+[\\s-]+)?(?:open|closed|answered|fixed|triaged|remaining)` +
+    `\\s+(${NOUN})\\b`, "i"),
+  // And with the label first — "Open: 8 questions, 2 problems."
+  new RegExp(`\\b(?:open|closed|answered|fixed|triaged)\\b\\s*:\\s*(${NUM})\\s+(${NOUN})\\b`, "i"),
 ];
 const registerPath = join(root, "PROBLEMS.md");
+
+/** Blank-line-separated blocks, joined to one string each, tagged with the line they open on. */
+function paragraphs(lines) {
+  const out = [];
+  let buf = [];
+  let start = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === "") {
+      if (buf.length) out.push({ line: start, text: buf.join(" ") });
+      buf = [];
+      continue;
+    }
+    if (buf.length === 0) start = i + 1;
+    buf.push(lines[i].trim());
+  }
+  if (buf.length) out.push({ line: start, text: buf.join(" ") });
+  return out;
+}
 
 // One traversal, through the shared walker that already skips .git/node_modules/
 // target — rather than a third hand-rolled one. `md-files.mjs` exists to be "one
@@ -409,17 +492,22 @@ const registerPath = join(root, "PROBLEMS.md");
     // on its date is not a claim about today.
     const rel = relative(repoRoot, file).split(sep);
     if ((rel[0] === "docs" && rel[1] === "history") || file === registerPath) continue;
-    stripFences(readFileSync(file, "utf8")).forEach((l, i) => {
+    // Per PARAGRAPH, not per line. This corpus wraps at about 80 columns, so
+    // "Eight questions are open." was caught and the identical claim split
+    // across two lines was not — the rule CLAUDE.md spends the most words on,
+    // defeated by a line break. Joining a paragraph before matching also fixes
+    // code spans that wrap, since markdown lets those cross a newline too.
+    for (const p of paragraphs(stripFences(readFileSync(file, "utf8")))) {
       // A doc explaining this very rule has to be able to quote the shape it
       // forbids. Backticked spans are quotation, not assertion.
-      const said = l.replace(/`[^`]*`/g, "");
+      const said = p.text.replace(/`[^`]*`/g, "");
       if (TOTALS.some((re) => re.test(said))) {
         note(
-          `${file}:${i + 1}  restates a register total — counts live in PROBLEMS.md only; ` +
-            `cite entries, not totals`,
+          `${file}:${p.line}  restates a register total — counts live in PROBLEMS.md only; ` +
+            `cite entries, not totals (the claim may wrap; this is the paragraph it opens)`,
         );
       }
-    });
+    }
   }
 }
 

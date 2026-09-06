@@ -24,7 +24,7 @@
 
 import { readFileSync } from "node:fs";
 import { markdownFiles } from "./lib/md-files.mjs";
-import { stripFences, cells, isTableSeparator } from "./lib/markdown.mjs";
+import { scanFences, cells, isTableSeparator } from "./lib/markdown.mjs";
 
 const root = process.argv[2] ?? ".";
 const files = markdownFiles(root);
@@ -38,7 +38,19 @@ let tables = 0;
 let headings = 0;
 
 for (const file of files) {
-  const lines = stripFences(readFileSync(file, "utf8"));
+  const { lines, unterminated } = scanFences(readFileSync(file, "utf8"));
+
+  // ── Fences close ──────────────────────────────────────────────────────────
+  // An unclosed fence is not a cosmetic defect: everything below it is blanked
+  // for THIS check, for check-registers and for check-links, all three of which
+  // then report their usual ✓ over a file they cannot see. Whoever runs the
+  // checks has to be told, because nothing downstream can tell them.
+  if (unterminated) {
+    problems.push(
+      `${file}:${unterminated.line}  unterminated ${unterminated.char.repeat(unterminated.len)} ` +
+        `fence — every line below it is invisible to the structure, register and link checks`,
+    );
+  }
 
   // ── One heading, one place ────────────────────────────────────────────────
   const seen = new Map();
@@ -95,4 +107,4 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`✓ ${headings} headings unique per file, ${tables} tables well formed`);
+console.log(`✓ ${headings} headings unique per file, ${tables} tables well formed, every fence closed`);

@@ -197,33 +197,81 @@ fn tokens(line: &str) -> impl Iterator<Item = &str> {
         .filter(|t| !t.is_empty())
 }
 
-/// `1.5` — a bare float literal, which is how a float normally enters Rust and
-/// which no type name accompanies. Excludes ranges (`0..20`) and tuple field
-/// access (`self.0`), neither of which is `digit . digit`.
+/// Does this line contain a float literal?
+///
+/// Rust has four spellings and the first version of this recognised one and a
+/// half of them. `digit . digit` plus an f32/f64 suffix left `1e-3` and `2E5`
+/// invisible — both are `f64`, both are rule-2 violations, and the scan stayed
+/// green on a file where `let _ = 1.5;` immediately turned it red, which is the
+/// worst possible shape for a backstop. `1.` was invisible for the same reason.
+/// In the other direction the suffix test was a bare `ends_with("f64")` over a
+/// token starting with a digit, so the hex constant `0x1f64` was reported as a
+/// float — and this crate already carries `0xcbf29ce484222325` and
+/// `0x9E3779B97F4A7C15`.
+///
+/// So this walks numeric literals properly rather than pattern-matching around
+/// them. A literal is entered only where a digit is not preceded by an
+/// identifier character or a `.`, which is what keeps tuple access (`self.0`,
+/// `x.0.1`) and ranges (`0..20`) out.
 fn has_float_literal(line: &str) -> bool {
     let c: Vec<char> = line.chars().collect();
-    for i in 1..c.len().saturating_sub(1) {
-        if c[i] != '.' || !c[i - 1].is_ascii_digit() || !c[i + 1].is_ascii_digit() {
+    let ident = |ch: char| ch.is_alphanumeric() || ch == '_';
+    let mut i = 0;
+    while i < c.len() {
+        if !c[i].is_ascii_digit() || (i > 0 && (ident(c[i - 1]) || c[i - 1] == '.')) {
+            i += 1;
             continue;
         }
-        // Walk back over the digit run. If a `.` sits before it, this is a
-        // tuple-access chain (`x.0.1`), not a literal. An earlier version
-        // instead checked the character two ahead, which also suppressed
-        // `1.0.floor()` — a real float literal — because the method dot looked
-        // like the second dot of a range.
-        let mut j = i - 1;
-        while j > 0 && c[j - 1].is_ascii_digit() {
-            j -= 1;
-        }
-        if j > 0 && c[j - 1] == '.' {
+        // A radix prefix is always an integer: consume it whole so its digits
+        // can never be read as a mantissa, an exponent or a suffix.
+        if c[i] == '0' && i + 1 < c.len() && matches!(c[i + 1], 'x' | 'X' | 'o' | 'O' | 'b' | 'B') {
+            i += 2;
+            while i < c.len() && ident(c[i]) {
+                i += 1;
+            }
             continue;
         }
-        return true;
+        let mut j = i;
+        while j < c.len() && (c[j].is_ascii_digit() || c[j] == '_') {
+            j += 1;
+        }
+        // `1.5`, and the trailing-dot form `1.` — but not `0..20` (a range) and
+        // not `1.foo()` (a method call, which needs a typed receiver anyway).
+        if j < c.len() && c[j] == '.' {
+            let after = c.get(j + 1).copied();
+            if after.is_some_and(|ch| ch.is_ascii_digit()) {
+                return true;
+            }
+            if !after.is_some_and(|ch| ch == '.' || ident(ch)) {
+                return true;
+            }
+        }
+        // `1e-3`, `2E5`, `1.5e10`. Scientific notation is always a float.
+        let mut k = j;
+        if k < c.len() && c[k] == '.' && c.get(k + 1).is_some_and(char::is_ascii_digit) {
+            k += 1;
+            while k < c.len() && (c[k].is_ascii_digit() || c[k] == '_') {
+                k += 1;
+            }
+        }
+        if k < c.len() && matches!(c[k], 'e' | 'E') {
+            let mut e = k + 1;
+            if e < c.len() && matches!(c[e], '+' | '-') {
+                e += 1;
+            }
+            if c.get(e).is_some_and(char::is_ascii_digit) {
+                return true;
+            }
+        }
+        // An explicit suffix: `1f64`, `1.0f32`, `3_f64`.
+        let suffix: String = c[k..].iter().take_while(|ch| ident(**ch)).collect();
+        let suffix = suffix.trim_start_matches('_');
+        if suffix == "f32" || suffix == "f64" {
+            return true;
+        }
+        i = k.max(i + 1);
     }
-    // `1f64` / `1.0f32`: the suffix never appears as its own token.
-    tokens(line).any(|t| {
-        (t.ends_with("f32") || t.ends_with("f64")) && t.starts_with(|ch: char| ch.is_ascii_digit())
-    })
+    false
 }
 
 #[test]
@@ -260,5 +308,62 @@ fn workspace_source_is_free_of_nondeterministic_constructs() {
          — not a deleted check.",
         violations.len(),
         violations.join("\n")
+    );
+}
+
+/// The scanner, scanned.
+///
+/// Every case below is a line the main test would have to judge, and the point
+/// is the FALSE column as much as the TRUE one: before this existed, nothing
+/// planted a violation and watched the scan fire, so `1e-3` sat unrecognised
+/// while the suite reported the workspace clean. A backstop nobody has seen
+/// fail is not a backstop. Runs in microseconds and needs no fixture.
+#[test]
+fn float_literal_scanner_sees_every_spelling() {
+    const FLOATS: &[&str] = &[
+        "let x = 1.5;",
+        "let x = 0.5;",
+        "let x = 1.0.floor();",
+        "let x = 1.;",
+        "let dt = 1e-3;",
+        "let scale = 2E5;",
+        "let x = 1.5e10;",
+        "let x = 6.02e+23;",
+        "let x = 1f64;",
+        "let x = 3_f32;",
+        "let x = 1.0f32;",
+    ];
+    const INTEGERS: &[&str] = &[
+        "let x = 0..20;",
+        "for i in 0..=9 {}",
+        "let a = self.0;",
+        "let b = x.0.1;",
+        "const M: u64 = 0x1f64;",
+        "const P: u64 = 0xcbf29ce484222325;",
+        "const G: u64 = 0x9E3779B97F4A7C15;",
+        "let m = 0b1010;",
+        "let o = 0o755;",
+        "let n = 1_000_000i64;",
+        "let n = 42;",
+        "let v = buf32;",
+        "let t = tick2e;",
+    ];
+
+    let mut wrong = Vec::new();
+    for line in FLOATS {
+        if !has_float_literal(line) {
+            wrong.push(format!("MISSED a float literal: {line}"));
+        }
+    }
+    for line in INTEGERS {
+        if has_float_literal(line) {
+            wrong.push(format!("FALSE POSITIVE on integer source: {line}"));
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "{} scanner error(s) — the rule-2 backstop does not see what it claims to:\n\n{}",
+        wrong.len(),
+        wrong.join("\n")
     );
 }

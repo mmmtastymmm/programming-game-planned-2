@@ -95,10 +95,10 @@ inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | Q14 |
+| `01` | The unit language — syntax, execution model, cost model | Q8, Q11, Q14 |
 | `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
-| `04` | Opposition — PvE now, PvP later | Q4 (answered) |
+| `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10 |
 
@@ -108,7 +108,10 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 ## Where to go next
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open, in dependency order.
-**Q14 (the number model) is the last thing `01` waits on** — it changes what the
-parser accepts, so it cannot be discovered during implementation. Q6 (tick rate)
+**`01` waits on Q8 (faults), Q11 (hot-swap) and Q14 (the number model)**, and
+none of the three can be discovered during implementation: Q14 changes what the
+parser accepts, Q8 decides whether `try`/`except` exists to be parsed at all,
+and Q11 is what keeps Q13's boundary sound. Q14 is the last of them in
+dependency order — which is not the same as being the only one. Q6 (tick rate)
 came unblocked when the language spike showed interpretation cost is not what
 bounds it.

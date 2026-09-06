@@ -81,13 +81,24 @@ run_docs() {
 
   step "mermaid diagrams parse"
   # Install on first run, or whenever the lockfile is newer than the tree.
-  if [ ! -d scripts/node_modules ] \
+  #
+  # The guard tests for the DEPENDENCIES, not for the directory. `-d
+  # scripts/node_modules` is true for an empty or half-written directory, so any
+  # interrupted install became permanent: no repair ever ran, check-mermaid died
+  # with "Cannot find package 'jsdom'", and check-checks then reported that as
+  # "almost always a real problem in the tree" — a confident wrong diagnosis
+  # pointing at the corpus instead of at `npm ci`.
+  if [ ! -d scripts/node_modules/mermaid ] || [ ! -d scripts/node_modules/jsdom ] \
      || [ scripts/package-lock.json -nt scripts/node_modules ]; then
     echo "installing doc-check deps…"
+    # `set -e` would abort the whole run here on a registry 5xx or a lockfile
+    # mismatch — and this was the one command in the file without a `|| FAILED`,
+    # so `scripts/ci.sh all` skipped the meta-check and the entire Rust half with
+    # nothing in the FAILED line to say it had.
     if [ -f scripts/package-lock.json ]; then
-      npm ci --prefix scripts --silent --no-fund --no-audit
+      npm ci --prefix scripts --silent --no-fund --no-audit || FAILED+=("npm ci (doc-check deps)")
     else
-      npm install --prefix scripts --silent --no-fund --no-audit
+      npm install --prefix scripts --silent --no-fund --no-audit || FAILED+=("npm install (doc-check deps)")
     fi
   fi
   node scripts/check-mermaid.mjs "$ROOT" || FAILED+=("mermaid")

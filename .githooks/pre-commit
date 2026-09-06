@@ -50,10 +50,14 @@ trap 'rm -rf "$TMP"' EXIT
 # bypassed, and then it is not a gate.
 git checkout-index -a --prefix="$TMP/"
 
-if [ ! -d "$TMP/docs" ]; then
-  exit 0
-fi
-
+# No "docs/ is missing, never mind" escape here. There used to be one, and
+# because checkout-index materializes the WHOLE index rather than the changed
+# files, it fired only when the commit left zero tracked files under docs/ —
+# i.e. exactly when the corpus was being deleted. The hook then exited 0 having
+# run nothing at all, including the CLAUDE.md and README.md link checks, which
+# are scanned from the repo root and have nothing to do with docs/. The checks
+# below already report a missing corpus accurately, so they get to run and say
+# so.
 if ! scripts/ci.sh docs "$TMP"; then
   echo >&2
   echo "pre-commit: doc checks failed on the STAGED content — commit aborted." >&2

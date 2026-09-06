@@ -71,10 +71,13 @@ which is indistinguishable from agreement.
     `scripts/check-staged-size.sh` owns the limit.
 - **`scripts/check-checks.mjs` is the check on the checks.** It seeds known
   defects into a copy of the working tree and asserts each is caught by the
-  right check with a message that names the real problem. It checks the working
-  tree, not the index, so it agrees with every other local check — but that
-  means an untracked file can make it pass locally where CI's fresh clone
-  fails. The pre-commit hook, which reads the index, is what covers that gap. Three review rounds of
+  right check with a message that names the real problem. It reads the working
+  tree, not the index, so it agrees with every other local check — at the cost
+  that a file you forgot to `git add` passes here and fails on CI's fresh clone.
+  The pre-commit hook reads the index and narrows that gap, but it does not
+  close it: it is opt-in per clone (`scripts/install-hooks.sh`), `--no-verify`
+  skips it, and it stands down when Node is absent. **CI is the only thing that
+  actually sees what a fresh clone sees.** Three review rounds of
   this repo found checks that were green while validating nothing — citations
   scanned on one line of a wrapped bullet, fenced examples read as entries,
   success reported on zero inputs. Each was found by mutating a corpus copy by
