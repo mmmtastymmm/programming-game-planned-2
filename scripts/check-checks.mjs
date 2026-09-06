@@ -147,6 +147,27 @@ const tc = (d) => join(d, "docs/history/tasks-completed");
 const pf = (d) => join(d, "docs/history/problems-fixed");
 const it = (d) => join(d, "docs/history/inbox-triaged");
 
+// The claim cases below need one question that is OPEN and one that is CLOSED,
+// and both were hard-coded — Q14 open, Q13 closed. The day Q14 was answered,
+// "Q14 has been answered" became a true sentence, the register check rightly
+// passed it, and this suite went red on a correct ruling. A fixture that breaks
+// on every ruling is a fixture nobody keeps, so both are read from the corpus
+// under test: the first open entry in QUESTIONS.md, the lowest-numbered file in
+// questions-answered/.
+const openQuestion = () => {
+  const m = readFileSync(join(repo, "docs/QUESTIONS.md"), "utf8").match(/^\*\*(Q\d+) — /m);
+  if (!m) throw new Error("check-checks: docs/QUESTIONS.md has no open entry to seed a claim against");
+  return m[1];
+};
+const closedQuestion = () => {
+  const m = readdirSync(qa(repo)).sort()
+    .map((n) => n.match(/^question-answered-0*(\d+)\.md$/)).find(Boolean);
+  if (!m) throw new Error("check-checks: questions-answered/ has no entry to seed a claim against");
+  return `Q${m[1]}`;
+};
+const OPEN_Q = openQuestion();
+const CLOSED_Q = closedQuestion();
+
 const MUTATIONS = [
   // ── registers: entry identity ─────────────────────────────────────────────
   { name: "history file named for one entry, headed as another", check: "registers",
@@ -888,34 +909,34 @@ const MUTATIONS = [
   // The shape design-invariant DI9 calls the case to hunt: the number keeps
   // resolving while the ruling has moved to history and means the opposite.
   citationClaim({ name: "an inline citation calling an answered question open",
-    id: "open-before", cite: "Q13", before: "The subset boundary is still open — ", after: ".",
+    id: "open-before", cite: CLOSED_Q, before: "That boundary is still open — ", after: ".",
     expect: "but it is closed" }),
   // "open — Q12" is the phrasing CLAUDE.md sanctions; "…, which is still open" is
   // the one the corpus writes, in two history files about a question that has not
   // closed yet. Matching only the first ordering meant the check went green on
   // the day it was written for.
   citationClaim({ name: "an inline citation calling an answered question open, the other way round",
-    id: "open-after", cite: "Q13", after: " is still open as far as this doc is concerned.",
-    expect: "calls Q13 open" }),
+    id: "open-after", cite: CLOSED_Q, after: " is still open as far as this doc is concerned.",
+    expect: `calls ${CLOSED_Q} open` }),
   // The article was the hole: `is still open` was inside the pattern and `is an
   // open question` — the commonest spelling in prose — was not, because the
   // pattern wanted the word adjacent to the copula. The sibling totals pattern
   // one screen away had grown an adjective-before-noun variant for the identical
   // shape.
   citationClaim({ name: "an answered question called an open question",
-    id: "open-after", cite: "Q13", after: " is an open question.",
-    expect: "calls Q13 open" }),
+    id: "open-after", cite: CLOSED_Q, after: " is an open question.",
+    expect: `calls ${CLOSED_Q} open` }),
   // And the other half of that hole: `open` is not the only word for open.
   citationClaim({ name: "an answered question described as undecided",
-    id: "open-after", cite: "Q13", after: " remains undecided.",
-    expect: "calls Q13 open" }),
+    id: "open-after", cite: CLOSED_Q, after: " remains undecided.",
+    expect: `calls ${CLOSED_Q} open` }),
   // A negated closure is a claim of openness, and it fell between both patterns
   // at once: the closed one wants the participle adjacent to the copula, and the
   // open one knew only the word `open`. Its filler now refuses a negation, so
   // this cannot be reported as its own opposite.
   citationClaim({ name: "an answered question described as not yet answered",
-    id: "open-after-negated", cite: "Q13", after: " is not yet answered.",
-    expect: "calls Q13 open" }),
+    id: "open-after-negated", cite: CLOSED_Q, after: " is not yet answered.",
+    expect: `calls ${CLOSED_Q} open` }),
   { name: "a closed record describing what was open on its date", check: "registers",
     expect: "", skipIfClean: true,
     // history/ is append-only and is expected to contradict current design, so
@@ -934,41 +955,41 @@ const MUTATIONS = [
   // the sentence the case below calls the worst thing a Decided section can carry
   // passed clean, in the tense a writer summarising a ruling reaches for.
   citationClaim({ name: "an open question described as answered in the PERFECT tense",
-    id: "closed-after", cite: "Q14", after: " has been answered, so the number model is fixed.",
-    expect: "calls Q14 answered" }),
+    id: "closed-after", cite: OPEN_Q, after: " has been answered, so its doc can be written.",
+    expect: `calls ${OPEN_Q} answered` }),
   // `resolved` and `fixed` were both absent from the participle list, and `fixed`
   // is the word the PROBLEMS register uses for its own closed state — so the
   // register with the most to lose from a false closure claim was the one that
   // could not express one.
   citationClaim({ name: "an open question described as resolved",
-    id: "closed-after", cite: "Q14", after: " was resolved during the language spike.",
-    expect: "calls Q14 answered" }),
+    id: "closed-after", cite: OPEN_Q, after: " was resolved during the language spike.",
+    expect: `calls ${OPEN_Q} answered` }),
   // THE ADVERB SLOT, in the direction this check calls the worse one. Between the
   // copula and the participle the pattern allowed two hard-coded words, `already`
   // and `since`, so `is now answered` and `has finally been ruled` both went green
   // against an open question — while the totals pattern it was modelled on
   // carried a general slot for exactly this.
   citationClaim({ name: "an open question described as answered, with an adverb between",
-    id: "closed-after", cite: "Q14", after: " is now answered.",
-    expect: "calls Q14 answered" }),
+    id: "closed-after", cite: OPEN_Q, after: " is now answered.",
+    expect: `calls ${OPEN_Q} answered` }),
   citationClaim({ name: "the same, with the adverb inside the perfect tense",
-    id: "closed-after", cite: "Q14", after: " has finally been ruled.",
-    expect: "calls Q14 answered" }),
+    id: "closed-after", cite: OPEN_Q, after: " has finally been ruled.",
+    expect: `calls ${OPEN_Q} answered` }),
   // A negated OPEN state asserts a closure as surely as `is answered` does, and
   // it is the mirror of the open-after-negated case above.
   citationClaim({ name: "an open question described as no longer open",
-    id: "closed-after-negated", cite: "Q14", after: " is no longer open.",
-    expect: "calls Q14 answered" }),
+    id: "closed-after-negated", cite: OPEN_Q, after: " is no longer open.",
+    expect: `calls ${OPEN_Q} answered` }),
   citationClaim({ name: "an answered question described as STAYING open",
-    id: "open-after", cite: "Q13", after: " stays open as far as this doc is concerned.",
-    expect: "calls Q13 open" }),
+    id: "open-after", cite: CLOSED_Q, after: " stays open as far as this doc is concerned.",
+    expect: `calls ${CLOSED_Q} open` }),
   // The worse direction, and the one that had no rule: QUESTIONS.md is the only
   // place an undecided thing may live, so a Decided section asserting a ruling
   // nobody made is the stalest text in the most authoritative-looking place —
   // which is what the register scheme exists to prevent.
   citationClaim({ name: "an open question described as answered",
-    id: "closed-before", cite: "Q14", before: "The number model was settled in ", after: ".",
-    expect: "calls Q14 answered" }),
+    id: "closed-before", cite: OPEN_Q, before: "That model was settled in ", after: ".",
+    expect: `calls ${OPEN_Q} answered` }),
   { name: "a backticked example number is quotation, not a citation",
     check: "registers", expect: "", skipIfClean: true,
     // The docs invent numbers to show the scheme: `P29`, `Q73`, `I7`. Same
