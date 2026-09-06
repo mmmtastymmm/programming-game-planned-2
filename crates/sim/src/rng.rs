@@ -33,10 +33,6 @@ impl Stream {
         Self { name, state }
     }
 
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-
     pub fn next_u64(&mut self) -> u64 {
         next_rand(&mut self.state)
     }
@@ -46,7 +42,12 @@ impl Stream {
     /// here. Panics on `n == 0` — an empty choice set is a caller bug.
     pub fn below(&mut self, n: u64) -> u64 {
         assert!(n > 0, "Stream::below(0)");
-        self.next_u64() % n
+        // The only overflow this operator can have is division by zero, which
+        // the assert above has already ruled out. Deterministic on every peer.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            self.next_u64() % n
+        }
     }
 
     /// Feed the stream's *state* into a state hash. A replay that agrees on

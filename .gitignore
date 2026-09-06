@@ -1,11 +1,32 @@
-/target
+# Unanchored on purpose. `/target` matches the root workspace only, and this
+# repo has nested workspaces (spikes/*) whose build output landed in git for
+# 528 MB across 2057 files before anyone noticed.
+target/
 
-# Linux crash core dumps (kernel core_pattern core.%e.%p.%h.%t). Deliberately
-# narrower than a bare `core`/`core.*`, which would silently swallow a future
-# core.rs module or core/ directory.
+# Linux crash core dumps. Deliberately narrower than a bare `core`/`core.*`,
+# which would silently swallow a future core.rs module or core/ directory.
+# BOTH shapes are needed: the multi-field default (core.%e.%p.%h.%t) needs two
+# dots, and the very common `core_pattern = core.%p` produces `core.5821` with
+# only one — which the two-dot pattern alone left untracked-but-not-ignored, so
+# `git add -A` would happily stage a crash dump.
+core.[0-9]*
 core.*.[0-9]*
 
 # doc-check tooling (scripts/) — JS deps, not part of the Rust build
 scripts/node_modules/
 
-/.idea
+# macOS Finder droppings. The history directories get browsed in Finder, so they
+# collect these. No check rejects one — the shared walker returns only .md and
+# the register scan skips dotfiles — which is the point: nothing but this line
+# stands between a `git add -A` and a committed .DS_Store.
+.DS_Store
+
+# Unanchored: spikes/ are standalone workspaces, and one opened as its own IDE
+# project root puts .idea/ there rather than at the repo root.
+#
+# BOTH editors, because the doc walker skips both: a tracked `.vscode/notes.md`
+# would be committed by `git add -A` and then scanned by nothing — no link check,
+# no size cap — while the identical file under .idea/ could not be committed at
+# all. Skipped and ignored have to be the same set.
+.idea/
+.vscode/

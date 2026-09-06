@@ -11,20 +11,23 @@ and is worth reading before the first commit.
 ## Getting set up
 
 ```sh
-scripts/install-hooks.sh    # once per clone: pre-commit doc gate
+scripts/install-hooks.sh    # once per clone: pre-commit gate
 scripts/ci.sh               # everything CI runs
-scripts/ci.sh docs          # just the doc checks — seconds, no Rust build
+scripts/ci.sh docs          # just the fast checks — seconds, no Rust build
 scripts/ci.sh rust          # fmt, clippy, tests
 ```
 
-Node 20+ is needed for the doc checks; the Rust toolchain is pinned in
-`rust-toolchain.toml`.
+Node 20+ is needed for the `check-*.mjs` checks; the Rust toolchain is pinned
+in `rust-toolchain.toml`.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `docs/` | The design corpus, plus the question / problem / task registers |
+| `docs/` | The design corpus, plus the four registers — questions, problems, tasks, inbox |
 | `crates/sim/` | Deterministic world simulation. Placeholder model, real determinism gate |
-| `scripts/` | CI entry point and the four doc checks |
-| `.githooks/` | Pre-commit doc gate, installed via `scripts/install-hooks.sh` |
+| `scripts/` | CI entry point, the eight checks (`check-*.mjs`) and the file-size gate |
+| `docs/history/` | Closed records: one file per answered question, fixed problem, completed task, triaged note |
+| `spikes/` | Standalone experiments answering a design question; not part of the build |
+| `.githooks/` | Pre-commit gate: file size, then the fast checks. Installed via `scripts/install-hooks.sh` |
+| `.claude/` | [design-invariants.md](.claude/design-invariants.md) — properties the corpus must have, and how to check each |

@@ -98,17 +98,11 @@ fn hashes_to_text(hashes: &[u64]) -> String {
 /// passing as a stable hash of an empty world.
 #[test]
 fn golden_scenario_is_alive() {
-    let replay = golden_replay();
-    let mut sim = sim::Sim::new(&replay.spec);
-    let mut next = 0;
-    for tick in 0..replay.ticks {
-        while next < replay.commands.len() && replay.commands[next].tick == tick {
-            sim.apply(&replay.commands[next].command)
-                .expect("command accepted");
-            next += 1;
-        }
-        sim.step();
-    }
+    // Through Replay::execute, not a hand-rolled copy of its loop: a second
+    // copy of the command boundary drifts silently, and this test would keep
+    // asserting against the old semantics while the fixture regenerated under
+    // the new ones.
+    let (sim, _hashes) = golden_replay().execute();
     assert_eq!(
         sim.world.entities.len(),
         2,

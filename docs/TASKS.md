@@ -1,32 +1,108 @@
 # Tasks
 
-What is left to build, grouped into milestones. Completed milestones move to
-[history/tasks-completed.md](history/tasks-completed.md).
+What is left to build. **This file holds open tasks only** — completing one moves
+it to [history/tasks-completed/](history/tasks-completed/README.md) as its own
+file, with the commit that finished it. Anything here is open by definition, so
+there are no checkboxes to keep in sync.
+
+Numbering is stable — **append new tasks, never renumber**, and never reuse a
+number after it moves to history. Entries are written as `**T<n> — <title>**` on
+their own line, which is how `scripts/check-registers.mjs` finds them; it rejects
+a number that is open and completed at once, and any gap *below* the highest
+number recorded. Deleting the highest-numbered entry outright shrinks the range
+and goes unnoticed — the same honest limit
+[history/questions-answered/](history/questions-answered/README.md) states.
+
+Milestones below are groupings, not entries. A milestone is finished when every
+task under it has left the file.
 
 Two conventions carried over from the predecessor project:
 
 - **`⚠HASH` marks a task that changes sim behavior**, and therefore the
   golden-replay hashes. Such a task's PR regenerates the fixture and says why
-  (CLAUDE.md).
+  (CLAUDE.md). **No other register carries it** — CLAUDE.md and
+  `.claude/design-invariants.md` define it, and `docs/history/` may narrate it,
+  but no entry outside this file is marked. An open question is not work, and
+  nearly every open question would qualify while the sim is unbuilt, so a marker
+  on all of them selects nothing. Where a *ruling* cannot be discovered during
+  implementation, the question says so in words.
 - **Decided-but-unbuilt** work — a ruling the code has not caught up to — is
-  tracked here *and* as an entry in [PROBLEMS.md](PROBLEMS.md). The register
-  owns the gap; this file owns the work.
+  tracked here *and* as an entry in [PROBLEMS.md](PROBLEMS.md). The register owns
+  the gap; this file owns the work. A task is only lag once it is actually
+  buildable; before that it is merely pending.
 
-## M0 — Scaffolding (done except where noted)
+## M0 — Scaffolding
 
-- [x] CI harness: `scripts/ci.sh`, GitHub Actions, pre-commit doc gate.
-- [x] Doc checks: links, register counts, doc layout, mermaid.
-- [x] Determinism kit: FNV-1a state hash, named seeded RNG streams, replay
-      artifact, golden fixture, cross-process replay check, syntactic scan for
-      floats / hash iteration / wall clock.
-- [ ] Replace the placeholder sim in `crates/sim` with the real world model.
-      ⚠HASH — this regenerates the golden fixture by definition. Blocked on the
-      design, which is the point of the next milestone.
+**T7 — Replace the placeholder sim in `crates/sim` with the real world model**
+
+⚠HASH — this regenerates the golden fixture by definition. Blocked on Q9; the
+shape of `Command` is blocked on Q10 and Q12; hot-swap semantics on Q11.
+
+Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
+— but its principal variant is a program deploy, not a unit order. The
+placeholder's `Spawn` / `SetGoal` / `Despawn` variants command individual units,
+which Q3 forbids outright. They are scaffolding, not a model: not a register
+entry, since the placeholder never claimed to be one, but wrong to copy from.
+
+The golden fixture will need to exercise a mid-match redeploy once Q11 lands,
+that being the hash-affecting path most likely to differ between peers.
 
 ## M1 — First design pass
 
-- [ ] Answer the ordering questions in [QUESTIONS.md](QUESTIONS.md) well enough
-      to write `docs/00-overview.md` as something other than a placeholder.
-- [ ] Write the first numbered docs. Split them (doorway + parts directory) only
-      once a file actually outgrows itself — the split has a real cost in
-      cross-part invariants.
+**T8 — Answer Q8, Q11 and Q14, then write `docs/01`**
+
+None of the three can be discovered during implementation; the reason for each
+is with the question, in [QUESTIONS.md](QUESTIONS.md), and is deliberately not
+repeated here.
+
+Q8 and Q11 fall inside T9's sweep, so that much of T9 lands first — the
+sequencing is recorded here because reading T8 alone once suggested Q14 was the
+only thing in the way.
+
+**T9 — Answer Q6–Q12 and Q15, then write the numbered docs they unblock**
+
+Split a doc (doorway + parts directory) only once it actually outgrows one file —
+the split has a real cost in cross-part invariants.
+
+**Q11 and Q13's boundary are coupled**, so answer Q11 before M2 leans on that
+boundary. [QUESTIONS.md](QUESTIONS.md) states the dependency and Q13's ruling
+records it; what belongs here is only the sequencing, which is easy to discover
+late.
+
+## M2 — Language implementation
+
+Staged deliberately: Q13's boundary is materially larger than the procedural
+core. **Staging does not narrow the spec** — `docs/01` specifies all of it — and
+this note exists so the first shipped subset does not quietly become the
+boundary.
+
+**T10 — Lexer with significant indentation, then the procedural core** ⚠HASH
+
+INDENT/DEDENT, then functions, control flow, `list`/`dict`/`set`, comprehensions,
+f-strings, chained comparisons and `lambda`.
+
+**T11 — `class` with single inheritance and a closed dunder set** ⚠HASH
+
+**T12 — `match`/`case`** ⚠HASH
+
+**T13 — `import` over a closed module set** ⚠HASH
+
+Program identity and circular imports follow **determinism rule 7** (CLAUDE.md),
+which Q13 extended when it ruled `import` in; this task is what makes the sim
+honour it. The rule is not restated here — one canonical statement, per
+[design-invariant DI1](../.claude/design-invariants.md).
+
+**T14 — Determinism suite for the language**
+
+Mirroring `crates/sim`'s: golden fixtures for program execution, a cross-process
+check, and the guard the language spike needed — **a test that fails to run must
+not score green.**
+
+## M3 — Determinism assurance
+
+**T15 — Cross-architecture determinism check in CI**
+
+The language spike ran every process on one arm64 machine, which is not the
+property lockstep needs. Owning the interpreter (Q5) does not grant it; it only
+means the bug would be ours to fix. The workflow already exists to hang this on:
+run the battery on `ubuntu-latest` and compare against a checked-in hash.

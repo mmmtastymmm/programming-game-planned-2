@@ -16,12 +16,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-registers verifies that the commit hashes cited in
+          # docs/history/ resolve — three of them rotted silently when history
+          # was rewritten. A shallow clone has no objects to resolve them
+          # against, so the check would fail on every hash.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: scripts/package-lock.json
-      - name: Doc checks (links, registers, layout, mermaid)
+      # Not a hand-copied list of the steps: scripts/ci.sh prints each one as it
+      # runs, and a label restating them goes stale the next time one is added.
+      - name: Fast checks (scripts/ci.sh docs)
+        env:
+          # Bounds the size gate's history walk to the commits under review. An
+          # unbounded walk judges the base branch too, so one oversized blob
+          # anywhere in main's past would fail every PR forever, telling authors
+          # to rewrite a branch that did not introduce it. Empty on a push, where
+          # the whole of HEAD is the right scope.
+          SIZE_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: scripts/ci.sh docs
 
   # Determinism gate (CLAUDE.md): golden-replay fixtures are checked in, so any

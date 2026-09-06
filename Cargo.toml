@@ -12,3 +12,12 @@ edition = "2024"
 # and is already right the day a renderer lands.
 [profile.dev.package."*"]
 opt-level = 2
+
+# Workspace-wide, not per-crate. `+=` panics in debug and wraps in release, so
+# two peers built with different profiles diverge on the same input — a desync
+# produced by a build flag rather than by code. `World::alloc_id` had exactly
+# that shape, and the language spike found the same class in Rhai's recursion
+# limit. Scoping this to `sim`'s lib.rs would leave the coming language crate
+# (Q5) uncovered, which is the mistake the determinism scan already made once.
+[workspace.lints.clippy]
+arithmetic_side_effects = "deny"

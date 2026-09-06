@@ -5,9 +5,14 @@ is proposed, and against the whole corpus periodically. Edit them here rather
 than in any skill or checklist that consumes them.
 
 Each invariant was written after something got through — in this corpus or in
-the predecessor project it was ported from. `Q<n>` refers to
-[docs/QUESTIONS.md](../docs/QUESTIONS.md) and its history shards; `P<n>` to
-[docs/PROBLEMS.md](../docs/PROBLEMS.md) and its.
+the predecessor project it was ported from. They are numbered **DI1–DI9**, not
+`I1`–`I9`: `Q<n>`, `P<n>`, `T<n>` and `I<n>` are the four registers described in
+[CLAUDE.md](../CLAUDE.md), and `I<n>` is the inbox's — a design invariant and an
+inbox entry sharing one prefix would collide the day the inbox gets an entry.
+Open register entries live in [docs/QUESTIONS.md](../docs/QUESTIONS.md),
+[docs/PROBLEMS.md](../docs/PROBLEMS.md), [docs/TASKS.md](../docs/TASKS.md) and
+[docs/INBOX.md](../docs/INBOX.md); closed ones live one per file under
+`docs/history/`.
 
 Some invariants name a structure the design does not have yet — an economy
 graph, a canonical stat sheet, programs printed as shipped source. Each says so
@@ -17,7 +22,7 @@ until you already have the structure, which is too late to invent the check.
 
 ---
 
-## I1 — One canonical statement per fact
+## DI1 — One canonical statement per fact
 
 Exactly one place defines each fact; everywhere else cites it. Two canonical
 statements diverge — not *may* diverge, do.
@@ -25,7 +30,7 @@ statements diverge — not *may* diverge, do.
 **Check:** for any fact stated twice, one of the two must be marked a
 cross-reference. Watch for the marker being dropped by a later edit.
 
-## I2 — No orphan terms, in either direction
+## DI2 — No orphan terms, in either direction
 
 Every term used is defined somewhere; every defined thing has at least one
 consumer. Deletions break both directions at once.
@@ -34,7 +39,7 @@ consumer. Deletions break both directions at once.
 deliberate history in `docs/history/`, decided per hit. Then the reverse: for
 each thing the docs define, find who consumes it.
 
-## I3 — Decided sections are normative and get a separate pass
+## DI3 — Decided sections are normative and get a separate pass
 
 Under this repo's conventions the owning doc's *Decided* section is what an
 implementer builds from. It must agree with its own doc's body, and with every
@@ -44,7 +49,7 @@ settled history, so the eye slides past.
 **Check:** read every doc's Decided section as its own pass, not as part of
 reading the doc.
 
-## I4 — Every derived number reconciles with its inputs
+## DI4 — Every derived number reconciles with its inputs
 
 A constant presented as derived must be recomputable from constants fixed
 elsewhere. Consistency across documents is not evidence — a wrong number
@@ -54,7 +59,7 @@ propagates consistently.
 against the target the doc claims. When a table shares a formula, **recompute
 every row** — they all inherit the error.
 
-## I5 — The economy graph is traversable from the starting kit
+## DI5 — The economy graph is traversable from the starting kit
 
 Once the design has resources, recipes and gates, they form a directed graph
 with whatever they unlock. Every obtainable thing must be reachable from what a
@@ -65,7 +70,7 @@ correctly priced.
 traverse from the starting kit. Anything unreached is a bootstrap break.
 Re-traverse whenever a price, a gate or a tier changes.
 
-## I6 — The stat sheet is closed in both directions
+## DI6 — The stat sheet is closed in both directions
 
 Once one doc declares itself the canonical stat sheet — "if an effect can't name
 its row, it isn't a stat effect" — every effect anywhere maps to a row, and every
@@ -74,19 +79,22 @@ row has at least one source that grows or modifies it.
 **Check:** set-difference both ways — effects (equipment, perks, terrain, state)
 against rows, and rows against their sources.
 
-## I7 — Behavioral rules are single-valued
+## DI7 — Behavioral rules are single-valued
 
 Any rule governing sim behavior must admit one reading. Two competent
 implementers reading it must produce identical tick-by-tick behavior — this is a
 lockstep-multiplayer game, so ambiguity is a desync, not a wording nit.
 
 **Check:** for each behavioral rule, ask what an implementer does at every branch,
-including the exhausted/empty/absent case. Hash-affecting rules carry `⚠HASH` in
-`docs/TASKS.md`. Verify CLAUDE.md's determinism rules still hold: no floats in
+including the exhausted/empty/absent case. The *work* that implements a
+hash-affecting rule carries `⚠HASH` in `docs/TASKS.md`, and no other register
+carries the marker — an undecided rule is not yet work, so read
+`docs/QUESTIONS.md` in full rather than grepping it for a marker it does not
+use. Verify CLAUDE.md's determinism rules still hold: no floats in
 state-affecting paths, no hash-order iteration, no wall clock, sorted queries
 with entity-ID tiebreaks.
 
-## I8 — Shipped programs are source code
+## DI8 — Shipped programs are source code
 
 Once the docs print programs in the unit language, they are the *actual shipped
 source*, not illustrations. They are subject to the language reference, not to
@@ -94,11 +102,13 @@ prose review.
 
 **Check:** execute them mentally against the current spec.
 
-## I9 — Citations resolve
+## DI9 — Citations resolve
 
-A doc citing `Q42`, `docs/NN-name.md` or an amended ruling ("Q42-R2") must match
-what is actually there. Rulings get amended, and citations to the pre-amendment
-meaning survive the amendment.
+A doc citing `Q42`, `T7` or `docs/NN-name.md` must match what is actually there.
+Rulings get amended, and citations to the pre-amendment meaning survive the
+amendment — under this repo's scheme an amendment is a *new number*, so a
+citation to the old one keeps resolving while silently meaning the wrong thing.
+That is the case to hunt.
 
 **Check:** resolve citations in changed regions; sample them elsewhere. Pay
 attention to a citation whose *summary* of the cited ruling has drifted from what

@@ -59,6 +59,20 @@ impl World {
             wander: Stream::new(spec.seed, "wander"),
         };
         for &pos in &spec.spawns {
+            // Validated through the SAME predicate `Command::Spawn` uses.
+            // Without this the two entity-creation paths disagreed: a replay
+            // whose spec placed a unit off-map got an entity that consumed an
+            // id, entered the state hash, and could never move — while an
+            // identical Spawn command was rejected. A replay artifact is
+            // untrusted input; it arrives attached to bug reports.
+            assert!(
+                world.in_bounds(pos),
+                "spawn ({}, {}) is outside the {}x{} map",
+                pos.x,
+                pos.y,
+                spec.width,
+                spec.height
+            );
             world.spawn(pos);
         }
         world
@@ -66,7 +80,16 @@ impl World {
 
     pub fn alloc_id(&mut self) -> EntityId {
         let id = EntityId(self.next_id);
-        self.next_id += 1;
+        // NOT `+= 1`. That panics in debug and wraps in release, so two peers on
+        // different build profiles diverge on the same input — a desync caused
+        // by a build flag rather than by code, which is the exact class the
+        // language spike found in Rhai's limits. Wrapping is worse than the
+        // panic: id 0 gets reissued and `entities.insert` silently overwrites a
+        // live entity.
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("entity id space exhausted (u32)");
         id
     }
 
