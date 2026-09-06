@@ -92,7 +92,7 @@ as the failure semantics: a fault the player cannot see is a fault they cannot f
 |---|---|
 | Hard fault — the unit stops dead | Brutal, legible, teaches fast. Fifty stopped units is a dramatic and readable signal to patch. |
 | Fault, then fall back to a default behavior | Forgiving, keeps a match alive. The fallback becomes a hidden second program every player must learn, and masks the signal that something is wrong. |
-| Faults are values — the program handles them | Most expressive and most in the spirit of a programming game. Requires an error model in the language from day one, which pushes on Q5. |
+| Faults are values — the program handles them | Most expressive and most in the spirit of a programming game. Requires an error model in the language from day one — Q13 deferred `try`/`except` here rather than ruling on it, so this option is what would admit it. |
 | Static rejection — programs that can fault do not compile | Strongest guarantee a player can rely on. Demands real analysis in the toolchain, and a slow compile is punishing when editing under fire (Q3). **Q13 made this materially harder**: with user-defined classes and duck-typed attribute access, `x.foo()` needs type inference to check statically even though reflection is excluded. |
 
 **Q9 — Where do units come from?**
@@ -102,7 +102,7 @@ Fixed roster at match start, or produced during it.
 | Option | What it costs |
 |---|---|
 | Fixed roster, chosen before the match | Simplest. A match becomes a pure test of the program set, and the economy stops being gameplay. |
-| Produced by a rule the player configures, and can reconfigure mid-match | Consistent with Q3: production is another thing you author and re-author. The configuration surface is a second, smaller language to design unless it folds into Q5. |
+| Produced by a rule the player configures, and can reconfigure mid-match | Consistent with Q3: production is another thing you author and re-author. The configuration surface is a second, smaller language to design unless it is expressed in the unit language Q13 bounded, which `docs/01` would then have to cover. |
 | Produced by ordinary programs, like any other unit behavior | One authoring surface, maximum consistency with Q2. Production becomes something a program can get catastrophically wrong — which Q8 then has to survive. |
 
 **Q10 — What else, besides program updates, may enter the sim mid-match?**
@@ -133,7 +133,7 @@ rather than an oversight.
 |---|---|
 | Restart from the top, clearing all variables | Trivially defined, easy to explain, and the option Q13's boundary assumes. A unit halfway home drops everything and starts over, so a late patch can be worse than no patch. |
 | Resume at the same instruction offset | Feels continuous, and is meaningless the moment the edit changes the program's shape — offset 12 of the new text is not the old offset 12. |
-| Resume at a named re-entry point the program declares | Predictable and authorable, and gives the player real control over patch cost. Requires the language to carry the concept (Q5). |
+| Resume at a named re-entry point the program declares | Predictable and authorable, and gives the player real control over patch cost. Requires the language to carry the concept, which is outside Q13's boundary and would be a widening under a new number. |
 | Finish the current action, then restart | A compromise that keeps in-flight work. "Current action" must then be a precisely defined boundary in the sim, which is a rule-7-grade specification burden. |
 
 Whatever wins must also say what happens to a unit's **local state** — variables,
