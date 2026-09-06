@@ -50,14 +50,15 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T8 — Answer Q14, then write `docs/01`**
+**T8 — Write `docs/01`**
 
-Q14 cannot be discovered during implementation; the reason is with the
-question, in [QUESTIONS.md](QUESTIONS.md), and is deliberately not repeated
-here.
+Every question it waited on — Q8, Q11 and Q14, with Q17 amending Q8 — is
+answered. Their files under
+[history/questions-answered/](history/questions-answered/README.md) are the
+source; the doc is what makes them spec.
 
-Three things `docs/01` must pin that no open question owns, recorded here so
-they are not left to the implementation:
+The things `docs/01` must pin that no open question owns, recorded here so they
+are not left to the implementation:
 
 - **Every interpreter limit is spec, not a build default** — recursion depth,
   the per-tick operation budget, the size of every collection, including
@@ -76,6 +77,15 @@ they are not left to the implementation:
   boundary before the first operation; coalescing; the halt state; the swap as
   `redeploy`'s epilogue; and the exact shape of the value `on_fault` receives.
   The rules are in those three files; `docs/01` is where they become spec.
+- **The number model, as Q14 ruled it** — the scale of `fixed`, stated once as
+  spec; the literal grammar and what it rejects; the promotion, floor and
+  rounding rules; what `**` accepts; the `str` format of a `fixed`, so printing
+  is one string on every peer; and which numeric builtins exist, with a
+  specified integer algorithm for any root or other function the game needs.
+- **What Q13 named but did not pin** — the closed dunder set that `class`
+  dispatches, the module resolution order for `import`, and the exact `match`
+  pattern forms supported. Q13's file lists them; without this bullet they
+  live only in history.
 
 **T9 — Answer Q6, Q7, Q9, Q10, Q12 and Q15, then write the numbered docs they unblock**
 
@@ -110,6 +120,13 @@ honour it. The rule is not restated here — one canonical statement, per
 Mirroring `crates/sim`'s: golden fixtures for program execution, a cross-process
 check, and the guard the language spike needed — **a test that fails to run must
 not score green.**
+
+The determinism scan flags a Rust float literal anywhere on a line, string
+literals included, so a player-program fixture containing `1.5` — a `fixed`
+literal under Q14 — inside a Rust string will read as a violation once the scan
+covers the language crate. The fixtures live outside Rust source, or the scan
+learns to skip strings; either way the scan must still catch a real float in
+the interpreter.
 
 ## M3 — Determinism assurance
 

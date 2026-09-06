@@ -26,9 +26,9 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-06.** Q1 through Q5 are answered, and Q8, Q11, Q13 and Q17
-with them — Q17 was opened and answered in one commit, as the amendment to Q8
-that the history rules require to be a new number. Every other number this
+**Status 2026-09-06.** Q1 through Q5 are answered, and Q8, Q11, Q13, Q14 and
+Q17 with them — Q17 was opened and answered in one commit, as the amendment to
+Q8 that the history rules require to be a new number. Every other number this
 file has issued is still undecided, and each one is below under **Open**. Those rulings are owned by
 [00-overview.md](00-overview.md)'s Decided section and are not repeated here;
 each worksheet is a file of its own in
@@ -40,9 +40,9 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**`docs/01` waits on Q14 alone.** The other two blockers, Q8 and Q11, moved to
-history on 2026-09-06, so the single-blocker reading that earlier status blocks
-warned against is simply true now, and the overview's table says the same.
+**Nothing blocks `docs/01` any more.** Its three blockers — Q8, Q11 and Q14 —
+all moved to history on 2026-09-06, and T8 writes it. The overview's table says
+the same.
 
 ## Open
 
@@ -119,27 +119,6 @@ Also to settle here: what happens when a peer **misses** its window — drop the
 update, stall, or desync-and-resync. And whether updates are rate-limited, which
 is where PvP fairness re-enters (Q4 defers PvP, so this may be deferred with it,
 but the *hook* has to exist in the command format from the start).
-
-**Q14 — The number model**
-
-Every option below changes what arithmetic a program can express, so this
-cannot be discovered during implementation. The spike disqualified Lua on
-exactly this axis: `7 / 2` is `3.5`, and a float in a state-affecting path
-violates rule 2. Python's `/` behaves the same way, so Python's own answer is
-not available to us.
-
-| Option | What it costs |
-|---|---|
-| Fixed-width `i64`, overflow faults | One number type, no surprises, and overflow is a legible in-game failure. Q8 already makes it a `fault` interrupt delivered at the overflowing operation, so the boundary is spec. |
-| Fixed-width `i64`, overflow wraps | Never faults, never surprises the sim. Silently wrong answers are worse than loud ones in a language players debug under time pressure. |
-| Arbitrary-precision integers | No overflow to specify at all, and deterministic. Unbounded memory and time per operation, which fights the per-tick cost model Q5 chose to own. |
-| Fixed-point rationals for fractional values | Makes division expressible without floats. A second numeric type, and every mixed-type operation is a rule someone has to remember. |
-
-Whatever wins must also answer what `/` *does*: reject at parse time (forcing
-`//`), silently mean integer division (familiar-looking and quietly un-Pythonic),
-or return a fixed-point value. Rejecting is the most honest and the most annoying;
-it is also the only option that cannot silently produce a different answer than
-the player expected.
 
 **Q15 — What renders the game, and on what stack?**
 

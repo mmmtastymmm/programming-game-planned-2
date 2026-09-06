@@ -17,7 +17,7 @@ scaffolding and the determinism gate are ported from the predecessor project
 Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
 unit-language crate is ruled in — Q5 and Q13, whose rulings
 [docs/00-overview.md](docs/00-overview.md)'s Decided section owns and this file
-does not repeat — but unbuilt, pending Q14. A renderer crate is
+does not repeat — but unbuilt; its spec, `docs/01`, is T8. A renderer crate is
 open — Q15. Neither is needed for the determinism gate to be real.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
@@ -198,7 +198,10 @@ is lost instead — strictly worse than a file saying "misread this, here is why
   has carried, dated and attached to the commit that changed it — a stricter
   record than a hand-maintained one, and one that cannot be forgotten.
 - Every numeric value in docs (cycle costs, XP curves, timers) is a tuning
-  constant, expected to live in data files, not code.
+  constant, expected to live in data files, not code — except a constant of the
+  unit language itself, such as the scale of `fixed` (Q14), which is spec:
+  changing it changes every replay hash, so it is stated once in `docs/01` and
+  changed only under a new question number.
 
 ### Splitting a doc
 

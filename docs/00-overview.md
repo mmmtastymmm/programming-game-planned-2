@@ -84,8 +84,8 @@ pass.
   graph dynamic); decorators, `with` and `async`/`await` (grammar for use cases a
   unit program does not have); nested `def`, `global` and `nonlocal`, which
   removes closure capture as a question while leaving `lambda` and methods in a
-  `class` body; multiple inheritance; and floats, which Q14 owns and rule 2
-  forbids in state-affecting paths anyway. `try`/`except` was deferred to Q8,
+  `class` body; multiple inheritance; and floats, which rule 2 forbids in
+  state-affecting paths anyway and which Q14 replaces with `fixed`. `try`/`except` was deferred to Q8,
   which admits it — see that bullet.
 
   Three additions are only deterministic once we diverge from Python, and these
@@ -101,7 +101,8 @@ pass.
   Familiarity is the point of choosing Python at all, so the
   divergence list, not the exclusion list, is what a player has to read. This
   boundary is sound because a hot-swap clears all variables, which Q11 made so;
-  a swap that ever resumed instead would reopen it. The number model is Q14.
+  a swap that ever resumed instead would reopen it. The number model is Q14's
+  bullet below.
 - **An uncaught exception is an interrupt (Q8).** A unit runs in main flow
   until an interrupt is delivered. A handler is a locked system prologue, the
   player's code, then a locked system epilogue that runs unconditionally —
@@ -137,6 +138,20 @@ pass.
   that handler first, which Q17's hook budget bounds; a halted unit takes the
   swap at the start of its next slice. Nothing survives a swap, which
   discharges the dependency Q13's boundary carried.
+- **Two numeric types, `int` and `fixed`, and no float (Q14).** `int` is a
+  64-bit signed integer. `fixed` is a 64-bit signed integer scaled by 10⁶ — six
+  decimal places, no infinity, no NaN — and `float` is not a name in the
+  language: a literal with a decimal point or an exponent is a `fixed`, and one
+  the type cannot represent exactly is rejected at parse time. Overflow of
+  either type, division by zero, and a `fixed` exponent are all faults (Q8).
+  `/` returns a `fixed` whatever its operands, so `7 / 2` is `3.5` as a Python
+  programmer expects; `//` and `%` floor with Python's semantics; an `int` in
+  mixed arithmetic promotes exactly to `fixed`; and every `fixed` result that is
+  not representable rounds toward negative infinity — one rounding rule, the
+  one `//` already has. Conversions, `bool`, and the numeric builtins follow
+  Python with `fixed` in place of `float`. The scale is language spec stated
+  once in `docs/01`, not a tuning constant, because it decides every replay
+  hash.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -148,7 +163,7 @@ inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | Q14 |
+| `01` | The unit language — syntax, execution model, cost model | — |
 | `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | — |
@@ -162,7 +177,6 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01` waits on Q14, and now genuinely on Q14
-alone** — earlier passes misread it as the single blocker while Q8 and Q11 were
-still open, which is why the table above, not this sentence, is the authority
-on what blocks what.
+map from question to doc. **Nothing blocks `01` any more** — T8 writes it — and
+the table above, not this sentence, is the authority on what blocks what:
+earlier passes misread `01` as having a single blocker while it had three.
