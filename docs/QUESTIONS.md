@@ -5,8 +5,8 @@ Other docs may cite a number inline ("open — Q7") but never restate a question
 substance or its leaning; a question restated in two places gets answered in one
 of them.
 
-Answering a question empties it out of this file in three directions: the ruling
-and its worksheet become one new file in
+Answering a question empties it out of this file entirely: the ruling and its
+worksheet become one new file in
 [history/questions-answered/](history/questions-answered/README.md), which must
 declare its **Outcome**: docs changed now, or a question, problem or task opened.
 A ruling that changes nothing anywhere was not a ruling. Nothing answered stays
@@ -107,7 +107,7 @@ else* does, and it decides how many categories of command the netcode carries.
 
 **Q11 — What happens to a unit mid-execution when its program is swapped?**
 
-⚠HASH. Q3 permits the swap; this decides what it does to fifty units that are
+Q3 permits the swap; this decides what it does to fifty units that are
 each somewhere in the middle of the old program. Every option below changes the
 state hash, so this cannot be discovered during implementation.
 
@@ -149,9 +149,11 @@ but the *hook* has to exist in the command format from the start).
 
 **Q14 — The number model**
 
-⚠HASH. The spike disqualified Lua on exactly this axis: `7 / 2` is `3.5`, and a
-float in a state-affecting path violates rule 2. Python's `/` behaves the same
-way, so Python's own answer is not available to us.
+Every option below changes what arithmetic a program can express, so this
+cannot be discovered during implementation. The spike disqualified Lua on
+exactly this axis: `7 / 2` is `3.5`, and a float in a state-affecting path
+violates rule 2. Python's `/` behaves the same way, so Python's own answer is
+not available to us.
 
 | Option | What it costs |
 |---|---|
@@ -166,3 +168,22 @@ or return a fixed-point value. Rejecting is the most honest and the most annoyin
 it is also the only option that cannot silently produce a different answer than
 the player expected.
 
+**Q15 — What renders the game, and on what stack?**
+
+`sim` is renderer-free plain Rust and the arrow from renderer back to sim does
+not exist ([00-overview.md](00-overview.md)). What is undecided is which stack
+the renderer crate is built on — and determinism rule 1 makes that a sim
+question too, because an ECS engine brings a second world model alongside the
+authoritative one, which may reach the sim only as ordered `Command`s.
+
+| Option | What it costs |
+|---|---|
+| Bevy — full engine, ECS, its own scheduler | Most given for free: assets, input, windowing, UI. Brings an ECS into the process, which is the one architecture violation CLAUDE.md asks reviewers to flag every time; the boundary then has to be defended in review forever. |
+| macroquad / miniquad — immediate-mode 2D | Small, no ECS and no scheduler of its own, so drawing from sim state is a plain read. Little given for free above drawing: UI, input mapping and asset handling are all ours. |
+| `wgpu` directly | No opinions imposed and no engine to fight; the crate boundary is trivially safe. The most work by a wide margin, and none of it is game design. |
+| Headless for now — no renderer crate until the sim earns one | Costs nothing today and keeps the corpus honest about what is built. A sim nobody watches hides the problems only visible in motion, and the renderer's needs then arrive late, as sim changes. |
+
+Also to settle here: whether the renderer runs in the sim's process at all, and
+what it is allowed to read. A renderer that samples state mid-tick sees a torn
+world; one that reads only a completed tick's snapshot does not, and that is a
+shape the sim has to offer deliberately.

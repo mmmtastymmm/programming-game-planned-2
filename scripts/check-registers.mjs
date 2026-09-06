@@ -4,7 +4,7 @@
 // are kept because they are the evidence that justifies the check — not because
 // they happened in this repo.
 //
-//   node scripts/check-registers.mjs docs
+//   node scripts/check-registers.mjs .        # the REPO root, not docs/
 //
 // ── The scheme ──────────────────────────────────────────────────────────────
 // Four registers. Each keeps OPEN entries in a live doc and moves each CLOSED
@@ -54,7 +54,7 @@ import { join, relative, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { markdownFiles } from "./lib/md-files.mjs";
 import { stripFences } from "./lib/markdown.mjs";
-import { MAX_BYTES, OUTCOME_KINDS, REGISTERS } from "./lib/registers.mjs";
+import { HASH_MARKER, MAX_BYTES, OUTCOME_KINDS, REGISTERS } from "./lib/registers.mjs";
 
 // Takes the REPO root, not docs/. The registers live under docs/, but the size
 // cap and the no-restated-totals rule have to cover CLAUDE.md and README.md too:
@@ -428,6 +428,32 @@ for (const reg of REGISTERS.filter((r) => r.status)) {
           (what === "open" ? ` (${here.open.map((e) => e.id).join(", ")})` : ""),
       );
     }
+  }
+}
+
+// ── The ⚠HASH marker belongs to one register ────────────────────────────────
+// It marks a task whose PR regenerates the golden fixture, and a reviewer greps
+// one file for it. Used in a second register it stops being a way in: either the
+// definition stays narrow and the other register's usage contradicts it, or it
+// widens to cover both and marks nearly every open question, since almost
+// everything changes sim behavior while the sim is unbuilt. Both states shipped.
+//
+// Backticked mentions are quotation, not marking — the docs that describe this
+// rule have to be able to name the marker, exactly as with the totals rule below.
+{
+  const owner = REGISTERS.find((r) => r.what === HASH_MARKER.what);
+  for (const reg of REGISTERS) {
+    if (reg === owner) continue;
+    const path = join(root, reg.live);
+    if (!existsSync(path)) continue;
+    stripFences(readFileSync(path, "utf8")).forEach((line, i) => {
+      if (line.replace(/`[^`]*`/g, "").includes(HASH_MARKER.text)) {
+        note(
+          `${path}:${i + 1}  uses ${HASH_MARKER.text}, which marks a task in ${owner.live} and ` +
+            `nothing else — say the property in words here instead`,
+        );
+      }
+    });
   }
 }
 

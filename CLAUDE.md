@@ -17,9 +17,9 @@ scaffolding and the determinism gate are ported from the predecessor project
 Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
 unit-language crate is ruled in (Q5: our own Python-shaped interpreter,
 deterministic by construction; Q13: a broad subset — procedural Python plus
-`class`, `set`, `match` and `import`) but unbuilt, pending Q14. A renderer crate
-is expected and still undecided. Neither is needed for the determinism gate to be
-real.
+`class`, `set`, `match` and `import`) but unbuilt, pending Q8, Q11 and Q14. A
+renderer crate is expected, and which crate it is remains open (Q15). Neither is
+needed for the determinism gate to be real.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
 
@@ -65,10 +65,14 @@ which is indistinguishable from agreement.
 - `scripts/ci.sh` runs the whole suite locally; it is exactly what CI runs, so
   the two cannot drift. `scripts/ci.sh docs` is the fast half (seconds, no Rust
   build); `scripts/ci.sh rust` is fmt, clippy and tests.
-  - `scripts/install-hooks.sh` once per clone installs the pre-commit doc gate,
-    which runs the docs half against the **staged** content and refuses an
-    oversized file — a large file is permanent once pushed, and
-    `scripts/check-staged-size.sh` owns the limit.
+  - `scripts/install-hooks.sh` once per clone installs the pre-commit gate,
+    which runs the fast half against the **staged** content and refuses an
+    oversized file. `scripts/check-file-size.sh` owns the limit and has two
+    modes: `staged` for the hook, which can still stop the blob being written,
+    and `repo` for CI, which cannot — a large file is permanent once pushed — but
+    which is the only one that runs for a contributor who never installed the
+    hook, and the only one that reads the *history* rather than the index, where
+    a blob deleted by a later commit still sits.
 - **`scripts/check-checks.mjs` is the check on the checks.** It seeds known
   defects into a copy of the working tree and asserts each is caught by the
   right check with a message that names the real problem. It reads the working
@@ -124,7 +128,8 @@ What each register uniquely holds:
 - **Tasks** — work to do, grouped under milestones. Milestones are groupings, not
   entries; a milestone is finished when every task under it has left the file.
   `⚠HASH` marks a task that changes sim behavior and therefore the golden-replay
-  hashes.
+  hashes, and it marks nothing else — a question is not work, and almost every
+  open question would carry it, which is a marker that has stopped selecting.
 - **Inbox** — raw observations, in whatever words came out. Writing one down must
   be cheaper than deciding where it goes; triage it later. An entry left here is
   a review finding, not a backlog item — a doc pass that walks past this file has

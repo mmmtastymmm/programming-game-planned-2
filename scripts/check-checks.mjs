@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The doc checks, checked.
+// The checks, checked.
 //
 //   node scripts/check-checks.mjs .
 //
@@ -44,6 +44,11 @@ import { SKIP as WALKER_SKIP } from "./lib/md-files.mjs";
 
 const SKIP = new Set(WALKER_SKIP);
 import { spawnSync } from "node:child_process";
+// The member parser the `lints` check itself uses, for the manifest-only
+// fixture below. Importing it rather than re-deriving the member list is the
+// whole point: two parsers for one format is what made a commented-out member
+// kill this run with a raw ENOENT.
+import { workspaceMembers } from "./lib/workspace-lints.mjs";
 
 const repo = process.argv[2] ?? ".";
 
@@ -70,10 +75,11 @@ const CHECKS = {
   structure: script("check-structure.mjs"),
   vocabulary: script("check-vocabulary.mjs"),
   mermaid: script("check-mermaid.mjs"),
-  lints: (dir) => {
-    const found = lintOptInProblems(dir);
-    return { code: found.length ? 1 : 0, out: found.join("\n") };
-  },
+  // Spawned, not called in-process, so this table exercises the same entry
+  // point CI and the pre-commit hook run — exit code, message and all. It was
+  // an in-process call to a copy of the rule that lived in this file, which is
+  // how it ended up with mutations but no CI step.
+  lints: script("check-workspace-lints.mjs"),
 };
 
 /** Rewrite a file, failing loudly if the edit matched nothing. */
@@ -88,6 +94,7 @@ function edit(path, from, to) {
 
 const qa = (d) => join(d, "docs/history/questions-answered");
 const tc = (d) => join(d, "docs/history/tasks-completed");
+const pf = (d) => join(d, "docs/history/problems-fixed");
 
 const MUTATIONS = [
   // ── registers: entry identity ─────────────────────────────────────────────
@@ -293,6 +300,20 @@ const MUTATIONS = [
       edit(join(d, "crates/sim/Cargo.toml"), /^\[lints\]\n[\s\S]*?\n\n/m, "");
     } },
 
+  { name: "a `[lints]` header with a trailing comment is still the lints section",
+    check: "lints", fixture: "manifests", expect: "", skipIfClean: true,
+    // Valid TOML that Cargo accepts, and the header pattern demanded
+    // end-of-line after the bracket — so a fully opted-in crate was reported as
+    // opting out, and CI failed on a correct manifest. The call site's comment
+    // said trailing comments were handled; that was true of the section body
+    // and false of the header above it.
+    mutate: (d) => edit(join(d, "crates/sim/Cargo.toml"), /^\[lints\]$/m,
+      "[lints]  # inherit the workspace deny") },
+  { name: "a `[workspace.lints.clippy]` header with a trailing comment still declares the deny",
+    check: "lints", fixture: "manifests", expect: "", skipIfClean: true,
+    mutate: (d) => edit(join(d, "Cargo.toml"), /^\[workspace\.lints\.clippy\]$/m,
+      "[workspace.lints.clippy]  # every member inherits this") },
+
   { name: "a commented-out workspace member is read as a comment", check: "lints",
     fixture: "manifests", expect: "", skipIfClean: true,
     // Two parsers for one format: lintOptInProblems stripped comments and this
@@ -375,9 +396,16 @@ const MUTATIONS = [
     check: "vocabulary", expect: "has no Outcome section at all",
     mutate: (d) => appendFileSync(join(d, "docs/history/tasks-completed/README.md"),
       "\n- `- **Dropped:**` — sure, why not.\n") },
-  { name: "README miscounting the doc checks", check: "vocabulary",
-    expect: "doc checks",
-    mutate: (d) => edit(join(d, "README.md"), /seven doc checks/, "four doc checks") },
+  { name: "README miscounting the checks", check: "vocabulary",
+    expect: 'checks"; scripts/ holds',
+    mutate: (d) => edit(join(d, "README.md"), /eight checks \(/, "four checks (") },
+  { name: "a number-plus-checks sentence elsewhere in README is not the anchor",
+    check: "vocabulary", expect: "", skipIfClean: true,
+    // `exec` takes the FIRST match in the file, so an unanchored `(\\d+) checks`
+    // would bind to this line instead of the Layout row and report a drift
+    // against the wrong sentence.
+    mutate: (d) => edit(join(d, "README.md"), /^## Layout$/m,
+      "Three checks are worth knowing about before the rest.\n\n## Layout") },
   { name: "history/README dropping the size cap it restates by hand",
     check: "vocabulary", expect: "size cap",
     mutate: (d) => edit(join(d, "docs/history/README.md"), /40 KB/g, "a reasonable size") },
@@ -392,6 +420,115 @@ const MUTATIONS = [
       mkdirSync(join(d, "docs/01-language/runtime"), { recursive: true });
       writeFileSync(join(d, "docs/01-language/runtime/vm.md"), "# VM\n\nno breadcrumb\n");
     } },
+
+  // ── registers: the derived headline is actually recomputed ───────────────
+  // The rule CLAUDE.md spends the most words on, and it had no mutation at all.
+  // It is also the one the live corpus cannot exercise: PROBLEMS.md reads "0
+  // opened, 0 fixed — zero open" against a register holding nothing, so every
+  // arm of the comparison is 0 against 0, and the entire recompute could be
+  // deleted — or wired to the wrong field — with every check still green. Each
+  // case below moves exactly ONE arm, so swapping two of them fails here.
+  { name: "the headline's OPENED total, against a register that has entries",
+    check: "registers", expect: "says 0 opened, the register has 2",
+    // opened counts open PLUS closed, which is the arm most easily miswired to
+    // one or the other: with a closed P1 and an open P2 the three arms read 2,
+    // 1 and 1, so no two of them can be confused.
+    mutate: (d) => {
+      writeFileSync(join(pf(d), "problem-fixed-0001.md"), "# P1 — fixed\n\nbody\n");
+      appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P2 — still open**\n\nbody\n");
+    } },
+  { name: "the headline's FIXED total", check: "registers",
+    expect: "says 0 fixed, the register has 1",
+    mutate: (d) => {
+      writeFileSync(join(pf(d), "problem-fixed-0001.md"), "# P1 — fixed\n\nbody\n");
+      edit(join(d, "docs/PROBLEMS.md"), /0 opened, 0 fixed/, "1 opened, 0 fixed");
+    } },
+  { name: "the headline's OPEN total", check: "registers",
+    expect: "the register has 1 (P1)",
+    mutate: (d) => {
+      appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P1 — still open**\n\nbody\n");
+      edit(join(d, "docs/PROBLEMS.md"), /0 opened, 0 fixed/, "1 opened, 0 fixed");
+    } },
+  { name: "a status headline that is not in the counted form at all",
+    check: "registers", expect: "malformed status headline",
+    // Dated, so it is found as the register's one status block, but carrying no
+    // numbers — which is how a headline stops being checked without disappearing.
+    mutate: (d) => edit(join(d, "docs/PROBLEMS.md"),
+      /: 0 opened, 0 fixed — zero open\.\*\*/, ": all totals current.**") },
+  { name: "a headline count spelled as a word the checker cannot read",
+    check: "registers", expect: "is not a number this checker knows",
+    mutate: (d) => edit(join(d, "docs/PROBLEMS.md"), /— zero open/, "— twenty-one open") },
+
+  // ── registers: the ⚠HASH marker has one owner ────────────────────────────
+  { name: "the ⚠HASH marker used in a register that does not own it",
+    check: "registers", expect: "which marks a task in",
+    // It really was used in QUESTIONS.md, and the definitions in CLAUDE.md,
+    // TASKS.md and design-invariants.md all said "task" while it was.
+    mutate: (d) => appendFileSync(join(d, "docs/QUESTIONS.md"),
+      "\n⚠HASH. Every option here changes the state hash.\n") },
+  { name: "a backticked mention of the marker is quotation, not marking",
+    check: "registers", expect: "", skipIfClean: true,
+    // The docs that describe the rule have to be able to name the marker.
+    mutate: (d) => appendFileSync(join(d, "docs/QUESTIONS.md"),
+      "\nThe `⚠HASH` marker belongs to the tasks register.\n") },
+
+  // ── registers: numbering ─────────────────────────────────────────────────
+  // Both rules are enumerated in check-registers' own header and in CLAUDE.md's
+  // register table, and neither had a mutation. The first is the commonest real
+  // mistake there is: closing an entry and forgetting to delete it from the live
+  // register, which leaves it open and closed at once.
+  { name: "an entry that is open and closed at once", check: "registers",
+    expect: "appears twice",
+    mutate: (d) => writeFileSync(join(tc(d), "task-completed-0007.md"),
+      "# T7 — closed while still listed as open\n") },
+  { name: "a hole in the middle of the numbering", check: "registers",
+    expect: "numbering must be dense",
+    mutate: (d) => rmSync(join(tc(d), "task-completed-0003.md")) },
+
+  // ── links: the citation half, which the corpus cannot exercise ───────────
+  // check-links devotes half its header to line citations and names these two
+  // as the rot class it exists for — and the live corpus contains zero
+  // citations, so the resolution logic had never once executed and the CI step
+  // reported "0 line citations in range" as a success. These four are the only
+  // thing that runs it.
+  { name: "a citation past the end of the file it names", check: "links",
+    expect: "citation past EOF",
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [PROBLEMS.md:9999](PROBLEMS.md) for that.\n") },
+  { name: "a citation that has slid onto a blank line", check: "links",
+    expect: "citation lands on a blank line",
+    // Line 2 of any file opening with an H1. P32 in the predecessor was exactly
+    // this: a citation that still resolved, at a line that had gone empty.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [PROBLEMS.md:2](PROBLEMS.md) for that.\n") },
+  { name: "a bare `:NN` with no file named before it", check: "links",
+    expect: "bare citation names no file",
+    // Appended below INBOX.md's "## Open" heading, which is a SCOPE_BREAK — so
+    // nothing is bound and the number is unresolvable to a reader too.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nAnd the note at :24 explains it.\n") },
+  { name: "a bare `:NN` that binds to the file named just before it",
+    check: "links", expect: "", skipIfClean: true,
+    // The inverse: nearest-preceding-citation-wins is the convention the
+    // register follows, so it must ACCEPT the shape it is written for. Line 1 is
+    // the H1 of every file in the corpus, so this cannot rot into a false alarm.
+    mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"),
+      "\nSee [PROBLEMS.md](PROBLEMS.md), and its heading at :1.\n") },
+
+  // ── vocabulary: the fifth file that drifted ──────────────────────────────
+  // check-vocabulary's header names design-invariants.md as one of the five
+  // originally-drifted files, and it was the one the checker never opened.
+  { name: "design-invariants dropping a register's live doc", check: "vocabulary",
+    expect: "does not name docs/INBOX.md",
+    mutate: (d) => edit(join(d, ".claude/design-invariants.md"), /docs\/INBOX\.md/g, "docs/NOTES.md") },
+  { name: "design-invariants dropping a register's entry prefix", check: "vocabulary",
+    expect: "`I<n>` entry prefix",
+    mutate: (d) => edit(join(d, ".claude/design-invariants.md"), /`I<n>`/g, "`N<n>`") },
+  { name: "a doc that defines the ⚠HASH marker losing the marker itself",
+    check: "vocabulary", expect: "does not name the ⚠HASH marker",
+    // Three docs teach this marker by hand. They have already gone out of step
+    // once, in both directions.
+    mutate: (d) => edit(join(d, "docs/TASKS.md"), /⚠HASH/g, "HASH-AFFECTING") },
 
   { name: "a mermaid diagram that does not parse", check: "mermaid",
     expect: "error on line",
@@ -440,7 +577,7 @@ function copyTree(src, dst) {
 function manifests() {
   const dir = mkdtempSync(join(tmpdir(), "check-manifests-"));
   cpSync(join(repo, "Cargo.toml"), join(dir, "Cargo.toml"));
-  for (const rel of expandAll()) {
+  for (const rel of MEMBER_PATHS) {
     // A member listed but absent is a defect the `lints` check REPORTS, so the
     // fixture must be able to hold one. cpSync would instead throw ENOENT out
     // of fixture construction and take the run down.
@@ -452,21 +589,21 @@ function manifests() {
 }
 
 /**
- * Every workspace member path, for the manifest-only fixture.
+ * Every workspace member path, for the manifest-only fixture. Read ONCE: the
+ * member list cannot change between fixtures, and manifests() is built eight
+ * times.
  *
- * Delegates to the member parser the `lints` check itself uses. This was a
- * second, weaker copy of it — same regex, no `uncomment()` pass — and the two
- * disagreed on the most ordinary edit imaginable: a commented-out member
- * (`# "crates/lang",  # not written yet`). lintOptInProblems read the manifest
- * correctly and saw nothing wrong, while this copy handed manifests() a path
- * that does not exist and killed the whole meta-check with a raw ENOENT stack
- * trace — mid-table, so the three mutations after it never ran and nothing said
- * they had been skipped. Two parsers for one format is the defect; the ENOENT
- * was only how it announced itself.
+ * From lib/workspace-lints.mjs, the same module the `lints` check runs on the
+ * other side of the spawn. This was a second, weaker copy of it — same regex, no
+ * `uncomment()` pass — and the two disagreed on the most ordinary edit
+ * imaginable: a commented-out member (`# "crates/lang",  # not written yet`).
+ * lintOptInProblems read the manifest correctly and saw nothing wrong, while
+ * this copy handed manifests() a path that does not exist and killed the whole
+ * meta-check with a raw ENOENT stack trace — mid-table, so the three mutations
+ * after it never ran and nothing said they had been skipped. Two parsers for one
+ * format is the defect; the ENOENT was only how it announced itself.
  */
-function expandAll() {
-  return workspaceMembers(repo).paths;
-}
+const MEMBER_PATHS = workspaceMembers(repo).paths;
 
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), "check-checks-"));
@@ -479,192 +616,174 @@ function fresh() {
 
 const failures = [];
 
-// ── Workspace lints are actually in force ──────────────────────────────────
-// `[workspace.lints]` does nothing for a crate that omits `[lints] workspace =
-// true`, and clippy stays green either way. The deny exists so the coming
-// language crate is covered; a silent opt-out would defeat it exactly when it
-// starts to matter — so every branch below REPORTS, and none of them `continue`
-// quietly.
-//
-// This is not a TOML parser and does not try to be. It handles the spellings
-// Cargo accepts that a person would plausibly write; anything it cannot read is
-// a reported failure rather than a silent pass.
-
-/** Strip a `#` comment from a line, ignoring `#` inside quotes. */
-function uncomment(line) {
-  let q = null;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (q) {
-      if (c === q) q = null;
-    } else if (c === '"' || c === "'") {
-      q = c;
-    } else if (c === "#") {
-      return line.slice(0, i);
-    }
-  }
-  return line;
-}
-
-/** The body of a `[section]`, up to the next table header. */
-function tomlSection(text, name) {
-  const lines = text.split("\n");
-  const at = lines.findIndex((l) => new RegExp(`^\\[${name}\\]\\s*$`).test(l));
-  if (at === -1) return null;
-  const rest = lines.slice(at + 1);
-  const next = rest.findIndex((l) => /^\s*\[/.test(l));
-  return (next === -1 ? rest : rest.slice(0, next)).join("\n");
-}
-
-/** Expand one `members` entry, which Cargo allows to be a glob, per segment. */
-function expandMember(dir, glob) {
-  if (!glob.includes("*")) return [glob];
-  let candidates = [""];
-  for (const seg of glob.split("/")) {
-    const next = [];
-    for (const base of candidates) {
-      const abs = join(dir, base);
-      if (!existsSync(abs)) continue;
-      if (!seg.includes("*")) {
-        if (existsSync(join(abs, seg))) next.push(base ? `${base}/${seg}` : seg);
-        continue;
-      }
-      const re = new RegExp(
-        `^${seg.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`,
-      );
-      for (const e of readdirSync(abs, { withFileTypes: true })) {
-        if (e.isDirectory() && re.test(e.name)) next.push(base ? `${base}/${e.name}` : e.name);
-      }
-    }
-    candidates = next;
-  }
-  // Slicing at the first `*` mishandled both shapes that matter: `crates/sim-*`
-  // produced the base `crates/sim-`, which does not exist and was skipped in
-  // silence, and `crates/*/core` expanded to `crates/sim` — a crate that is not
-  // a member — while skipping every crate that is.
-  return candidates.filter((c) => existsSync(join(dir, c, "Cargo.toml")));
-}
-
-/**
- * The workspace's member paths, read once and shared.
- *
- * `members\s*=` unanchored also matches the tail of `default-members =`, which
- * would silently validate a subset — hence the `^\s*`. Comments are stripped
- * before the strings are pulled out, because Cargo allows them and people write
- * them.
- */
-function workspaceMembers(dir) {
-  const rootPath = join(dir, "Cargo.toml");
-  const empty = { listed: [], paths: [], problems: { unreadable: true, emptyGlobs: [] } };
-  if (!existsSync(rootPath)) return empty;
-  const block = /^\s*members\s*=\s*\[([\s\S]*?)\]/m.exec(readFileSync(rootPath, "utf8"));
-  if (!block) return empty;
-
-  const listed =
-    block[1]
-      .split("\n")
-      .map(uncomment)
-      .join("\n")
-      .match(/"[^"]+"|'[^']+'/g)
-      ?.map((t) => t.slice(1, -1)) ?? [];
-
-  const paths = [];
-  const emptyGlobs = [];
-  for (const g of listed) {
-    const expanded = expandMember(dir, g);
-    if (expanded.length === 0) {
-      emptyGlobs.push(`Cargo.toml: member "${g}" matched no crate — every member must be checked`);
-    }
-    paths.push(...expanded);
-  }
-  return { listed, paths, problems: { unreadable: false, emptyGlobs } };
-}
-
-function lintOptInProblems(dir) {
-  const found = [];
-  const rootPath = join(dir, "Cargo.toml");
-  if (!existsSync(rootPath)) return ["Cargo.toml: workspace root manifest is missing"];
-  const rootManifest = readFileSync(rootPath, "utf8");
-
-  if (!/^\[workspace\.lints\.clippy\]\s*$/m.test(rootManifest)) {
-    found.push("Cargo.toml: no [workspace.lints.clippy] section — the deny is declared nowhere");
-  }
-
-  const { listed, paths, problems: memberProblems } = workspaceMembers(dir);
-  if (memberProblems.unreadable) {
-    return [...found, "Cargo.toml: could not read workspace members"];
-  }
-  if (listed.length === 0) {
-    found.push("Cargo.toml: workspace members list is empty or unreadable");
-  }
-  found.push(...memberProblems.emptyGlobs);
-
-  for (const rel of paths) {
-    const manifest = join(dir, rel, "Cargo.toml");
-    if (!existsSync(manifest)) {
-      found.push(`${rel}/Cargo.toml: listed as a workspace member but absent`);
-      continue;
-    }
-    const text = readFileSync(manifest, "utf8");
-    // Both spellings Cargo accepts, and a trailing comment is valid TOML.
-    const section = tomlSection(text, "lints") ?? "";
-    const inSection = section
-      .split("\n")
-      .map(uncomment)
-      .some((l) => /^\s*workspace\s*=\s*true\s*$/.test(l));
-    const dotted = text
-      .split("\n")
-      .map(uncomment)
-      .some((l) => /^\s*lints\.workspace\s*=\s*true\s*$/.test(l));
-    if (!inSection && !dotted) {
-      found.push(
-        `${rel}/Cargo.toml: does not opt into the workspace lints ` +
-          `([lints] workspace = true) — the arithmetic_side_effects deny is inert here`,
-      );
-    }
-  }
-  return found;
-}
-
-// ── The staged-size gate, exercised in a throwaway repository ───────────────
+// ── The file-size gate, exercised in a throwaway repository ────────────────
 // It has no corpus to mutate, so it gets its own section. It needs one: shipped
 // inline in the hook, it aborted EVERY commit — `set -e` plus a while-loop whose
 // last command returns 1 for each file under the limit — and nothing noticed,
 // because the only case ever tested was the one that is supposed to fail.
+//
+// BOTH MODES are exercised. `staged` is what the pre-commit hook runs and `repo`
+// is what scripts/ci.sh runs, and for a while only the first existed — so the
+// one gate against a failure this corpus calls permanent lived entirely in an
+// opt-in hook that `--no-verify` skips. A mode nobody tests is a mode nobody has
+// seen work.
 {
   const dir = mkdtempSync(join(tmpdir(), "check-size-"));
-  const git = (...a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
-  const gate = () =>
-    spawnSync("bash", [resolve(repo, "scripts/check-staged-size.sh")], {
+  // Every setup command is checked. When `git commit` failed for an unrelated
+  // reason — a global `commit.gpgsign` with no key, a global `core.hooksPath` —
+  // the fixture left the blob in the index, the gate then behaved correctly, and
+  // this suite reported the gate as broken: a confident wrong diagnosis pointing
+  // at the script under test, which is the failure mode it exists to prevent.
+  // The two config overrides remove the commonest causes; the status check
+  // catches the rest and names the fixture.
+  const git = (...a) => {
+    const r = spawnSync("git", ["-c", "commit.gpgsign=false", ...a], { cwd: dir, encoding: "utf8" });
+    if (r.status !== 0) {
+      failures.push(
+        `file-size gate: FIXTURE setup failed, not the gate — \`git ${a[0]}\` exited ${r.status}\n` +
+          `  ${(r.stderr ?? "").trim().split("\n")[0]}`,
+      );
+    }
+    return r;
+  };
+  const gate = (...args) =>
+    spawnSync("bash", [resolve(repo, "scripts/check-file-size.sh"), ...args], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, MAX_KB: "512" },
     });
+  const write = (name, bytes) => writeFileSync(join(dir, name), "x".repeat(bytes));
+
+  // A refusal has to be the RIGHT refusal. Exit 2 — an empty list, an unknown
+  // mode — is also non-zero, so `status !== 0` scored a gate that inspected
+  // nothing as a gate that caught something, which is this file's own subject
+  // matter. Demand exit 1 and the offending path in the message.
+  const refuses = (r, path) => r.status === 1 && `${r.stdout}${r.stderr}`.includes(path);
 
   git("init", "-q");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
 
+  // Zero inputs, before anything is added. `staged` must pass — a commit that
+  // only deletes files stages nothing under ACMR — and `repo` must NOT, because
+  // "no files are too large" over an empty repository is the green-on-nothing
+  // result this whole file exists to make impossible.
+  if (gate().status !== 0) {
+    failures.push("file-size gate: staged mode rejects an empty index, where nothing is being added");
+  }
+  if (gate("repo").status !== 2) {
+    failures.push(
+      "file-size gate: repo mode reported on a repository with no files at all\n" +
+        "  success over zero inputs is indistinguishable from success",
+    );
+  }
+
   writeFileSync(join(dir, "small.md"), "# small\n");
   git("add", "-A");
   if (gate().status !== 0) {
     failures.push(
-      "staged-size gate: rejects a commit containing only small files\n" +
+      "file-size gate: rejects a commit containing only small files\n" +
         "  this is the shape that silently blocked every commit once already",
     );
   }
+  if (gate("repo").status !== 0) {
+    failures.push("file-size gate: repo mode rejects a tree of only small files");
+  }
 
-  writeFileSync(join(dir, "big.bin"), "x".repeat(700 * 1024));
+  // THE BOUNDARY. `kb=$((size / 1024))` truncates, so the gate advertised as
+  // 512 KB accepted everything below 513 KB — and 0 bytes against 700 KB is a
+  // pair of tests no rounding error can fall between. Exactly at the cap passes;
+  // one byte over does not.
+  write("edge.bin", 512 * 1024);
   git("add", "-A");
-  if (gate().status === 0) {
-    failures.push("staged-size gate: accepted a 700 KB file");
+  if (gate().status !== 0) {
+    failures.push("file-size gate: refused a file of exactly MAX_KB — the cap is inclusive");
+  }
+  write("edge.bin", 512 * 1024 + 1);
+  git("add", "-A");
+  if (!refuses(gate(), "edge.bin")) {
+    failures.push(
+      "file-size gate: accepted a file ONE BYTE over the cap\n" +
+        "  a KB-truncating comparison passes everything below MAX_KB + 1 KB",
+    );
+  }
+  rmSync(join(dir, "edge.bin"));
+  git("add", "-A");
+
+  write("big.bin", 700 * 1024);
+  git("add", "-A");
+  if (!refuses(gate(), "big.bin")) {
+    failures.push("file-size gate: accepted a 700 KB file");
+  }
+  // The mode CI runs. A contributor who never installed the hook, or who used
+  // --no-verify once, is caught here or nowhere.
+  if (!refuses(gate("repo"), "big.bin")) {
+    failures.push("file-size gate: repo mode accepted a 700 KB file");
   }
 
   // Staged, then removed from the working tree: the blob is still committed, so
   // a working-tree stat would wave it through.
   rmSync(join(dir, "big.bin"));
-  if (gate().status === 0) {
-    failures.push("staged-size gate: accepted a large staged blob whose file was deleted");
+  if (!refuses(gate(), "big.bin")) {
+    failures.push("file-size gate: accepted a large staged blob whose file was deleted");
+  }
+
+  // THE CASE THAT SEPARATES THE TWO MODES, and the reason everything above it
+  // is not enough. Commit the oversized file and the index goes quiet: nothing
+  // is staged, so the staged mode has nothing to look at and passes — correctly,
+  // since nothing is being added. The repo mode must still name the file.
+  //
+  // Until this case existed, `repo` could be reimplemented as `git diff --cached`
+  // and every assertion above stayed green: in a throwaway repo where nothing is
+  // ever committed, the staged list and the tracked list are the same list. A
+  // mode only ever tested where it cannot differ is untested.
+  write("big.bin", 700 * 1024);
+  git("add", "-A");
+  git("commit", "-qm", "big", "--no-verify");
+  if (gate().status !== 0) {
+    failures.push("file-size gate: staged mode failed a commit that stages nothing at all");
+  }
+  if (!refuses(gate("repo"), "big.bin")) {
+    failures.push(
+      "file-size gate: repo mode missed a large file that is already committed\n" +
+        "  the tracked list is not the staged list — that difference is the mode's whole point",
+    );
+  }
+
+  // AND THE ONE THE INDEX CANNOT SEE AT ALL: committed, then deleted in a later
+  // commit. `git ls-files` no longer lists it, the working tree no longer has
+  // it, and the blob is still in the history the merge would carry — which is
+  // exactly the 528 MB target/ incident, and exactly what the failure message
+  // ("the blob is already in the history") had been claiming to check.
+  rmSync(join(dir, "big.bin"));
+  git("add", "-A");
+  git("commit", "-qm", "drop big", "--no-verify");
+  if (gate("repo").status === 0) {
+    failures.push(
+      "file-size gate: repo mode passed a branch whose history carries a 700 KB blob\n" +
+        "  deleting the file in a later commit does not remove it from what a clone gets",
+    );
+  }
+
+  // A path git cannot size — an unmerged entry mid-merge, a corrupt object —
+  // must be REPORTED. It used to `continue` in silence without counting toward
+  // the total, so the success line named a number that quietly excluded it,
+  // which is the shape the comment about `< <(...)` refuses fifteen lines above
+  // in the same script.
+  git("update-index", "--add", "--cacheinfo",
+    "100644,1111111111111111111111111111111111111111,ghost.txt");
+  if (!refuses(gate(), "ghost.txt")) {
+    failures.push(
+      "file-size gate: skipped a path it could not size, without saying so\n" +
+        "  an unvouched-for file inside a green run is the failure this gate is about",
+    );
+  }
+
+  // An unknown mode must be refused, not silently treated as the default. A
+  // typo'd argument that falls back to `staged` would make the CI step pass
+  // while checking the index, which on a fresh checkout is empty.
+  if (gate("bogus").status !== 2) {
+    failures.push("file-size gate: an unknown mode was not refused");
   }
 
   rmSync(dir, { recursive: true, force: true });
@@ -735,6 +854,6 @@ if (failures.length) {
 console.log(
   `✓ ${MUTATIONS.length} seeded defects each caught by the right check, ` +
     `${Object.keys(CHECKS).length} checks pass the corpus clean, ` +
-    `the staged-size gate behaves on all three of its cases, ` +
+    `the file-size gate behaves in both modes, ` +
     `and the workspace lint opt-in is in force`,
 );

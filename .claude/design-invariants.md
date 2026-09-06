@@ -85,7 +85,9 @@ lockstep-multiplayer game, so ambiguity is a desync, not a wording nit.
 
 **Check:** for each behavioral rule, ask what an implementer does at every branch,
 including the exhausted/empty/absent case. Hash-affecting rules carry `⚠HASH` in
-`docs/TASKS.md`. Verify CLAUDE.md's determinism rules still hold: no floats in
+`docs/TASKS.md`, and only there — an undecided rule is not yet a rule, so read
+`docs/QUESTIONS.md` in full rather than grepping it for a marker it does not
+use. Verify CLAUDE.md's determinism rules still hold: no floats in
 state-affecting paths, no hash-order iteration, no wall clock, sorted queries
 with entity-ID tiebreaks.
 

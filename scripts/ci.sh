@@ -4,7 +4,7 @@
 #
 #   scripts/ci.sh              # everything
 #   scripts/ci.sh rust         # cargo checks only
-#   scripts/ci.sh docs         # doc checks only (fast — no Rust build)
+#   scripts/ci.sh docs         # the fast half: docs, manifests, size (no Rust build)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -47,9 +47,21 @@ run_docs() {
   # made the hook's extraction dead machinery in the predecessor project.
   local ROOT="${1:-.}"
 
+  # The size gate, over the index AND this branch's history. The pre-commit hook
+  # checks the staged blobs, which is the mode that can still save you — but it
+  # is opt-in per clone, `--no-verify` skips it, and it stands down when Node is
+  # absent, so for the one failure class this repo calls permanent ("a large file
+  # is permanent once pushed") nothing at all ran on a PR. It needs the
+  # repository, not the extracted index the hook passes as $ROOT, and in that
+  # case the hook has already run the staged half a moment earlier.
+  if [ "$ROOT" = "." ]; then
+    step "no file over the size cap, in the index or the history"
+    scripts/check-file-size.sh repo || FAILED+=("file size")
+  fi
+
   step "relative links and line citations resolve"
   if ! command -v node >/dev/null 2>&1; then
-    echo "node not found — install Node 20+ to run the doc checks" >&2
+    echo "node not found — install Node 20+ to run the fast checks" >&2
     FAILED+=("docs (node missing)")
     return
   fi
@@ -78,6 +90,13 @@ run_docs() {
   # Five doc/tooling drifts were found in a single review round; each was a fact
   # about the tooling restated by hand elsewhere.
   node scripts/check-vocabulary.mjs "$ROOT" || FAILED+=("vocabulary")
+
+  step "every workspace member opts into the workspace lints"
+  # Not a doc check — it reads Cargo manifests — but it needs no toolchain, so it
+  # belongs in the half that runs in seconds. It lived inside check-checks.mjs
+  # for a while, where it had mutations but no step here, and ran against the
+  # real manifests only as a side effect of that file's baseline loop.
+  node scripts/check-workspace-lints.mjs "$ROOT" || FAILED+=("workspace lints")
 
   step "mermaid diagrams parse"
   # Install on first run, or whenever the lockfile is newer than the tree.

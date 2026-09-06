@@ -27,7 +27,7 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: scripts/package-lock.json
-      - name: Doc checks (links, registers, layout, structure, vocabulary, mermaid, meta)
+      - name: Fast checks (file size, links, registers, layout, structure, vocabulary, workspace lints, mermaid, meta)
         run: scripts/ci.sh docs
 
   # Determinism gate (CLAUDE.md): golden-replay fixtures are checked in, so any

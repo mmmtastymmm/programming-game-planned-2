@@ -6,7 +6,7 @@
 // point at a file that does not exist. No deps — plain Node, unlike the mermaid
 // check.
 //
-//   node scripts/check-links.mjs docs
+//   node scripts/check-links.mjs .           # the REPO root, not docs/
 //
 // Why this exists: the register files cite each other constantly, and
 // docs/history/ is populated by *moving* blocks verbatim out of docs/ — which
@@ -59,7 +59,7 @@ import { dirname, relative, resolve } from "node:path";
 import { markdownFiles } from "./lib/md-files.mjs";
 import { stripFences } from "./lib/markdown.mjs";
 
-const root = process.argv[2] ?? "docs";
+const root = process.argv[2] ?? ".";
 if (!existsSync(root)) {
   console.error(`check-links: no such directory: ${root}`);
   process.exit(2);

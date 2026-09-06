@@ -1,9 +1,15 @@
 # Spike: can a stock embeddable runtime be bit-deterministic?
 
-Answers the empirical half of **Q5** ([../../docs/QUESTIONS.md](../../docs/QUESTIONS.md)).
-Q5's leaning was that the embeddable-runtime option is the one to *disprove
-first*: if a stock runtime survives the determinism rules it dominates, and if it
-cannot, learning that early is worth more than any preference.
+Answered the empirical half of **Q5**, which has since been ruled and lives in
+[question-answered-0005.md](../../docs/history/questions-answered/question-answered-0005.md)
+— not in `QUESTIONS.md`, which holds only what is still open. The ruling went
+the other way from the result below: it chose a purpose-built interpreter and
+declined the embeddable runtime this spike found deterministic, and its
+worksheet says why. Read that before reading anything here as a recommendation.
+
+The embeddable-runtime option was spiked first on purpose: if a stock runtime
+survives the determinism rules it dominates, and if it cannot, learning that
+early is worth more than any preference.
 
 ```sh
 cargo run --release --manifest-path spikes/lang-determinism/Cargo.toml

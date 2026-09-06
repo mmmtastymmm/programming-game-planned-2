@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
-# Fast doc gate: runs the docs half of CI before every commit that touches a .md
-# (link resolution, then mermaid parsing).
+# Fast gate: the staged-size check, then `scripts/ci.sh docs` against the staged
+# content.
+#
+# It fires on ANY staged change, not only on markdown — see the pathspec note
+# below, which is the reason.
+#
+# It runs MOST of what that half runs, not all: two steps stand down when
+# scripts/ci.sh is handed a directory instead of the repository — the repo-mode
+# size gate (this file has already run the staged mode by then) and the
+# meta-check (it copies the working tree, so running it here would judge
+# unstaged edits). Both are guarded at the `$ROOT` tests in scripts/ci.sh and
+# labelled there. The rest of the list is deliberately not restated here: the
+# last time it was, this header named two checks while the script ran six.
 #
 # Install (one command, per clone):   scripts/install-hooks.sh
 # Skip once:                          git commit --no-verify
@@ -9,7 +20,7 @@
 # a temp dir and runs there. So a half-staged fix can't pass on the strength of
 # unstaged edits, and unstaged breakage can't block a clean commit.
 #
-# Only the docs half of CI runs here (seconds). The Rust half is too slow for a
+# Only the fast half of CI runs here (seconds). The Rust half is too slow for a
 # commit hook; CI covers it.
 set -euo pipefail
 
@@ -29,13 +40,13 @@ fi
 # Size gate first: cheap, and it is the one failure that cannot be fixed later
 # without rewriting history. Lives in its own script so it can be tested — as an
 # inline loop it silently aborted every commit (see that file's header).
-if ! scripts/check-staged-size.sh; then
+if ! scripts/check-file-size.sh staged; then
   echo "pre-commit: aborted." >&2
   exit 1
 fi
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "pre-commit: node not found, skipping the doc checks (CI still gates them)" >&2
+  echo "pre-commit: node not found, skipping the Node checks (CI still gates them)" >&2
   exit 0
 fi
 
@@ -60,7 +71,7 @@ git checkout-index -a --prefix="$TMP/"
 # so.
 if ! scripts/ci.sh docs "$TMP"; then
   echo >&2
-  echo "pre-commit: doc checks failed on the STAGED content — commit aborted." >&2
+  echo "pre-commit: checks failed on the STAGED content — commit aborted." >&2
   echo "            fix it, or 'git commit --no-verify' to bypass." >&2
   exit 1
 fi

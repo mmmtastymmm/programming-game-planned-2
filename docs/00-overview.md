@@ -100,7 +100,7 @@ inserted without renumbering:
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
-| `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10 |
+| `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
 
 Each becomes a doorway plus a parts directory only when it outgrows one file
 (CLAUDE.md, *Splitting a doc*).

@@ -57,6 +57,16 @@ export const REGISTERS = [
   },
 ];
 
+/**
+ * The marker for an entry that changes sim behavior, and the ONE register that
+ * may carry it. It appeared in QUESTIONS.md for a while, and keeping it there
+ * meant widening its definition in three docs at once — at which point it
+ * selected almost nothing, since nearly every open question changes sim
+ * behavior while the sim is unbuilt. A marker that marks everything is not a
+ * marker.
+ */
+export const HASH_MARKER = { text: "⚠HASH", what: "tasks" };
+
 /** Which register each Outcome kind cites, and how its citations are spelled. */
 export const OUTCOME_KINDS = {
   Question: { what: "questions", re: /\b(Q(\d+))\b/g },

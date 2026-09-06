@@ -69,8 +69,8 @@ source scan are what keep that choice honest rather than aspirational.
   [Q14](../../QUESTIONS.md) (the number model). Both change what the parser
   accepts, so neither could be deferred past writing `docs/01`.
 - **Task:** [T10, T11, T12, T13, T14](../../TASKS.md) — the language
-  implementation, staged across M2. [T8](../../TASKS.md) — answer Q14, then write
-  `docs/01`.
+  implementation, staged across M2. [T8](../../TASKS.md) — answer the language
+  questions this ruling left open, then write `docs/01`.
 
 ## Worksheet
 

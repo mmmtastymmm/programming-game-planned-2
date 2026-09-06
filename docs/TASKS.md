@@ -17,7 +17,10 @@ Two conventions carried over from the predecessor project:
 
 - **`⚠HASH` marks a task that changes sim behavior**, and therefore the
   golden-replay hashes. Such a task's PR regenerates the fixture and says why
-  (CLAUDE.md).
+  (CLAUDE.md). **This file is the only place the marker appears.** An open
+  question is not work, and nearly every open question would qualify while the
+  sim is unbuilt — a marker on all of them selects nothing. Where a *ruling* is
+  undiscoverable during implementation, the question says so in words.
 - **Decided-but-unbuilt** work — a ruling the code has not caught up to — is
   tracked here *and* as an entry in [PROBLEMS.md](PROBLEMS.md). The register owns
   the gap; this file owns the work. A task is only lag once it is actually
@@ -51,7 +54,7 @@ Q8 and Q11 fall inside T9's sweep, so that much of T9 lands first — the
 sequencing is recorded here because reading T8 alone once suggested Q14 was the
 only thing in the way.
 
-**T9 — Answer Q6–Q12 and write the numbered docs they unblock**
+**T9 — Answer Q6–Q12 and Q15, then write the numbered docs they unblock**
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
