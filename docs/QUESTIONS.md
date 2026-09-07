@@ -27,10 +27,11 @@ Known-wrong *decided* text is not a question — it goes in
 [INBOX.md](INBOX.md).
 
 **Status 2026-09-07.** Q1 through Q5 are answered, and Q7, Q8, Q9, Q11, Q13,
-Q14, Q16 through Q22 with them — Q17 through Q20 were each opened and
-answered in one commit, as the amendments to Q8, Q14 and Q18 that the history
-rules require to be new numbers. The rulings of Q7, Q9, Q21 and Q22 sit in
-the overview's Decided section until `docs/02` and `03` exist to own them.
+Q14, Q16 through Q23 with them — Q17 through Q20 and Q23 were each opened
+and answered in one commit, as the amendments to Q8, Q9, Q14, Q18 and Q22
+that the history rules require to be new numbers. The rulings of Q7, Q9,
+Q21, Q22 and Q23 sit in the overview's Decided section until `docs/02` and
+`03` exist to own them.
 Every other number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section

@@ -36,7 +36,7 @@ Two conventions carried over from the predecessor project:
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model**
 
 ⚠HASH — this regenerates the golden fixture by definition. The world model
-has its rulings — Q7, Q9, Q21 and Q22 — and waits on `docs/02` and `03`
+has its rulings — Q7, Q9, Q21, Q22 and Q23 — and waits on `docs/02` and `03`
 being written from them; the shape of `Command` is blocked on Q10 and Q12.
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
@@ -53,7 +53,7 @@ path most likely to differ between peers.
 
 **T9 — Answer Q6, Q10, Q12 and Q15, then write the numbered docs they unblock**
 
-`docs/02` and `docs/03` wait on nothing now that Q7, Q9, Q21 and Q22 are
+`docs/02` and `docs/03` wait on nothing now that Q7, Q9, Q21, Q22 and Q23 are
 ruled; their rulings — held in the overview's Decided section meanwhile — move
 into those docs when they are written, and the resource, building and deposit
 numbers they name go into data beside the language's.
