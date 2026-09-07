@@ -1,0 +1,82 @@
+# Operation costs for the unit language — the values behind the formulas in
+# docs/01-language/costs.md. This file is the one place a cost is a number;
+# the doc owns what each cost depends on. Every value is a non-negative
+# integer, spent from the tick budget and the hook budget alike.
+#
+# Every key is hash-affecting: changing one changes the golden-replay fixtures,
+# and the PR that does so says why (CLAUDE.md).
+
+[op]
+statement = 1
+name = 1
+literal = 1
+operator = 1
+attribute = 1
+subscript = 1
+call = 1
+argument = 1
+construct = 1
+display = 1
+iteration = 1
+raise = 1
+import = 1
+pattern = 1
+
+[factor]
+# per element traversed, copied, or sorted; per string scalar handled
+traverse = 1
+copy = 1
+sort = 2
+char = 1
+
+[builtin]
+len = 1
+range = 1
+minmax = 1
+sum = 1
+abs = 1
+sorted = 1
+enumerate = 1
+zip = 1
+anyall = 1
+convert = 1
+construct = 1
+isinstance = 1
+round = 1
+
+[method.list]
+append = 1
+extend = 1
+insert = 1
+pop = 1
+search = 1
+sort = 1
+reverse = 1
+clear = 1
+copy = 1
+
+[method.dict]
+lookup = 1
+view = 1
+update = 1
+clear = 1
+copy = 1
+
+[method.set]
+single = 1
+clear = 1
+copy = 1
+
+[method.str]
+split = 1
+join = 1
+strip = 1
+affix = 1
+scan = 1
+map = 1
+test = 1
+
+[game]
+# One key per game builtin, named and shaped by docs/02. Empty until 02 is
+# written; the language crate treats a game builtin with no row as a load
+# error, not as free.

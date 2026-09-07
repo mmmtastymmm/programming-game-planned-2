@@ -26,12 +26,14 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-06.** Q1 through Q5 are answered, and Q8, Q11, Q13, Q14 and
-Q17 with them — Q17 was opened and answered in one commit, as the amendment to
-Q8 that the history rules require to be a new number. Every other number this
-file has issued is still undecided, and each one is below under **Open**. Those rulings are owned by
-[00-overview.md](00-overview.md)'s Decided section and are not repeated here;
-each worksheet is a file of its own in
+**Status 2026-09-06.** Q1 through Q5 are answered, and Q8, Q11, Q13, Q14,
+Q17, Q18 and Q19 with them — Q17, Q18 and Q19 were each opened and answered
+in one commit, as the amendments to Q8 and Q14 that the history rules require
+to be new numbers. Every other number this
+file has issued is still undecided, and each one is below under **Open**. The
+framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
+and the language's by [01-language](01-language.md)'s parts; none is repeated
+here. Each worksheet is a file of its own in
 [history/questions-answered/](history/questions-answered/README.md), and the
 spike behind Q5 is
 [spikes/lang-determinism](../spikes/lang-determinism/README.md).
@@ -40,9 +42,8 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**Nothing blocks `docs/01` any more.** Its three blockers — Q8, Q11 and Q14 —
-all moved to history on 2026-09-06, and T8 writes it. The overview's table says
-the same.
+**`docs/01` is written** — [01-language](01-language.md), with the rulings it
+waited on as its parts' Decided entries. The overview's table says the same.
 
 ## Open
 
