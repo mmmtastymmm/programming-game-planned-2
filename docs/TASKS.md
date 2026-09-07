@@ -35,7 +35,8 @@ Two conventions carried over from the predecessor project:
 
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model**
 
-⚠HASH — this regenerates the golden fixture by definition. Blocked on Q9; the
+⚠HASH — this regenerates the golden fixture by definition. Blocked on Q7 and
+Q9, the questions `docs/02` and `docs/03` wait on; the
 shape of `Command` is blocked on Q10 and Q12.
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
@@ -50,7 +51,7 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q6, Q7, Q9, Q10, Q12 and Q15, then write the numbered docs they unblock**
+**T9 — Answer Q6, Q7, Q9, Q10, Q12, Q15 and Q16, then write the numbered docs they unblock**
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
@@ -93,12 +94,18 @@ Mirroring `crates/sim`'s: golden fixtures for program execution, a cross-process
 check, and the guard the language spike needed — **a test that fails to run must
 not score green.**
 
-The determinism scan flags a Rust float literal anywhere on a line, string
-literals included, so a player-program fixture containing `1.5` — a `num`
-literal under Q19 — inside a Rust string will read as a violation once the scan
-covers the language crate. The fixtures live outside Rust source, or the scan
-learns to skip strings; either way the scan must still catch a real float in
-the interpreter.
+Two fixtures this suite owes that the spec names: the boundary cases of the
+256-bit wide-arithmetic routine behind `num` (T10) — the products and
+quotients nearest the range, the floor at each sign, the `**` procedure's
+count of steps — and the interrupt paths the golden replay is least likely to
+cover, a fault escaping mid-unwind and a hook exhausting its budget on its
+last operation.
+
+The determinism scan already strips string literals before looking for float
+literals, so a `num` literal like `1.5` inside a player-program fixture is
+safe in an ordinary Rust string; the one form it cannot strip is a raw string
+with hashes (`r##"…"##`), so fixtures avoid that spelling or live outside Rust
+source.
 
 ## M3 — Determinism assurance
 

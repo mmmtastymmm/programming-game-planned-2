@@ -26,10 +26,10 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-06.** Q1 through Q5 are answered, and Q8, Q11, Q13, Q14,
-Q17, Q18 and Q19 with them — Q17, Q18 and Q19 were each opened and answered
-in one commit, as the amendments to Q8 and Q14 that the history rules require
-to be new numbers. Every other number this
+**Status 2026-09-07.** Q1 through Q5 are answered, and Q8, Q11, Q13, Q14,
+Q17, Q18, Q19 and Q20 with them — Q17 through Q20 were each opened and
+answered in one commit, as the amendments to Q8, Q14 and Q18 that the history
+rules require to be new numbers. Every other number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
@@ -147,7 +147,9 @@ shape the sim has to offer deliberately.
 Q8 built the interrupt mechanism — a locked prologue, the player's code, a
 locked epilogue; a closed priority set; preemption that abandons the preempted
 handler — with two kinds, `fault` and `death`; Q11 added `redeploy` below
-them and Q17 split death into `dying` and `death`. None of the four resumes
+them, Q17 split death into `dying` and `death`, and Q18 made every hooked
+kind's epilogue conditional on its hook returning — so an event kind, being
+hooked, would get no guaranteed epilogue either. None of the four resumes
 anything. Pushed world events (damage taken,
 enemy sighted, low energy) fit the same mechanism, but a unit would expect to
 *resume* main flow after handling one, and that is a suspended frame carrying

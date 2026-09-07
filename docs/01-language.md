@@ -8,8 +8,9 @@ implementers reading it must produce the same bit-for-bit behavior on every
 tick, because a difference is a desync (design-invariant DI7).
 
 This doc is split Rust-module style: this file is the doorway and holds only
-what crosses its parts; each part owns its subject in full and carries, in its
-own **Decided** section, the rulings it elaborates. The reasoning behind those
+what crosses its parts; each part owns its subject in full, and each part that
+elaborates a ruling carries it in its own **Decided** section. The reasoning
+behind those
 rulings lives one file per ruling under
 [history/questions-answered/](history/questions-answered/README.md) and is not
 repeated here.
@@ -27,7 +28,7 @@ repeated here.
 
 1. **Nothing is inherited from the host.** Every evaluation order, iteration
    order, rounding, limit and failure is stated in these parts. Where a part is
-   silent, the behavior is Python 3's — and a difference from Python 3 that the
+   silent, the behavior is Python 3.12's — and a difference from it that the
    [divergence list](01-language/syntax.md#divergences-from-python-in-full)
    does not name is a defect in this doc, not a question: it is filed in
    [PROBLEMS.md](PROBLEMS.md) and the list is amended.
@@ -39,9 +40,9 @@ repeated here.
    nothing wraps, nothing is undefined behavior.
 3. **Nothing resumes across an interrupt.** A `fault` restarts main flow, a
    `redeploy` swaps it, `dying` and `death` end it. The only resumption the
-   language has is metering: main flow paused at an operation boundary when the
-   tick's budget runs out continues from that boundary next tick, in the same
-   program, with the same state.
+   language has is metering: main flow or a hook paused at an operation
+   boundary when the tick's budget runs out continues from that boundary next
+   tick, in the same program, with the same state.
 4. **Every limit and every cost is spec, and its value is data.** Each limit —
    call depth, budgets, collection sizes — is named in
    [execution](01-language/execution.md) with what exhausting it does; each

@@ -37,7 +37,7 @@ The evaluator charges these as it walks the program.
 
 | Operation | Cost |
 |---|---|
-| a statement, on execution | `op.statement` |
+| a statement, each time it executes — a `while` header once per pass | `op.statement` |
 | a name load | `op.name` |
 | a literal | `op.literal` |
 | a unary, binary, comparison or boolean operator, on any operands not priced below; `and`, `or`, `not`; the conditional `a if c else b`; `is` | `op.operator` |
@@ -48,18 +48,21 @@ The evaluator charges these as it walks the program.
 | `==`, `!=`, `<` and the rest on lists, tuples or strs | `op.operator + n × factor.traverse`, `n` the top-level element pairs compared before the answer is known, in order from the first; a pair that is itself a comparison of containers or instances is charged by its own row on top |
 | `in` on a list or tuple | `op.operator + n × factor.traverse`, `n` the elements examined |
 | `in` on a str | `op.operator + n × factor.char`, `n` the haystack's length — a fixed price, whatever search the interpreter uses |
-| `a ** b` | `op.operator` per multiplication or division the procedure in [numbers](numbers.md#exponentiation) performs |
+| `a ** b` | `op.operator` per multiplication or division the procedure in [numbers](numbers.md#exponentiation) performs: one squaring per bit of the exponent after the first, one more per set bit, and one division for a negative exponent — `x ** 0` performs none and costs `op.operator` alone |
+| starred unpacking `a, *rest = xs`; a `*xs` or `**kw` splat in a call | `op.operator + n × factor.copy`, `n` the elements spread |
+| truthiness of an instance with `__len__` | the call it makes |
 | an attribute read or write | `op.attribute` |
 | a subscript read or write | `op.subscript` |
 | a slice | `op.subscript + n × factor.copy`, `n` the elements or scalars copied |
-| a call, plus each bound argument | `op.call + args × op.argument` |
+| a call of a `def`, a method, or a `lambda`, plus each bound argument | `op.call + args × op.argument`; a builtin, or a method of a built-in type, pays its own row **instead** and never this one |
 | a class instantiation | `op.construct`, then its `__init__` as a call |
-| a dunder dispatch | the operator's or builtin's own row, plus the call it makes — `v + w` on instances is `op.operator + op.call + op.argument` before `__add__`'s body |
+| a dunder dispatch | the operator's or builtin's own row, plus the call it makes with `self` uncharged — `v + w` on instances is `op.operator + op.call + op.argument` before `__add__`'s body |
 | a list, tuple, dict or set display | `op.display + n × factor.copy`, `n` the elements written |
-| one iteration of a comprehension or a `for` | `op.iteration`, plus the body's own operations |
+| one iteration of a comprehension or a `for` | `op.iteration`, plus the body's own operations; a `for` over a list, dict or set also pays `n × factor.copy` at entry for its snapshot |
 | an f-string | `op.operator + n × factor.char`, `n` the scalars produced |
-| a `dict` or `set` membership test or key lookup | `op.subscript` |
-| `raise`, and each frame an exception unwinds through | `op.raise` per frame |
+| a `dict` or `set` membership test or key lookup with a `num`, `str`, `bool`, `None` or instance key | `op.subscript` |
+| the same with a `tuple` key | `op.subscript + n × factor.traverse`, `n` the elements walked, descending into nested tuples — a walk, so the nesting depth applies |
+| `raise`, and each frame the exception then leaves | `op.raise` per frame left — none if caught in the frame that raised it — and `op.pattern` per `except` clause tested against it |
 | `import`, the first time per run | `op.import`, then the module body's own operations |
 | a `match` arm tested | `op.pattern` per pattern node tried |
 | an interrupt's prologue or epilogue | nothing — system code |
