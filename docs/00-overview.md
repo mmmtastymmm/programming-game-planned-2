@@ -124,7 +124,24 @@ pass.
   unit whose role has no bundle runs the empty program, which restarts once
   per tick and is not a state. The building list is `docs/02`'s table,
   seeded with the printer; the rest, and the resources that price it, are
-  Q22. This ruling moves to `docs/02` when it is written.
+  Q22's bullet below. This ruling moves to `docs/02` when it is written.
+- **One resource today, gathered by bots from deposits that regrow, carried
+  to buildings that hold it, and spent from where it is held (Q22).**
+  Resources are a table keyed by kind, holding `ore`, and every capacity,
+  cost, load and deposit amount is a map from kind to `num`, so a second
+  resource is a data row. Deposits are terrain with an amount, a cap and a
+  regrowth rate per tick, remembered by Q21 as last seen. A bot has a capacity
+  and a load, `pick`s from an adjacent deposit or depot and `drop`s into an
+  adjacent building, and carries while doing anything else. Every building
+  has a store with a capacity per kind: the printer's is small and a print
+  spends from it; the **depot** is a building whose store is large and whose
+  purpose is to hold. A `build` places a site with a store whose capacity is
+  the building's cost; bots fill it, construction runs for the build time,
+  and the building appears with an empty store. The starting printer starts
+  stocked, so the first prints need no hauler. Nothing spends from a store it
+  does not own. The building list is `docs/02`'s table and holds printer and
+  depot; the numbers are tuning in data; `03` defines deposits and places
+  them. This ruling moves to `docs/03` and `02` when they are written.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -139,7 +156,7 @@ inserted without renumbering:
 |---|---|---|
 | `01` | The unit language — syntax, execution model, cost model | — |
 | `02` | Units — what they are, what they sense, what they do | — |
-| `03` | The world — terrain, resources, whatever the economy turns out to be | Q22 |
+| `03` | The world — terrain, resources, whatever the economy turns out to be | — |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
