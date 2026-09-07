@@ -24,11 +24,12 @@ fills; this part fixes only how such a row is shaped.
   `builtin.name`, `method.type.name` or `factor.name`. A cost is always a
   non-negative integer.
 - An operation's **base** cost is charged when it begins and its
-  **per-element** part as each element or scalar is handled. The budget is
-  checked only at boundaries ([execution](execution.md#metering)): an
-  operation, once begun, completes, and may overspend the tick by the rest of
-  its cost; the overspend is not carried forward, and nothing ever waits for
-  budget it cannot have in one tick.
+  **per-element** part as each element or scalar is handled, in full, to the
+  tick budget and — inside a hook — to the hook budget alike. The budget is
+  checked only at boundaries, an operation once begun completes, and a tick
+  overspend carries forward as a deficit; [execution](execution.md#metering)
+  owns those rules, and this part does not restate them. Nothing is ever
+  cheaper for straddling a tick.
 
 ## Operations
 
@@ -39,17 +40,21 @@ The evaluator charges these as it walks the program.
 | a statement, on execution | `op.statement` |
 | a name load | `op.name` |
 | a literal | `op.literal` |
-| a unary, binary, comparison or boolean operator on numbers, booleans or `None` | `op.operator` |
+| a unary, binary, comparison or boolean operator, on any operands not priced below; `and`, `or`, `not`; the conditional `a if c else b`; `is` | `op.operator` |
+| a `lambda` evaluated as a value | `op.literal` |
+| `==`, `!=` on dicts or sets | `op.operator + n × factor.traverse`, `n` the sum of both operands' sizes |
+| `==`, `!=` on instances without `__eq__` | `op.operator` |
 | `+` on a list, tuple or str; `*` repetition | `op.operator + n × factor.copy`, `n` the elements or scalars produced |
-| `==`, `!=`, `<` and the rest on lists, tuples or strs | `op.operator + n × factor.traverse`, `n` the elements compared before the answer is known |
-| `in` on a list, tuple or str | `op.operator + n × factor.traverse`, `n` the elements examined |
+| `==`, `!=`, `<` and the rest on lists, tuples or strs | `op.operator + n × factor.traverse`, `n` the top-level element pairs compared before the answer is known, in order from the first; a pair that is itself a comparison of containers or instances is charged by its own row on top |
+| `in` on a list or tuple | `op.operator + n × factor.traverse`, `n` the elements examined |
+| `in` on a str | `op.operator + n × factor.char`, `n` the haystack's length — a fixed price, whatever search the interpreter uses |
 | `a ** b` | `op.operator` per multiplication or division the procedure in [numbers](numbers.md#exponentiation) performs |
 | an attribute read or write | `op.attribute` |
 | a subscript read or write | `op.subscript` |
 | a slice | `op.subscript + n × factor.copy`, `n` the elements or scalars copied |
 | a call, plus each bound argument | `op.call + args × op.argument` |
 | a class instantiation | `op.construct`, then its `__init__` as a call |
-| a dunder dispatch | as the call it is |
+| a dunder dispatch | the operator's or builtin's own row, plus the call it makes — `v + w` on instances is `op.operator + op.call + op.argument` before `__add__`'s body |
 | a list, tuple, dict or set display | `op.display + n × factor.copy`, `n` the elements written |
 | one iteration of a comprehension or a `for` | `op.iteration`, plus the body's own operations |
 | an f-string | `op.operator + n × factor.char`, `n` the scalars produced |
@@ -107,7 +112,7 @@ takes a `key=` function pays a call per element for it.
 | `str.join` | `method.str.join + n × factor.char`, `n` the output's length |
 | `str.strip`, `str.lstrip`, `str.rstrip` | `method.str.strip + n × factor.char` |
 | `str.startswith`, `str.endswith` | `method.str.affix + n × factor.char`, `n` the affix's length |
-| `str.find`, `str.replace` | `method.str.scan + n × factor.char`, `n` the input's length |
+| `str.find`, `str.replace` | `method.str.scan + n × factor.char`, `n` the input's length — a fixed price, like `in` on a str |
 | `str.upper`, `str.lower`, `str.zfill` | `method.str.map + n × factor.char` |
 | `str.isdigit`, `str.isalpha` | `method.str.test + n × factor.char` |
 | `tuple.index`, `tuple.count` | `method.list.search + n × factor.traverse` |
@@ -125,7 +130,8 @@ row's `n`; nothing here prices a game builtin by name.
 A cost model that is data can be tuned without touching the spec, and every
 tuning is hash-affecting in the ordinary way — a fixture regenerates and the PR
 says why (CLAUDE.md). The shape is what does not move: a traversal is linear
-in `n`, a sort is `n × factor.sort`, a string operation is linear in its
-scalars, and prologues and epilogues are free. Those are the properties a
+in `n` and paid in full however the ticks fall, a sort is `n × factor.sort`,
+a string operation is linear in its scalars, and prologues and epilogues are
+free. Those are the properties a
 player can reason about under time pressure; the numbers are what the game
 adjusts to make the reasoning matter.

@@ -34,8 +34,9 @@ repeated here.
 2. **Every failure is a fault.** Anything the language cannot do — an
    unrepresentable number, an exhausted limit, a name that does not exist —
    raises an exception, and an exception nothing catches is a `fault` interrupt
-   delivered at the operation that raised it. Nothing is silent, nothing wraps,
-   nothing is undefined behavior.
+   located at the operation that raised it — or, if an interrupt cuts off its
+   unwinding, a fault record written as if it had escaped. Nothing is silent,
+   nothing wraps, nothing is undefined behavior.
 3. **Nothing resumes across an interrupt.** A `fault` restarts main flow, a
    `redeploy` swaps it, `dying` and `death` end it. The only resumption the
    language has is metering: main flow paused at an operation boundary when the
@@ -58,14 +59,6 @@ repeated here.
 6. **Every rule here is hash-affecting.** Changing any of them changes the
    golden-replay fixtures, and a PR that does so says why (CLAUDE.md).
 
-## What this doc does not own
-
-- **The game's own builtins** — sensing, moving, acting, diagnostic output —
-  and their costs. Those are `docs/02`'s, blocked on Q7 and Q9. This doc fixes
-  how a builtin is called, costed and faults; `02` says which exist.
-- **What a prologue or epilogue does to the unit's body**, which world causes
-  raise `dying` and which `death`, and what a dying unit may still do. `02`.
-- **When the redeploy tick is** and what a late peer does. Q12, for `docs/06`.
-- **How a faulting unit or its fault record is shown to the player.** That is the
-  renderer's, once Q15 picks one. The sim's obligation, stated in
-  [execution](01-language/execution.md), is that the record exists in state.
+Where this doc stops, each part says so at the point of deferral — naming the
+doc that owns the rest, or the open question it waits on — and the overview's
+table is the map from question to doc.

@@ -5,9 +5,10 @@
 # changing one changes the golden-replay fixtures, and the PR says why.
 
 [budget]
-# operations per unit per tick, main flow or hook; exhausting it yields
+# cost units per unit per tick, main flow or hook; exhausting it yields, and a
+# deficit carries forward until it is paid
 tick = 200
-# operations per hook invocation, total across ticks; exhausting one escalates
+# cost units per hook invocation, total across ticks; exhausting one escalates
 [budget.hook]
 fault = 2000
 dying = 2000
@@ -15,11 +16,15 @@ dying = 2000
 [depth]
 # nested calls, including recursion and __init__; exceeding it is RecursionError
 call = 64
+# how deep a walk may descend: a non-container is depth 0, a container one more
+# than its deepest element; brackets and blocks nested in source share the bound
+nesting = 32
 
 [size]
-# elements in one list, tuple, dict, set or range; scalars in one str
+# elements in one list, tuple, dict or set; scalars in one str
 collection = 10000
-# elements and scalars reachable from the unit, each object counted once
+# elements and scalars reachable from the unit: objects counted once, str and
+# tuple values once per slot that holds them
 live_values = 100000
 
 [bundle]

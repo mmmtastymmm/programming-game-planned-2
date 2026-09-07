@@ -112,7 +112,7 @@ and using it is a parse error at load — never a runtime surprise.
 | augmented assignment | `+= -= *= /= //= %= **=` and `\|= &= ^=` on sets |
 | `if` / `elif` / `else` | |
 | `while` / `else` | `else` runs when the loop ends without `break` |
-| `for … in …` / `else` | iterates a list, tuple, str, dict (its keys), set, or `range`; the target may unpack |
+| `for … in …` / `else` | iterates a list, tuple, str, dict (its keys) or set; the target may unpack |
 | `break`, `continue`, `pass` | |
 | `def` | top-level or in a `class` body only; positional and keyword parameters, defaults, `*args`, `**kwargs`; defaults are evaluated once at definition |
 | `return` | |
@@ -141,14 +141,18 @@ annotations in any position. Remove from a collection with its methods.
 | list, tuple, dict, set displays | `[…]`, `(…,)`, `{k: v}`, `{…}`; `{}` is an empty dict |
 | comprehensions | list, dict, set; nested `for` and `if` clauses; no generator expressions, so `sum(x for …)` is a parse error and `sum([x for …])` is the form |
 | f-strings | `f"{expr}"` with `!s`; the alignment specs `:>W`, `:<W`, `:^W` on any value; the numeric specs that [numbers](numbers.md#conversions) owns, and no others; no nested f-strings, no `=` specifier |
-| `lambda` | a single expression over its parameters and module-level names; captures nothing |
+| `lambda` | a single expression over its parameters and module-level names; the scope rules below say what it may name |
 
 ### Types
 
 `num`, `str`, `bool`, `list`, `tuple`, `dict`, `set`, functions (a `def` or
 `lambda`), classes, instances of user-defined classes, and `None`, whose type
-has no name — test for it with `is None`. `bool` is a subclass of `num`. Only
-the seven named types and user classes may be named in `isinstance`.
+has no name — test for it with `is None`. `bool` is a subclass of `num`. The
+seven named types, the built-in exception classes and user classes are the
+names `isinstance` and a `match` class pattern accept. `float` and `object`
+are not names, so naming one is a `NameError`; `int` names the conversion
+builtin, which is a function and not a type, so `isinstance(x, int)` is a
+`TypeError`.
 
 `isinstance(x, T)` is the **one permitted type query**, `T` a type or a tuple
 of types; `type(x)`, `__class__`, `__dict__` and `dir` do not exist.
@@ -161,11 +165,11 @@ in [execution](execution.md#the-cost-model).
 | Builtin | Behavior |
 |---|---|
 | `len(x)` | of a str, list, tuple, dict, set, or an instance defining `__len__` |
-| `range(stop)`, `range(start, stop[, step])` | produces its values **eagerly**, as a list-like sequence; a `range` longer than the collection limit faults |
-| `min`, `max` | of an iterable or of arguments; `key=`; ties keep the first, so the result is the first in iteration order |
+| `range(stop)`, `range(start, stop[, step])` | returns a **`list`** of its values, eagerly — `isinstance(range(3), list)` is `True` and `range(3) == [0, 1, 2]`; a `range` longer than the collection limit faults |
+| `min`, `max` | of an iterable or of arguments, compared left to right; `key=`; ties keep the first, so the result is the first in iteration order |
 | `sum(iterable[, start])` | of `num` elements |
 | `abs(x)` | |
-| `sorted(iterable, key=None, reverse=False)` | **stable**; elements must be mutually comparable or it faults |
+| `sorted(iterable, key=None, reverse=False)` | **stable**, by the one algorithm below; elements must be mutually comparable or the first comparison that fails raises `TypeError` |
 | `enumerate(iterable[, start])`, `zip(*iterables)` | return lists, eagerly |
 | `any`, `all` | |
 | `int`, `num`, `str`, `bool` | conversions, in [numbers](numbers.md#conversions) and below |
@@ -188,11 +192,55 @@ The closed method set, per type. Anything else is an `AttributeError`.
 | `list` | `append`, `extend`, `insert`, `pop([i])`, `remove`, `index`, `count`, `sort(key=None, reverse=False)` (stable, in place), `reverse`, `clear`, `copy` |
 | `dict` | `get(k[, default])`, `keys`, `values`, `items` (each returns a list, in insertion order), `pop(k[, default])`, `setdefault`, `update`, `clear`, `copy` |
 | `set` | `add`, `remove`, `discard`, `pop` (removes and returns the **first** element in insertion order), `clear`, `copy`; the operators `\| & - ^` and their augmented forms, with the ordering rules below |
-| `str` | `split([sep])`, `join`, `strip`, `lstrip`, `rstrip`, `startswith`, `endswith`, `find`, `replace`, `upper`, `lower`, `isdigit`, `isalpha`, `zfill`; `upper` and `lower` map ASCII letters **only**, since Unicode case tables are versioned |
+| `str` | `split([sep])`, `join`, `strip`, `lstrip`, `rstrip`, `startswith`, `endswith`, `find`, `replace`, `upper`, `lower`, `isdigit`, `isalpha`, `zfill`. **Everything character-class-shaped is ASCII only**, since Unicode tables are versioned: `upper` and `lower` map ASCII letters; `isdigit` is true of `0`–`9` only and `isalpha` of `A`–`Z` and `a`–`z` only; "whitespace" for argument-less `split` and `strip`, and for what `int` and `num` accept around a literal, is exactly space, tab, newline, carriage return, form feed and vertical tab |
 | `tuple` | `index`, `count` |
 
 A `str` is a sequence of Unicode scalar values; `len` counts them, indexing and
 slicing address them, and no normalisation is ever applied.
+
+### `str` of everything
+
+`str(x)`, and `{x}` in an f-string, is defined for every value, and the text
+is one string on every peer:
+
+| Value | `str` |
+|---|---|
+| `num` | [numbers](numbers.md#conversions) |
+| `True`, `False`, `None` | `True`, `False`, `None` — a `bool` is a `num` but prints as Python prints it |
+| `str` | itself |
+| `list`, `tuple`, `dict`, `set` | Python's bracket forms — `[1, 'a']`, `(1,)`, `{'k': 2}`, `{1, 2}`, `set()` — with elements in iteration order, each written as `str` writes it except that a `str` element is **quoted**: single quotes, and `\\ \' \n \t \r` and `\xHH` / `\uHHHH` / `\UHHHHHHHH` for every scalar outside `0x20`–`0x7E` |
+| an instance with `__str__`, exceptions included | what it returns, which must be a `str` or it is a `TypeError` |
+| an exception instance without `__str__`, built-in or user-defined | the exception form below |
+| any other instance without `__str__` | `<ClassName>` |
+| a function or class | `<function name>`, `<class Name>` |
+| the exception form | its class name, then `: ` and its arguments, as the exceptions section states |
+
+There is no `repr`; the quoted form above is the one used inside containers
+and nowhere else. Walking a nested container is bounded by the nesting depth
+([execution](execution.md#limits)).
+
+### The one sort
+
+`sorted`, `list.sort`, `min` and `max` compare with `<` — `__lt__` on
+instances — and since that is player code with a price and possible side
+effects, the sequence of comparisons is spec:
+
+- `min` and `max` apply `key=`, if given, to every element first, in order.
+  Then `best` is the first element and each later element `x` is compared
+  once: `min` replaces `best` when `x < best` is true, `max` when
+  `best < x` is true. Equal elements never replace, so the first of equals
+  wins, and the receiver of `__lt__` is exactly as written.
+- `sorted` and `list.sort` are a **top-down stable merge sort**: a run of
+  length `n` splits at `n // 2`, each half is sorted first (left, then right),
+  and the halves merge by comparing `right < left` and taking `right` only
+  when that is true. `reverse=True` sorts the same way but merges by comparing
+  `left < right` and taking `right` only when that is true, which gives a
+  descending order that keeps equal elements in their original sequence. A
+  `key=` function is called once per element, in order, before any
+  comparison.
+- The first comparison that raises — a `TypeError` between unlike types, or
+  anything a `__lt__` raises — propagates from that comparison, with every
+  earlier comparison's side effects and cost already spent.
 
 ## Names and scope
 
@@ -208,8 +256,21 @@ Python's rules, minus the two statements that were excluded:
   mutate a global collection or instance. This is on the divergence list.
 - A `class` body is its own scope for the names it defines; methods see
   globals, not class-body names, exactly as in Python.
-- `lambda` and comprehensions see globals and their own parameters or targets.
-  Comprehension targets do not leak.
+- **A comprehension is evaluated inline in the scope that contains it.** Its
+  body reads that scope's names — a function's locals included — except that
+  a **target is private to the comprehension**: inside it the target shadows
+  any outer name of the same spelling, and it is not an assignment in the
+  enclosing function, so it neither makes that name local there nor changes
+  it. `def g(x): return [x + 1 for x in range(3)]` is `[1, 2, 3]` and leaves
+  the parameter `x` alone. The outermost iterable is evaluated before any
+  target exists.
+- **A `lambda`'s body sees only its parameters and globals.** Q13 ruled it
+  captures nothing, so a `lambda` whose body names a local of an enclosing
+  function — a comprehension target included, so `[lambda: i for i in xs]`
+  inside a `def` is refused — is a **load error**, not a closure. Its
+  parameter defaults are evaluated where the `lambda` is, as in Python, and
+  may name anything in scope: `lambda y, k=k: y[k]` is the way to hand a
+  local in. This is on the divergence list.
 - No name is ever resolved dynamically. `NameError` is a fault.
 
 ## Functions
@@ -222,7 +283,7 @@ default is shared between calls, as in Python.
 
 A function is a value: it can be stored, passed and returned. Since functions
 cannot nest, a function value is always a module-level `def`, a method, or a
-`lambda` over module-level names — none captures anything.
+`lambda`, and none carries an environment with it.
 
 Recursion is allowed up to the call-depth limit
 ([execution](execution.md#limits)); exceeding it is a `RecursionError`.
@@ -268,7 +329,8 @@ class Scout(Unit):
   insertion-ordered, which matters only for `match` class patterns and never
   for iteration, since instances are not iterable unless `__getitem__` and
   `__len__` say so.
-- **Identity.** An instance is keyed in a `dict` or `set` by identity, and `==`
+- **Identity.** An instance — an exception instance included — is keyed in a
+  `dict` or `set` by identity, and `==`
   between instances is identity unless `__eq__` is defined. Identity is the
   instance's allocation order within the unit, which is deterministic; it is
   not observable as a number.
@@ -355,19 +417,29 @@ finally:
   of `NameError`), `ZeroDivisionError`, `OverflowError`, `RecursionError`,
   `LimitError`. `except Exception` catches all of them. User classes may derive
   from any of them.
-- `LimitError` is what exhausting the collection-size or live-values limit raises
-  ([execution](execution.md#limits)). Budgets do not raise; they abandon.
-- `str(e)` is the message; `e.line` and `e.file` locate the operation that
-  raised it, from the bundle's own bytes, and are therefore identical on every
-  peer. `e.args` is the tuple of constructor arguments.
-- An exception that escapes main flow, or a hook, is a **`fault`** — the
-  interrupt [execution](execution.md#interrupts) defines. Escaping means
-  **unwinding**, as in Python: on the way out every enclosing `finally` runs,
-  and a `finally` that itself raises replaces the exception. Only when no
-  `except` has caught it and the outermost frame is gone is the `fault`
-  delivered — located at the operation that raised it, whatever ran in
-  between. `finally` blocks do **not** run when an interrupt *abandons* code,
-  because abandonment is not unwinding.
+- `LimitError` is what exhausting the collection-size, live-values or
+  nesting-depth limit raises ([execution](execution.md#limits)). Budgets do
+  not raise; they yield or escalate.
+- `e.args` is the tuple of constructor arguments, and `str(e)` is the class
+  name followed, if there are arguments, by `: ` and each argument as `str`
+  writes it, joined by `, ` — so `ValueError("bad")` prints `ValueError: bad`
+  and `raise KeyError(k)` prints `KeyError: ` and the key. `e.line` and
+  `e.file` locate the operation that raised it, from the bundle's own bytes,
+  and are therefore identical on every peer; `e.tick` is the tick of the raise.
+- **An exception the interpreter raises carries no prose.** Its `args` is the
+  offending value where there is exactly one — the key for `KeyError`, the
+  index for `IndexError`, the name for `NameError`, `UnboundLocalError` and
+  `AttributeError` — and is empty otherwise: `ZeroDivisionError`,
+  `OverflowError`, `TypeError`, `ValueError`, `RecursionError` and
+  `LimitError` have `args == ()`. Two peers therefore never disagree on a
+  message, because there is none to word.
+- An exception that escapes main flow, or a hook, is a **`fault`**. Escaping
+  means **unwinding**, as in Python: on the way out every enclosing `finally`
+  runs, and a `finally` that itself raises replaces the exception. `finally`
+  blocks do **not** run when an interrupt *abandons* code, because abandonment
+  is not unwinding. When the `fault` is delivered, what an interrupt landing
+  mid-unwind does, and what the fault record holds are
+  [execution](execution.md#delivery)'s rules, not restated here.
 
 ## Divergences from Python, in full
 
@@ -385,8 +457,10 @@ difference not listed here is a defect in this doc.
    sequences: `range`, `enumerate`, `zip`, `dict.keys()` and friends produce
    lists eagerly.
 4. **Single inheritance only**, and no `super()`: name the base class.
-5. **Functions do not nest.** Methods in a class body are fine; a `def` inside
-   a `def` is not, so there are no closures over locals.
+5. **Functions do not nest, and a `lambda` cannot see a function's locals.**
+   Methods in a class body are fine; a `def` inside a `def` is not, so there
+   are no closures. The scope section has the exact rule for lambdas and
+   comprehensions.
 6. **A function cannot rebind a global.** There is no `global` statement, so
    `counter += 1` inside a function is a local. Mutate a collection instead.
 7. **`import` sees a closed module set**, and a circular import is a load error
@@ -394,8 +468,10 @@ difference not listed here is a defect in this doc.
 8. **No reflection.** No `getattr`, `eval`, `type`, `__dict__`, or
    introspection; `isinstance` is the one type query.
 9. **`is` compares against `None` only.**
-10. **Identifiers are ASCII**, and `match` and `case` are hard keywords.
-11. **Strings are ASCII-cased.** `upper` and `lower` touch ASCII letters only.
+10. **Identifiers are ASCII**, `match` and `case` are hard keywords, and a
+    tab in indentation is a parse error.
+11. **Strings are ASCII-classed.** `upper`, `lower`, `isdigit`, `isalpha` and
+    the notion of whitespace touch ASCII only.
 12. **Execution is metered.** A program is interrupted between operations and
     resumed on a later tick. This has no Python equivalent at all and is the
     one divergence a player must learn rather than merely avoid.
@@ -409,3 +485,9 @@ difference not listed here is a defect in this doc.
     above are the whole set; Python has more of each. A missing name is an
     `AttributeError` or `NameError` and a missing statement is a parse error,
     never a silent no-op.
+16. **`str` has no `repr`, and interpreter exceptions carry no message.** A
+    container prints its `str` elements quoted; `str(e)` of a built-in raise
+    is the class name and the offending value, if any.
+17. **A module's attributes are read-only**: `mod.name = …` is a `TypeError`.
+18. **`:.Nf` floors** rather than rounding, like every arithmetic result;
+    `round` is the one operation that rounds to nearest.

@@ -68,7 +68,8 @@ INDENT/DEDENT, then functions, control flow, `list`/`dict`/`set`, comprehensions
 f-strings, chained comparisons and `lambda`. The evaluator charges every
 operation by its row in `docs/01-language/costs.md`, loading the values from
 `data/language/costs.toml`, and every limit from `data/language/limits.toml`
-— a row with no key, or a key with no row, is a load error in either file, so
+— a row that names a value with no key, or a key with no row, is a load error
+in either file, so
 the docs and the data cannot drift silently. `num` (Q19) is a scaled i128 —
 `docs/01-language/numbers.md` states the scale — so multiply and divide need
 a 256-bit intermediate: a
