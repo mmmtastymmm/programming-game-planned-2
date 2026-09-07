@@ -35,8 +35,8 @@ Two conventions carried over from the predecessor project:
 
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model**
 
-⚠HASH — this regenerates the golden fixture by definition. Blocked on Q9, the
-last question `docs/02` waits on; the shape of `Command` is
+⚠HASH — this regenerates the golden fixture by definition. Blocked on Q22,
+which prices what the world model has to hold; the shape of `Command` is
 blocked on Q10 and Q12.
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
@@ -51,11 +51,11 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q6, Q9, Q10, Q12 and Q15, then write the numbered docs they unblock**
+**T9 — Answer Q6, Q10, Q12, Q15 and Q22, then write the numbered docs they unblock**
 
-`docs/03` waits on nothing now that Q7 is ruled, and Q7's ruling — held in the
-overview's Decided section meanwhile — moves into `docs/02` when that doc is
-written.
+`docs/02` waits on nothing now that Q7, Q9 and Q21 are ruled; their rulings —
+held in the overview's Decided section meanwhile — move into it when it is
+written. `docs/03` waits on Q22.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
