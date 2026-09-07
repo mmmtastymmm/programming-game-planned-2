@@ -63,7 +63,7 @@ bound all of it. Every rule here is hash-affecting.
   to react to the world reads it, in a loop it writes. Adding a kind — an
   event, a timer, a message — is a new question number. The list a program
   reads is live: what the colony senses now, and nothing it sensed before,
-  which is Q21's.
+  which Q21 ruled: tiles are remembered, units are not.
 - **The fault record is written by every failure and survives a redeploy
   (Q20).** An exception escaping main flow or a hook, a hook's budget running
   out, and an exception whose unwinding an interrupt cuts off each write it —

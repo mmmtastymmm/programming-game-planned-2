@@ -87,13 +87,29 @@ pass.
   returns the previous tick's sounds. A query from any unit returns the union
   of what every unit of its player senses, each thing once, sightings sorted
   by distance then entity id and sounds by distance, position and cause.
-  Sensing is computed at query time from the world and never stored, so the
-  state hash carries none of it. A sighting carries the sighted unit's
+  The live list is computed at query time from the world and never stored,
+  so the state hash carries none of it; what the colony *remembers* is Q21's
+  table, which is stored. A sighting carries the sighted unit's
   attributes as `docs/02` defines them; a sound carries its cause, position,
   loudness and tick, never its emitter. Whether a sound can also interrupt a
   program was Q16, which ruled it cannot: programs poll. Whether the colony
-  remembers what it no longer senses is Q21. This ruling moves to `docs/02`
-  when it is written.
+  remembers what it no longer senses is Q21's bullet below. This ruling moves
+  to `docs/02` when it is written.
+- **The colony remembers tiles, not units (Q21).** The world is a grid of
+  tiles, and for each player every tile is unknown, visible, or remembered as
+  it was on the tick it was last seen. A remembered tile holds the terrain
+  and any building on it with its attributes, and the tick — never a bot,
+  which is only ever a live sighting. After every unit's slice and before the
+  tick's state hash, the sim computes each player's visible tiles and
+  refreshes their snapshots, so a tile that leaves vision keeps its last one.
+  Memory has no expiry and belongs to the player: nothing clears it until the
+  match ends, a destroyed building stays remembered until its tile is seen
+  again, and sound is never remembered. A tile query returns the live tile if
+  visible, the snapshot with its tick if remembered, and nothing at all if
+  unknown; tiles sort by row then column. The memory table, per player and
+  per tile, is the first sensing data in the state hash. `docs/02` names the
+  queries, `03` says what a tile and its terrain are, `06` places the pass in
+  the tick loop. This ruling moves to `docs/02` when it is written.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -107,7 +123,7 @@ inserted without renumbering:
 | Doc | Owns | Blocked on |
 |---|---|---|
 | `01` | The unit language — syntax, execution model, cost model | — |
-| `02` | Units — what they are, what they sense, what they do | Q9, Q21 |
+| `02` | Units — what they are, what they sense, what they do | Q9 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | — |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
