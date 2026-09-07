@@ -155,7 +155,7 @@ const it = (d) => join(d, "docs/history/inbox-triaged");
 // under test: the first open entry in QUESTIONS.md, the lowest-numbered file in
 // questions-answered/.
 const openQuestion = () => {
-  const m = readFileSync(join(repo, "docs/QUESTIONS.md"), "utf8").match(/^\*\*(Q\d+) — /m);
+  const m = readFileSync(join(repo, "docs/QUESTIONS.md"), "utf8").match(/^\*\*(Q\d+) [—–-] /m);
   if (!m) throw new Error("check-checks: docs/QUESTIONS.md has no open entry to seed a claim against");
   return m[1];
 };
@@ -167,6 +167,50 @@ const closedQuestion = () => {
 };
 const OPEN_Q = openQuestion();
 const CLOSED_Q = closedQuestion();
+
+// Same defect, other register: three cases seeded a closed `I1` into the inbox
+// history on the assumption that the inbox was empty, which it was — until the
+// first observation was filed and the seed collided with it as "open and closed
+// at once", a different message than the case was asking about. Numbering is
+// dense, so the only number a seed can safely use is the next one.
+const nextInbox = () => {
+  const open = [...readFileSync(join(repo, "docs/INBOX.md"), "utf8").matchAll(/^\*\*I(\d+) [—–-] /gm)]
+    .map((m) => Number(m[1]));
+  const closed = readdirSync(it(repo))
+    .map((n) => n.match(/^inbox-triaged-0*(\d+)\.md$/)).filter(Boolean).map((m) => Number(m[1]));
+  return Math.max(0, ...open, ...closed) + 1;
+};
+const NEXT_I = nextInbox();
+
+// And the tasks register: the open-and-closed-at-once case seeded a closed T7
+// while T7 was open, which is right until T7 closes and the seed overwrites the
+// real file with a well-formed one. The first open task is the one to seed.
+const openTask = () => {
+  const m = readFileSync(join(repo, "docs/TASKS.md"), "utf8").match(/^\*\*T(\d+) [—–-] /m);
+  if (!m) throw new Error("check-checks: docs/TASKS.md has no open entry to seed a collision against");
+  return Number(m[1]);
+};
+const OPEN_T = openTask();
+
+// And the problems register, whose cases hard-coded "0 opened, 0 fixed", a
+// seeded P1 and a seeded P2 against a register that was empty — right until the
+// first real P1 was filed, when ten cases went red on a correct commit. Every
+// number below is read from the corpus: the open ids in file order (which is
+// the order the checker lists them), the fixed count, and the next free number.
+const problems = (() => {
+  const live = readFileSync(join(repo, "docs/PROBLEMS.md"), "utf8");
+  const open = [...live.matchAll(/^\*\*P(\d+) [—–-] /gm)].map((m) => Number(m[1]));
+  const closed = readdirSync(pf(repo))
+    .map((n) => n.match(/^problem-fixed-0*(\d+)\.md$/)).filter(Boolean).map((m) => Number(m[1]));
+  const next = Math.max(0, ...open, ...closed) + 1;
+  const ids = (...extra) => [...open, ...extra].map((n) => `P${n}`).join(", ");
+  const file = (n) => `problem-fixed-${String(n).padStart(4, "0")}.md`;
+  // the headline's counted form, as check-registers reads it
+  const headline = /: (\d+) opened, (\d+) fixed — ([\w-]+) open\.\*\*/;
+  return { open, closed, next, ids, file, headline };
+})();
+const OPEN_T_FILE = `task-completed-${String(OPEN_T).padStart(4, "0")}.md`;
+const NEXT_I_FILE = `inbox-triaged-${String(NEXT_I).padStart(4, "0")}.md`;
 
 const MUTATIONS = [
   // ── registers: entry identity ─────────────────────────────────────────────
@@ -249,11 +293,12 @@ const MUTATIONS = [
     check: "registers", expect: "", skipIfClean: true,
     // The inverse of the four above: tightening the parser must not start
     // reading an ordinary explanatory sub-bullet as a malformed declaration.
-    // Written into the INBOX register, which has no open entries — a
-    // question-answered file would collide with the still-open Q6 and fail for
-    // an unrelated reason, which is not what this case is asking.
-    mutate: (d) => closedFile(it(d), "inbox-triaged-0001.md",
-      "# I1 — a triaged note\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n" +
+    // Written into the INBOX register at its next free number — a
+    // question-answered file for an open question collides as open-and-closed
+    // at once and fails for an unrelated reason, which is not what this case
+    // is asking.
+    mutate: (d) => closedFile(it(d), NEXT_I_FILE,
+      `# I${NEXT_I} — a triaged note\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n` +
         "  - and some nested prose explaining it\n") },
   { name: "an Outcome citation in an indented paragraph after a blank line",
     check: "registers", expect: "the Outcome cites T4242",
@@ -261,8 +306,8 @@ const MUTATIONS = [
     // renders as part of the bullet above — and the parser stopped at the blank
     // line, which is the fourth variant of "absorbed into something nothing
     // scans" its own docstring catalogues.
-    mutate: (d) => closedFile(it(d), "inbox-triaged-0001.md",
-      "# I1 — a triaged note\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n\n" +
+    mutate: (d) => closedFile(it(d), NEXT_I_FILE,
+      `# I${NEXT_I} — a triaged note\n\n## Outcome\n\n- **Task:** [T7](../../TASKS.md)\n\n` +
         "  Also T4242, which is not a real task.\n") },
   { name: "an Outcome bullet written with an em dash", check: "registers",
     expect: "which is not one of",
@@ -278,8 +323,8 @@ const MUTATIONS = [
       "# Q6 — empty outcome\n\n## Outcome\n\nNothing to declare, apparently.\n") },
   { name: "a Dropped bullet with no reason", check: "registers",
     expect: "Dropped without a reason",
-    mutate: (d) => closedFile(it(d), "inbox-triaged-0001.md",
-      "# I1 — a triaged note\n\n## Outcome\n\n- **Dropped:** no.\n") },
+    mutate: (d) => closedFile(it(d), NEXT_I_FILE,
+      `# I${NEXT_I} — a triaged note\n\n## Outcome\n\n- **Dropped:** no.\n`) },
   { name: "a non-markdown file in a register's history directory", check: "registers",
     expect: "is not a markdown file",
     mutate: (d) => writeFileSync(join(tc(d), "task-completed-0007.txt"), "notes\n") },
@@ -773,10 +818,14 @@ const MUTATIONS = [
     // breadcrumbs name — the file CLAUDE.md says owns the invariants that cross
     // the parts. It was caught only incidentally, by check-links resolving the
     // crumb's href, so a part naming its doorway in prose was invisible to both.
+    // Seeded under a number no real doc will take: this case once used
+    // docs/01-language/, and the day that doc was actually written its doorway
+    // existed, the seeded defect stopped being one, and the case went red on a
+    // correct commit.
     mutate: (d) => {
-      mkdirSync(join(d, "docs/01-language"), { recursive: true });
-      writeFileSync(join(d, "docs/01-language/syntax.md"),
-        "*Part of [01-language](../01-language.md).*\n\n# Syntax\n");
+      mkdirSync(join(d, "docs/99-seeded"), { recursive: true });
+      writeFileSync(join(d, "docs/99-seeded/part.md"),
+        "*Part of [99-seeded](../99-seeded.md).*\n\n# A part\n");
     } },
   { name: "a part file two levels down with no breadcrumb", check: "layout",
     expect: "no breadcrumb",
@@ -796,35 +845,38 @@ const MUTATIONS = [
   // deleted — or wired to the wrong field — with every check still green. Each
   // case below moves exactly ONE arm, so swapping two of them fails here.
   { name: "the headline's OPENED total, against a register that has entries",
-    check: "registers", expect: "says 0 opened, the register has 2",
+    check: "registers",
+    expect: `says ${problems.open.length + problems.closed.length} opened, the register has ${problems.open.length + problems.closed.length + 2}`,
     // opened counts open PLUS closed, which is the arm most easily miswired to
-    // one or the other: with a closed P1 and an open P2 the three arms read 2,
-    // 1 and 1, so no two of them can be confused.
+    // one or the other: with one more closed and one more open the three arms
+    // move by 2, 1 and 1, so no two of them can be confused.
     mutate: (d) => {
-      closedFile(pf(d), "problem-fixed-0001.md", "# P1 — fixed\n\nbody\n");
-      appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P2 — still open**\n\nbody\n");
+      closedFile(pf(d), problems.file(problems.next), `# P${problems.next} — fixed\n\nbody\n`);
+      appendFileSync(join(d, "docs/PROBLEMS.md"), `\n**P${problems.next + 1} — still open**\n\nbody\n`);
     } },
   { name: "the headline's FIXED total", check: "registers",
-    expect: "says 0 fixed, the register has 1",
+    expect: `says ${problems.closed.length} fixed, the register has ${problems.closed.length + 1}`,
     mutate: (d) => {
-      closedFile(pf(d), "problem-fixed-0001.md", "# P1 — fixed\n\nbody\n");
-      edit(join(d, "docs/PROBLEMS.md"), /0 opened, 0 fixed/, "1 opened, 0 fixed");
+      closedFile(pf(d), problems.file(problems.next), `# P${problems.next} — fixed\n\nbody\n`);
+      edit(join(d, "docs/PROBLEMS.md"), problems.headline,
+        `: ${problems.open.length + problems.closed.length + 1} opened, ${problems.closed.length} fixed — $3 open.**`);
     } },
   { name: "the headline's OPEN total", check: "registers",
-    expect: "the register has 1 (P1)",
+    expect: `the register has ${problems.open.length + 1} (${problems.ids(problems.next)})`,
     mutate: (d) => {
-      appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P1 — still open**\n\nbody\n");
-      edit(join(d, "docs/PROBLEMS.md"), /0 opened, 0 fixed/, "1 opened, 0 fixed");
+      appendFileSync(join(d, "docs/PROBLEMS.md"), `\n**P${problems.next} — still open**\n\nbody\n`);
+      edit(join(d, "docs/PROBLEMS.md"), problems.headline,
+        `: ${problems.open.length + problems.closed.length + 1} opened, ${problems.closed.length} fixed — $3 open.**`);
     } },
   { name: "a status headline that is not in the counted form at all",
     check: "registers", expect: "malformed status headline",
     // Dated, so it is found as the register's one status block, but carrying no
     // numbers — which is how a headline stops being checked without disappearing.
-    mutate: (d) => edit(join(d, "docs/PROBLEMS.md"),
-      /: 0 opened, 0 fixed — zero open\.\*\*/, ": all totals current.**") },
+    mutate: (d) => edit(join(d, "docs/PROBLEMS.md"), problems.headline, ": all totals current.**") },
   { name: "a headline count spelled as a word the checker cannot read",
     check: "registers", expect: "is not a number this checker knows",
-    mutate: (d) => edit(join(d, "docs/PROBLEMS.md"), /— zero open/, "— twenty-one open") },
+    mutate: (d) => edit(join(d, "docs/PROBLEMS.md"), problems.headline,
+      `: $1 opened, $2 fixed — twenty-one open.**`) },
 
   // ── registers: the entry line itself ─────────────────────────────────────
   { name: "a live entry written with a hyphen instead of an em dash", check: "registers",
@@ -833,35 +885,35 @@ const MUTATIONS = [
     // entry a non-event: not counted, not deduped, not density-checked, and the
     // derived headline went on validating "zero open" against a file that
     // visibly had one open problem.
-    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"), "\n**P1 - a real open problem**\n") },
+    mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"), `\n**P${problems.next} - a real open problem**\n`) },
   { name: "an entry written as a list item", check: "registers",
-    expect: "the register has 1 (P1)",
+    expect: `the register has ${problems.open.length + 1} (${problems.ids(problems.next)})`,
     // Anchored at column 0, the opener treated a list marker as an opt-out: the
     // live register visibly listed an open P1 and the derived headline went on
     // validating "zero open" against it.
     mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
-      "\n- **P1 — reopened, quietly**\n") },
+      `\n- **P${problems.next} — reopened, quietly**\n`) },
   { name: "an entry indented under a paragraph", check: "registers",
-    expect: "the register has 1 (P1)",
+    expect: `the register has ${problems.open.length + 1} (${problems.ids(problems.next)})`,
     mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
-      "\n  **P1 — indented into invisibility**\n") },
+      `\n  **P${problems.next} — indented into invisibility**\n`) },
   { name: "an entry written as an ORDERED list item", check: "registers",
-    expect: "the register has 1 (P1)",
+    expect: `the register has ${problems.open.length + 1} (${problems.ids(problems.next)})`,
     // The bullet markers were tolerated and the ordered one was not, so this
     // spelling opted straight out of the register: uncounted, undeduped,
     // undensity-checked, with the derived headline still validating "zero open"
     // against a file that visibly listed it. Which marker a writer reaches for
     // must not decide whether the line is an entry.
     mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
-      "\n1. **P1 — reopened inside a numbered list**\n") },
+      `\n1. **P${problems.next} — reopened inside a numbered list**\n`) },
   { name: "an entry written inside a blockquote", check: "registers",
-    expect: "the register has 1 (P1)",
+    expect: `the register has ${problems.open.length + 1} (${problems.ids(problems.next)})`,
     mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
-      "\n> **P1 — reopened inside a blockquote**\n") },
+      `\n> **P${problems.next} — reopened inside a blockquote**\n`) },
   { name: "an entry written as the first cell of a table row", check: "registers",
-    expect: "the register has 1 (P1)",
+    expect: `the register has ${problems.open.length + 1} (${problems.ids(problems.next)})`,
     mutate: (d) => appendFileSync(join(d, "docs/PROBLEMS.md"),
-      "\n| a | b |\n|---|---|\n| **P1 — reopened in a table** | still open |\n") },
+      `\n| a | b |\n|---|---|\n| **P${problems.next} — reopened in a table** | still open |\n`) },
   { name: "a register entry opened in a BLOCKQUOTE in a doc that is not a register",
     check: "registers", expect: "in a doc that is not a register",
     // The worse direction of the same widening. The number resolves, so the
@@ -1031,8 +1083,8 @@ const MUTATIONS = [
   // register, which leaves it open and closed at once.
   { name: "an entry that is open and closed at once", check: "registers",
     expect: "appears twice", reject: "is missing from",
-    mutate: (d) => closedFile(tc(d), "task-completed-0007.md",
-      "# T7 — closed while still listed as open\n") },
+    mutate: (d) => closedFile(tc(d), OPEN_T_FILE,
+      `# T${OPEN_T} — closed while still listed as open\n`) },
   { name: "a history file missing the closed-record banner", check: "registers",
     expect: "closed-record banner",
     // Sixteen files carried it by imitation, documented nowhere and checked by

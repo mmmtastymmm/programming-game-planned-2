@@ -6,9 +6,10 @@ programs while the match is running** — each update a lockstep-synchronized
 command applied on the same tick by every peer (Q3). The player never commands an
 individual unit. The simulation runs identically on every machine.
 
-The design is in its first pass. The framing rulings and the language decisions
-are made and live in [docs/00-overview.md](docs/00-overview.md)'s Decided
-section; **everything still undecided is in
+The design is in its first pass. The framing rulings live in
+[docs/00-overview.md](docs/00-overview.md)'s Decided section and the language's
+in [docs/01-language.md](docs/01-language.md)'s parts; **everything still
+undecided is in
 [docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
 list of open topics repeated here would drift on every ruling. The corpus
 scaffolding and the determinism gate are ported from the predecessor project
@@ -16,8 +17,9 @@ scaffolding and the determinism gate are ported from the predecessor project
 
 Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
 unit-language crate is ruled in — Q5 and Q13, whose rulings
-[docs/00-overview.md](docs/00-overview.md)'s Decided section owns and this file
-does not repeat — but unbuilt; its spec, `docs/01`, is T8. A renderer crate is
+[docs/01-language.md](docs/01-language.md) owns and this file does not repeat —
+but unbuilt: that doc is its spec, and milestone M2 in
+[docs/TASKS.md](docs/TASKS.md) builds it. A renderer crate is
 open — Q15. Neither is needed for the determinism gate to be real.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
@@ -46,8 +48,12 @@ language crate when it lands:
 7. Player programs are stored as **byte-exact plain text** (no whitespace
    normalization, UTF-8); program versions are identified by hashing source
    bytes. Q13 admits `import`, so a program is a **bundle of named files**: its
-   version is the hash of every file's bytes taken in **sorted name order**, and
-   a circular import is rejected at load rather than resolved.
+   version is the hash of every file's name and bytes, each length-prefixed,
+   taken in **sorted name order** — the exact byte layout is in
+   [docs/01-language/syntax.md](docs/01-language/syntax.md), and the wording
+   gained "name" and "length-prefixed" when P1 found the bytes-only form was
+   not injective — and a circular
+   import is rejected at load rather than resolved.
 
 Rules 2, 3 and 4 are *syntactic*, so they are also scanned mechanically by
 `crates/sim/tests/no_floats.rs`. That test is a backstop, not the rule — it
@@ -198,8 +204,10 @@ is lost instead — strictly worse than a file saying "misread this, here is why
   has carried, dated and attached to the commit that changed it — a stricter
   record than a hand-maintained one, and one that cannot be forgotten.
 - Every numeric value in docs (cycle costs, XP curves, timers) is a tuning
-  constant, expected to live in data files, not code — except a constant of the
-  unit language itself, such as the scale of `fixed` (Q14), which is spec:
+  constant, expected to live in data files, not code — `data/` holds them, and
+  `data/language/costs.toml` is the first — except a constant of the
+  unit language itself, such as the scale of `num` (Q14, amended by Q19),
+  which is spec:
   changing it changes every replay hash, so it is stated once in `docs/01` and
   changed only under a new question number.
 

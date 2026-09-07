@@ -35,4 +35,12 @@ still has to say why.
 
 ## Open
 
-*(nothing yet)*
+**I1 — Names a Python programmer will reach for and miss**
+
+Writing `docs/01` against Q13's tables left out `super()`, `tuple()`,
+`reversed`, `divmod`, `chr`/`ord`, `repr`, `map`/`filter`, `print` and the
+`del` statement. `print`
+is covered — diagnostic output is a game builtin for `docs/02`. The rest are
+absent because the ruling's list did not include them, and the doc says so
+(its divergence 15) rather than widening silently. If playtesting shows
+`super()` or `reversed` missed often, a widening is a new question number.

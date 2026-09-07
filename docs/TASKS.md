@@ -50,43 +50,6 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T8 — Write `docs/01`**
-
-Every question it waited on — Q8, Q11 and Q14, with Q17 amending Q8 — is
-answered. Their files under
-[history/questions-answered/](history/questions-answered/README.md) are the
-source; the doc is what makes them spec.
-
-The things `docs/01` must pin that no open question owns, recorded here so they
-are not left to the implementation:
-
-- **Every interpreter limit is spec, not a build default** — recursion depth,
-  the per-tick operation budget, the size of every collection, including
-  `range`, which Q13 made eager, the pending-interrupt set, which Q8 bounded
-  at one entry per kind, and the total operation budget of each hook, which
-  Q17 added. The language spike found Rhai's recursion limit
-  differing between debug and release builds, a desync produced by a build flag,
-  and owning the interpreter (Q5) removes the dependency, not the hazard.
-- **`isinstance` is the one permitted type query.** Q13 admits it as a builtin
-  and excludes introspection in the same ruling; `docs/01` states the line so
-  the two cannot be read against each other.
-- **The interrupt mechanism, as Q8, Q11 and Q17 ruled it** — the two modes;
-  prologue, player code and unconditional epilogue; the four kinds in priority
-  order and which have hooks; the escalation chain fault, dying, death;
-  preemption abandoning the preempted handler; delivery points, including the
-  boundary before the first operation; coalescing; the halt state; the swap as
-  `redeploy`'s epilogue; and the exact shape of the value `on_fault` receives.
-  The rules are in those three files; `docs/01` is where they become spec.
-- **The number model, as Q14 ruled it** — the scale of `fixed`, stated once as
-  spec; the literal grammar and what it rejects; the promotion, floor and
-  rounding rules; what `**` accepts; the `str` format of a `fixed`, so printing
-  is one string on every peer; and which numeric builtins exist, with a
-  specified integer algorithm for any root or other function the game needs.
-- **What Q13 named but did not pin** — the closed dunder set that `class`
-  dispatches, the module resolution order for `import`, and the exact `match`
-  pattern forms supported. Q13's file lists them; without this bullet they
-  live only in history.
-
 **T9 — Answer Q6, Q7, Q9, Q10, Q12 and Q15, then write the numbered docs they unblock**
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
@@ -102,7 +65,15 @@ boundary.
 **T10 — Lexer with significant indentation, then the procedural core** ⚠HASH
 
 INDENT/DEDENT, then functions, control flow, `list`/`dict`/`set`, comprehensions,
-f-strings, chained comparisons and `lambda`.
+f-strings, chained comparisons and `lambda`. The evaluator charges every
+operation by its row in `docs/01-language/costs.md`, loading the values from
+`data/language/costs.toml`, and every limit from `data/language/limits.toml`
+— a row with no key, or a key with no row, is a load error in either file, so
+the docs and the data cannot drift silently. `num` (Q19) is a scaled i128 —
+`docs/01-language/numbers.md` states the scale — so multiply and divide need
+a 256-bit intermediate: a
+hand-written wide-arithmetic routine, bit-identical on every target, which T14
+pins with a fixture at its boundary cases.
 
 **T11 — `class` with single inheritance and a closed dunder set** ⚠HASH
 
@@ -122,8 +93,8 @@ check, and the guard the language spike needed — **a test that fails to run mu
 not score green.**
 
 The determinism scan flags a Rust float literal anywhere on a line, string
-literals included, so a player-program fixture containing `1.5` — a `fixed`
-literal under Q14 — inside a Rust string will read as a violation once the scan
+literals included, so a player-program fixture containing `1.5` — a `num`
+literal under Q19 — inside a Rust string will read as a violation once the scan
 covers the language crate. The fixtures live outside Rust source, or the scan
 learns to skip strings; either way the scan must still catch a real float in
 the interpreter.

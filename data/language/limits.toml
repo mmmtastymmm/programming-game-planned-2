@@ -1,0 +1,29 @@
+# Limits of the unit language — the values behind the limits table in
+# docs/01-language/execution.md. This file is the one place a limit is a
+# number; the doc owns what each limit bounds and what exhausting it does.
+# Every value is a non-negative integer, and every key is hash-affecting:
+# changing one changes the golden-replay fixtures, and the PR says why.
+
+[budget]
+# operations per unit per tick, main flow or hook; exhausting it yields
+tick = 200
+# operations per hook invocation, total across ticks; exhausting one escalates
+[budget.hook]
+fault = 2000
+dying = 2000
+
+[depth]
+# nested calls, including recursion and __init__; exceeding it is RecursionError
+call = 64
+
+[size]
+# elements in one list, tuple, dict, set or range; scalars in one str
+collection = 10000
+# elements and scalars reachable from the unit, each object counted once
+live_values = 100000
+
+[bundle]
+# files per bundle, which is also the module limit
+files = 32
+# bytes per file
+file_bytes = 65536

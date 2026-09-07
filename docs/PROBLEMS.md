@@ -32,12 +32,8 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-08-22: 0 opened, 0 fixed — zero open.**
-
-Nothing is open. Rulings so far have landed straight in their owning doc's
-Decided section, so none has left a gap behind it — which is what an empty
-register is supposed to mean.
+**Status 2026-09-06: 1 opened, 1 fixed — zero open.**
 
 ## Open
 
-*(none yet)*
+*(none)*
