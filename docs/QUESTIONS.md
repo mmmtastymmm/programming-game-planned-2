@@ -1,7 +1,7 @@
 # Open Design Questions
 
 **This is the only file that holds open questions, and it holds nothing else.**
-Other docs may cite a number inline ("open — Q7") but never restate a question's
+Other docs may cite a number inline ("open — Q9") but never restate a question's
 substance or its leaning; a question restated in two places gets answered in one
 of them.
 
@@ -26,10 +26,11 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-07.** Q1 through Q5 are answered, and Q8, Q11, Q13, Q14,
+**Status 2026-09-07.** Q1 through Q5 are answered, and Q7, Q8, Q11, Q13, Q14,
 Q17, Q18, Q19 and Q20 with them — Q17 through Q20 were each opened and
 answered in one commit, as the amendments to Q8, Q14 and Q18 that the history
-rules require to be new numbers. Every other number this
+rules require to be new numbers. Q7's ruling sits in the overview's Decided
+section until `docs/02` exists to own it. Every other number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
@@ -67,18 +68,6 @@ away from the conclusion drawn from it, and the number is the whole reason this
 question is unblocked. What is left is a game-feel and netcode decision, not a
 performance one. A slower tick widens the window Q12 needs for scheduling
 updates, which is the remaining reason not to guess.
-
-**Q7 — What does a unit sense?**
-
-Determinism rule 6 makes every query a *sorted* query, so the sensing model and
-its ordering are one decision, not two.
-
-| Option | What it costs |
-|---|---|
-| Omniscient within a radius | Simplest to specify and to sort. Removes scouting and information asymmetry as design material. |
-| Line-of-sight, per unit | Makes terrain matter and exploration real. Visibility becomes per-unit hashed state, a large addition to the state hash at fleet scale. |
-| Shared fleet vision | One visibility set per player rather than per unit. Cheaper to hash, and makes the fleet feel like one organism rather than many agents. |
-| Explicit sensors as equipment | Sensing becomes a build choice with costs and trade-offs. Most design surface, most tuning, most to get wrong. |
 
 **Q9 — Where do units come from?**
 
@@ -154,8 +143,10 @@ anything. Pushed world events (damage taken,
 enemy sighted, low energy) fit the same mechanism, but a unit would expect to
 *resume* main flow after handling one, and that is a suspended frame carrying
 live state across the interrupt: the case Q13's boundary assumes away and Q11
-declined to introduce. Whether events exist at all is also a sensing decision,
-so this is coupled to Q7.
+declined to introduce. Q7 ruled both senses as queries a program polls, and
+made sound — a record of the previous tick's noises — the first event-shaped
+thing in the design; this question decides whether a sound, or anything else
+the world does, can also push into a handler.
 
 | Option | What it costs |
 |---|---|
@@ -165,5 +156,5 @@ so this is coupled to Q7.
 | Events are queued values that main flow drains itself | No preemption at all: the program reads a queue when it chooses. Deterministic and simple, and not an interrupt — latency is whatever the program's loop is, and an unread queue needs a bound and a drop rule. |
 
 Whatever wins has to say which events exist and their priorities relative to
-`death`, `dying`, `fault` and `redeploy`, which is `docs/02`'s list and Q7's
-sensing model.
+`death`, `dying`, `fault` and `redeploy`, which is `docs/02`'s list, built on
+the sensing model Q7 fixed.

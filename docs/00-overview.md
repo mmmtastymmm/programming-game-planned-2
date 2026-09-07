@@ -75,6 +75,23 @@ pass.
   and Q13 (the boundary), Q8, Q11, Q17, Q18 and Q20 (execution and
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
+- **A unit senses by vision and by sound, and everything sensed is shared
+  across its player's units (Q7).** Units come in kinds — `bot`, and several
+  kinds of building — and each kind has a vision range and a hearing range,
+  tuning constants in data. Distance is squared Euclidean in `num` against a
+  squared range. Vision is state: a unit sees what is within its range and in
+  line of sight, and `docs/03` pins what blocks sight and the ray-walk. Sound
+  is a record of events: a noisy action emits a sound at the actor's position
+  with a loudness from its cause, heard by any unit whose hearing range plus
+  that loudness covers the distance, through terrain, and a hearing query
+  returns the previous tick's sounds. A query from any unit returns the union
+  of what every unit of its player senses, each thing once, sightings sorted
+  by distance then entity id and sounds by distance, position and cause.
+  Sensing is computed at query time from the world and never stored, so the
+  state hash carries none of it. A sighting carries the sighted unit's
+  attributes as `docs/02` defines them; a sound carries its cause, position,
+  loudness and tick, never its emitter. Whether a sound can also interrupt a
+  program is Q16. This ruling moves to `docs/02` when it is written.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -88,8 +105,8 @@ inserted without renumbering:
 | Doc | Owns | Blocked on |
 |---|---|---|
 | `01` | The unit language — syntax, execution model, cost model | — |
-| `02` | Units — what they are, what they sense, what they do | Q7, Q9, Q16 |
-| `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
+| `02` | Units — what they are, what they sense, what they do | Q9, Q16 |
+| `03` | The world — terrain, resources, whatever the economy turns out to be | — |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
