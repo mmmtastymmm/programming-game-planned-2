@@ -27,7 +27,7 @@ Known-wrong *decided* text is not a question — it goes in
 [INBOX.md](INBOX.md).
 
 **Status 2026-09-07.** Q1 through Q5 are answered, and Q7, Q8, Q11, Q13, Q14,
-Q17, Q18, Q19 and Q20 with them — Q17 through Q20 were each opened and
+Q16, Q17, Q18, Q19 and Q20 with them — Q17 through Q20 were each opened and
 answered in one commit, as the amendments to Q8, Q14 and Q18 that the history
 rules require to be new numbers. Q7's ruling sits in the overview's Decided
 section until `docs/02` exists to own it. Every other number this
@@ -131,30 +131,29 @@ what it is allowed to read. A renderer that samples state mid-tick sees a torn
 world; one that reads only a completed tick's snapshot does not, and that is a
 shape the sim has to offer deliberately.
 
-**Q16 — Event interrupts: do world events dispatch to handlers, and what resumes afterwards?**
+**Q21 — Fog of war: does the colony remember what it no longer senses, and how?**
 
-Q8 built the interrupt mechanism — a locked prologue, the player's code, a
-locked epilogue; a closed priority set; preemption that abandons the preempted
-handler — with two kinds, `fault` and `death`; Q11 added `redeploy` below
-them, Q17 split death into `dying` and `death`, and Q18 made every hooked
-kind's epilogue conditional on its hook returning — so an event kind, being
-hooked, would get no guaranteed epilogue either. None of the four resumes
-anything. Pushed world events (damage taken,
-enemy sighted, low energy) fit the same mechanism, but a unit would expect to
-*resume* main flow after handling one, and that is a suspended frame carrying
-live state across the interrupt: the case Q13's boundary assumes away and Q11
-declined to introduce. Q7 ruled both senses as queries a program polls, and
-made sound — a record of the previous tick's noises — the first event-shaped
-thing in the design; this question decides whether a sound, or anything else
-the world does, can also push into a handler.
+Q7 gave every unit a live list of what the colony senses now, and Q16 ruled
+that programs poll it rather than being told. Neither says what happens to
+what the colony *has* sensed: a bot that walks out of sight of an enemy
+building forgets it exists, unless its own program stored the position in a
+variable — and a variable is per unit and cleared by every restart. "The
+information they have" is therefore two things, and only the first is ruled.
+
+Memory would be the first **shared, writable state between units**, which
+makes it two questions at once: fog of war (what a player's units collectively
+know about the map and the things on it) and communication (a unit writing
+something for another unit to read). Both are hash-affecting, both need an
+expiry or a bound, and neither can be discovered during implementation.
 
 | Option | What it costs |
 |---|---|
-| No events — programs poll the world | Q8's property survives untouched: nothing ever resumes. Every reaction is a poll in main flow, paid for in budget every tick whether anything happened or not. |
-| Events resume main flow where it was interrupted | The natural reading of an interrupt. Main flow becomes a suspended frame across a handler, so a handler that touches the same variables races with it — a rule set of its own, and the one Q13's boundary assumed away. |
-| Events restart main flow from the top, like a fault | Keeps Q8's no-resumption property: an event handler is a fault handler with a different epilogue. A unit mid-task loses the task every time anything happens, which may make events unusable for anything frequent. |
-| Events are queued values that main flow drains itself | No preemption at all: the program reads a queue when it chooses. Deterministic and simple, and not an interrupt — latency is whatever the program's loop is, and an unread queue needs a bound and a drop rule. |
+| No memory — programs keep what they can in variables | Nothing to specify. Every restart forgets everything, and no unit can tell another anything; scouting is worth exactly one look. |
+| Colony memory of sightings — last known position and attributes of everything ever seen, with an expiry | The classic fog of war. A per-player table in the state hash, an expiry rule so it does not grow forever, a rule for what a stale entry says, and the cost of querying it. Communication comes free, since a sighting is already shared. |
+| Colony memory of the map as well — explored terrain remembered, unexplored hidden | Real exploration. Terrain memory is a second table, and `docs/03` has to say what a program is told about ground nobody has seen. |
+| A shared, writable scratch space — programs write what they want remembered | Maximum expressiveness and the smallest sim: a bounded per-player store. Every player builds their own fog of war, badly at first; a shared store is a race between fifty copies of one program unless writes are ordered by rule. |
 
-Whatever wins has to say which events exist and their priorities relative to
-`death`, `dying`, `fault` and `redeploy`, which is `docs/02`'s list, built on
-the sensing model Q7 fixed.
+Whatever wins must say what a program is told about a thing it is *not*
+currently sensing, how long that lasts, how it is bounded, and how it is
+ordered (determinism rule 6). If memory holds sightings, `docs/02` owns the
+table; if it holds terrain, `docs/03` shares it.

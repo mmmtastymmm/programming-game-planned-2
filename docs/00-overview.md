@@ -72,7 +72,7 @@ pass.
   replay is `(seed, timed command log)`, and determinism rule 7 is load-bearing:
   which byte-exact program version a unit runs is part of the state hash.
 - **The unit language's rulings live in [01-language](01-language.md)** — Q5
-  and Q13 (the boundary), Q8, Q11, Q17, Q18 and Q20 (execution and
+  and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
 - **A unit senses by vision and by sound, and everything sensed is shared
@@ -91,7 +91,9 @@ pass.
   state hash carries none of it. A sighting carries the sighted unit's
   attributes as `docs/02` defines them; a sound carries its cause, position,
   loudness and tick, never its emitter. Whether a sound can also interrupt a
-  program is Q16. This ruling moves to `docs/02` when it is written.
+  program was Q16, which ruled it cannot: programs poll. Whether the colony
+  remembers what it no longer senses is Q21. This ruling moves to `docs/02`
+  when it is written.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -105,7 +107,7 @@ inserted without renumbering:
 | Doc | Owns | Blocked on |
 |---|---|---|
 | `01` | The unit language — syntax, execution model, cost model | — |
-| `02` | Units — what they are, what they sense, what they do | Q9, Q16 |
+| `02` | Units — what they are, what they sense, what they do | Q9, Q21 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | — |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
