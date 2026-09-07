@@ -79,9 +79,11 @@ runtime rounding.
 
 **Rounding.** Every result that is not an exact count of trillionths rounds
 **toward negative infinity** — the same direction as `//`, so the language has
-one rounding rule. `2 / 3` is `0.666666666666`; `-2 / 3` is
-`-0.666666666667`; `0.1 * 0.1` is `0.01`. The error of any single operation is
-less than one trillionth and always in the same direction.
+one rounding rule, and `:.Nf` formatting follows it too. `2 / 3` is
+`0.666666666666`; `-2 / 3` is `-0.666666666667`; `0.1 * 0.1` is `0.01`. For
+`+`, `-`, `*` and `/` the error of one operation is less than one trillionth
+and always in the same direction; `**` is a sequence of such operations and
+its error is the sum of theirs.
 
 **Division and modulo by zero** — `/`, `//`, `%` — raise `ZeroDivisionError`.
 
@@ -108,8 +110,8 @@ a `TypeError`; `==` between a number and a non-number is `False`.
 
 | Call | Result |
 |---|---|
-| `int(x)` | of a `num`, the integral value nearest zero: `int(-1.5)` is `-1`, `int(True)` is `1`. Of a `str`: optional surrounding whitespace, an optional sign, then digits and `_` only — `int("1.5")` is a `ValueError`, as in Python |
-| `num(x)` | of a `num`, itself; of a `bool`, `0` or `1`. Of a `str`: optional surrounding whitespace, an optional sign, then exactly what the parser accepts as a literal, else `ValueError` — `num(" +2 ")` is `2` and `num("0.0000000000001")` is a `ValueError` |
+| `int(x)` | of a `num`, the integral value nearest zero: `int(-1.5)` is `-1`, `int(True)` is `1`. Of a `str`: optional surrounding whitespace (the ASCII set [syntax](syntax.md#methods) fixes), an optional sign, then digits and `_` only — `int("1.5")` is a `ValueError`, as in Python |
+| `num(x)` | of a `num`, itself; of a `bool`, `0` or `1`. Of a `str`: optional surrounding whitespace (the same ASCII set), an optional sign, then exactly what the parser accepts as a literal, else `ValueError` — `num(" +2 ")` is `2` and `num("0.0000000000001")` is a `ValueError` |
 | `str(x)` | the **shortest exact decimal**: a leading `-` if negative, the integer part, then a point and the fractional digits with trailing zeros removed — and no point at all when there are none. `str(2)` is `"2"`, `str(1.5)` is `"1.5"`, `str(1 / 3)` is `"0.333333333333"`, `str(-0.5)` is `"-0.5"`. Never scientific notation. |
 | `bool(x)` | `False` for zero, else `True` |
 
@@ -118,7 +120,7 @@ a `TypeError`; `==` between a number and a non-number is `False`.
 
 | Spec | Prints |
 |---|---|
-| `:.Nf`, `0 ≤ N ≤ 12` | exactly `N` fractional digits, truncating (not rounding) the rest |
+| `:.Nf`, `0 ≤ N ≤ 12` | exactly `N` fractional digits, the value **floored** to `N` places first — `f"{-2/3:.2f}"` is `-0.67`, `f"{-0.4:.0f}"` is `-1`, and no `-0` can appear |
 | `:d` | the value, which must be integral, as `str` does; `TypeError` otherwise |
 | `:,` | as `str`, with `,` every three digits of the integer part |
 | `:0Wd` | as `:d`, zero-padded to width `W` |
@@ -135,7 +137,7 @@ The alignment specs `:>W`, `:<W`, `:^W` apply to any value and are
 | `min(…)`, `max(…)` | by `<`; ties return the first |
 | `sum(iterable[, start])` | left to right; `start` defaults to `0`; overflow faults at the element that causes it |
 | `round(x)` | the nearest integral value, **half to even**: `round(2.5)` is `2`, `round(3.5)` is `4`, `round(-2.5)` is `-2` |
-| `round(x, n)` | rounded half to even to `n` places, `0 ≤ n ≤ 12` and integral; otherwise a `ValueError` |
+| `round(x, n)` | rounded half to even to `n` places; `n` is an integral context (a fractional `n` is a `TypeError`), and an integral `n` outside `0 ≤ n ≤ 12` is a `ValueError` |
 | `sorted`, `list.sort` | by value; stable |
 
 `round` is the one place a number rounds to nearest rather than down: it is a
