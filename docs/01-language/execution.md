@@ -21,7 +21,8 @@ bound all of it. Every rule here is hash-affecting.
   epilogue back to back, and Q8's halt state is withdrawn by Q18. A fault
   inside `on_fault` escalates to `dying`. `try`/`except`/`raise` are in,
   Python-shaped. Nothing resumes across an interrupt, which is what keeps Q13's
-  boundary intact; pushed world events, which would resume, are Q16. The
+  boundary intact; pushed world events, which would resume, were Q16, which
+  ruled them out. The
   mechanism is this doc's; what each prologue and epilogue does is `docs/02`'s.
 - **Death is two kinds, and every hook has a budget (Q17, as amended by
   Q18).** `dying` is where last words live: its hook `on_dying()` may act
@@ -56,6 +57,13 @@ bound all of it. Every rule here is hash-affecting.
   main flow or in a handler. Hooks are bound at load, before any statement
   runs, and the binding survives every variable clear; rebinding the name at
   runtime changes a global, not the hook.
+- **No events: the world reaches a program only through the queries it polls,
+  and the interrupt kinds stay four (Q16).** Vision and sound are queries
+  (Q7), and so is anything else `docs/02` gives a unit; a program that wants
+  to react to the world reads it, in a loop it writes. Adding a kind — an
+  event, a timer, a message — is a new question number. The list a program
+  reads is live: what the colony senses now, and nothing it sensed before,
+  which is Q21's.
 - **The fault record is written by every failure and survives a redeploy
   (Q20).** An exception escaping main flow or a hook, a hook's budget running
   out, and an exception whose unwinding an interrupt cuts off each write it —
