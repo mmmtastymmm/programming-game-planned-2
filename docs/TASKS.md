@@ -35,9 +35,9 @@ Two conventions carried over from the predecessor project:
 
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model**
 
-⚠HASH — this regenerates the golden fixture by definition. Blocked on Q22,
-which prices what the world model has to hold; the shape of `Command` is
-blocked on Q10 and Q12.
+⚠HASH — this regenerates the golden fixture by definition. The world model
+has its rulings — Q7, Q9, Q21 and Q22 — and waits on `docs/02` and `03`
+being written from them; the shape of `Command` is blocked on Q10 and Q12.
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
 — but its principal variant is a program deploy, not a unit order. The
@@ -51,11 +51,12 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q6, Q10, Q12, Q15 and Q22, then write the numbered docs they unblock**
+**T9 — Answer Q6, Q10, Q12 and Q15, then write the numbered docs they unblock**
 
-`docs/02` waits on nothing now that Q7, Q9 and Q21 are ruled; their rulings —
-held in the overview's Decided section meanwhile — move into it when it is
-written. `docs/03` waits on Q22.
+`docs/02` and `docs/03` wait on nothing now that Q7, Q9, Q21 and Q22 are
+ruled; their rulings — held in the overview's Decided section meanwhile — move
+into those docs when they are written, and the resource, building and deposit
+numbers they name go into data beside the language's.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
