@@ -110,6 +110,21 @@ pass.
   per tile, is the first sensing data in the state hash. `docs/02` names the
   queries, `03` says what a tile and its terrain are, `06` places the pass in
   the tick loop. This ruling moves to `docs/02` when it is written.
+- **Bots are printed by a printer, buildings are built by bots, and a match
+  starts with one printer per player (Q9).** There is no fixed roster.
+  Production is ordinary program behavior: the printer is a building kind
+  whose program calls a `print` builtin with the role the new bot runs, and
+  a bot's program calls a `build` builtin with a building kind and a tile.
+  All bots are one kind; what differs is the role. A print or a build takes
+  time and costs resources, both tuning, and one the unit cannot afford is a
+  `ValueError` fault. A printed bot appears on a tile adjacent to the printer
+  on the tick the print completes, running its role's current bundle from the
+  top; printing a role with no bundle is a fault. The opening program set is
+  the command log's first entries, one deploy per role agreed for tick 0; a
+  unit whose role has no bundle runs the empty program, which restarts once
+  per tick and is not a state. The building list is `docs/02`'s table,
+  seeded with the printer; the rest, and the resources that price it, are
+  Q22. This ruling moves to `docs/02` when it is written.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -123,8 +138,8 @@ inserted without renumbering:
 | Doc | Owns | Blocked on |
 |---|---|---|
 | `01` | The unit language — syntax, execution model, cost model | — |
-| `02` | Units — what they are, what they sense, what they do | Q9 |
-| `03` | The world — terrain, resources, whatever the economy turns out to be | — |
+| `02` | Units — what they are, what they sense, what they do | — |
+| `03` | The world — terrain, resources, whatever the economy turns out to be | Q22 |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |

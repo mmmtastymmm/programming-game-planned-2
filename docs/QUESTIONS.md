@@ -1,7 +1,7 @@
 # Open Design Questions
 
 **This is the only file that holds open questions, and it holds nothing else.**
-Other docs may cite a number inline ("open — Q9") but never restate a question's
+Other docs may cite a number inline ("open — `Q73`") but never restate a question's
 substance or its leaning; a question restated in two places gets answered in one
 of them.
 
@@ -26,11 +26,12 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-07.** Q1 through Q5 are answered, and Q7, Q8, Q11, Q13, Q14,
-Q16 through Q21 with them — Q17 through Q20 were each opened and answered in
-one commit, as the amendments to Q8, Q14 and Q18 that the history rules
-require to be new numbers. The rulings of Q7 and Q21 sit in the overview's
-Decided section until `docs/02` exists to own them. Every other number this
+**Status 2026-09-07.** Q1 through Q5 are answered, and Q7, Q8, Q9, Q11, Q13,
+Q14, Q16 through Q21 with them — Q17 through Q20 were each opened and
+answered in one commit, as the amendments to Q8, Q14 and Q18 that the history
+rules require to be new numbers. The rulings of Q7, Q9 and Q21 sit in the
+overview's Decided section until `docs/02` exists to own them. Every other
+number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
@@ -68,16 +69,6 @@ away from the conclusion drawn from it, and the number is the whole reason this
 question is unblocked. What is left is a game-feel and netcode decision, not a
 performance one. A slower tick widens the window Q12 needs for scheduling
 updates, which is the remaining reason not to guess.
-
-**Q9 — Where do units come from?**
-
-Fixed roster at match start, or produced during it.
-
-| Option | What it costs |
-|---|---|
-| Fixed roster, chosen before the match | Simplest. A match becomes a pure test of the program set, and the economy stops being gameplay. |
-| Produced by a rule the player configures, and can reconfigure mid-match | Consistent with Q3: production is another thing you author and re-author. The configuration surface is a second, smaller language to design unless it is expressed in the unit language Q13 bounded, which `docs/01` would then have to cover. |
-| Produced by ordinary programs, like any other unit behavior | One authoring surface, maximum consistency with Q2. Production becomes something a program can get catastrophically wrong — which Q8 then has to survive. |
 
 **Q10 — What else, besides program updates, may enter the sim mid-match?**
 
@@ -130,3 +121,32 @@ Also to settle here: whether the renderer runs in the sim's process at all, and
 what it is allowed to read. A renderer that samples state mid-tick sees a torn
 world; one that reads only a completed tick's snapshot does not, and that is a
 shape the sim has to offer deliberately.
+
+**Q22 — The economy: what resources exist, how they are gathered, what things cost, and which buildings there are beyond the printer**
+
+Q9 made production a program's action with a price: a printer prints a bot
+for resources, a bot builds a building for resources. It named one building,
+the printer, and deferred the rest, because every other building the design
+has imagined is a building only an economy can price. This question is that
+economy, and the building list comes with it.
+
+What it has to settle, each hash-affecting and none discoverable during
+implementation: what the resources are and where they lie on the map
+(`docs/03`); how they are gathered — by bots carrying them, by a building
+extracting them, or both — and where they are held; what a print and each
+build cost and how long each takes, as tuning; and the building list itself,
+with what each kind does. Buildings that have been imagined and would each
+need pricing: something that gathers or extracts, something that stores,
+something that defends, something that extends vision or hearing. Whether
+any of them is ruled in is this question's to say.
+
+| Option | What it costs |
+|---|---|
+| One resource, gathered by bots from map deposits and carried to a building | Simplest economy that makes scouting, routing and defence all matter. Carrying is a program's job, so the first thing a player writes is a hauler, which is either the game or a chore. |
+| One resource, extracted by a building placed on a deposit | Bots are freed for exploration and fighting; the economy is territory. Extraction is passive, so early play is placement rather than programming. |
+| Several resources with distinct uses | Richer decisions, a bigger tuning surface, and every building's row has more numbers to get wrong. |
+| No scarcity — prints and builds cost time only | Nothing to gather and nothing to defend. The fleet's size is bounded by time alone, and every match is the same race. |
+
+Whatever wins names the building list, and each row's numbers live in data
+with the ranges Q7 gave them. `docs/03` waits on this; `docs/02` does not,
+since the printer row is enough to write it.
