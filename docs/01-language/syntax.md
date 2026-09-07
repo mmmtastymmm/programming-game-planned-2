@@ -44,7 +44,7 @@ player reads; everything above it exists so that the list is complete.
 ## The bundle
 
 A **program** is a bundle of named source files. Every unit of a role runs the
-same bundle; a redeploy replaces the whole bundle.
+same bundle once a redeploy has reached it; until then, the one it had.
 
 - **File names** match `[a-z_][a-z0-9_]*\.py` and are unique within the bundle.
   The entry file is **`main.py`**, which every bundle must contain. The name
@@ -82,11 +82,13 @@ same bundle; a redeploy replaces the whole bundle.
   line.
 - **Keywords**, all reserved: `and as break class continue def elif else except
   False finally for from if import in is lambda match case None not or pass
-  raise return True try while`. `match` and `case` are keywords outright, not
-  Python's soft keywords, so neither is a legal identifier.
+  raise return True try while`, plus Python's `del assert with async await
+  yield global nonlocal`, which are reserved so that using one is a parse
+  error rather than a call to a missing name. `match` and `case` are keywords
+  outright, not Python's soft keywords, so neither is a legal identifier.
 - **Literals.** Numbers: decimal only, with `_` separators, a point or an
   exponent allowed — see [numbers](numbers.md#literals). String: `'…'`, `"…"`, triple-quoted,
-  with the escapes `\\ \' \" \n \t \r \0 \xHH \uHHHH \UHHHHHHHH`; an `r`
+  with the escapes `\\ \' \" \n \t \r \f \v \0 \xHH \uHHHH \UHHHHHHHH`; an `r`
   prefix disables escapes; an `f` prefix makes an f-string. Adjacent string
   literals concatenate. `b'…'` bytes literals do not exist. `True`, `False`,
   `None`.
@@ -112,17 +114,17 @@ and using it is a parse error at load — never a runtime surprise.
 | augmented assignment | `+= -= *= /= //= %= **=` and `\|= &= ^=` on sets |
 | `if` / `elif` / `else` | |
 | `while` / `else` | `else` runs when the loop ends without `break` |
-| `for … in …` / `else` | iterates a list, tuple, str, dict (its keys) or set; the target may unpack |
+| `for … in …` / `else` | iterates a list, tuple, str, dict (its keys) or set — over a **snapshot** taken at loop entry, so the body may mutate the collection freely; the target may unpack |
 | `break`, `continue`, `pass` | |
-| `def` | top-level or in a `class` body only; positional and keyword parameters, defaults, `*args`, `**kwargs`; defaults are evaluated once at definition |
+| `def` | at a module's top level or directly in a `class` body only — inside any compound statement it is a parse error; positional and keyword parameters, defaults, `*args`, `**kwargs`; defaults are evaluated once at definition |
 | `return` | |
-| `class` | single base or none; body holds `def`s and assignments |
+| `class` | at a module's top level only; single base or none; body holds `def`s, assignments, `pass` and expression statements |
 | `match` / `case` | patterns below; guards `if …` |
 | `import`, `from … import …` | closed module set, below |
 | `try` / `except` / `else` / `finally`, `raise` | exceptions, below |
 
 Not statements: `del`, `assert`, `with`, `async`, `await`, `yield`, `global`,
-`nonlocal`, decorators, `lambda` as a statement of its own, and type
+`nonlocal`, decorators, and type
 annotations in any position. Remove from a collection with its methods.
 
 ### Expressions
@@ -324,8 +326,11 @@ class Scout(Unit):
 - **Single inheritance.** `class C(B)` or `class C`. Method resolution is `C`
   then `B` then `B`'s base, and so on; there is no `object` to name and no
   `super()`. Call a base method by naming the class.
-- **Instances** have attributes set by assignment on `self` or on the instance;
-  reading one that was never set is an `AttributeError`. Attribute storage is
+- **Instances** have attributes set by assignment on `self` or on the instance.
+  Reading `x.name` looks in the instance, then its class, then each base in
+  turn; a name found nowhere is an `AttributeError`. `C.name` reads a class
+  attribute, `C.name = v` sets one, and an instance without its own `name`
+  sees the new value. Attribute storage is
   insertion-ordered, which matters only for `match` class patterns and never
   for iteration, since instances are not iterable unless `__getitem__` and
   `__len__` say so.
@@ -341,11 +346,11 @@ class Scout(Unit):
 |---|---|
 | `__init__(self, …)` | construction, `C(…)` |
 | `__str__(self)` | `str(x)`, f-strings |
-| `__eq__(self, other)` | `==`; `!=` is its negation |
+| `__eq__(self, other)` | `==` with the instance on the **left** — there is no reflected form, so `1 == v` is `False` without dispatch and `v == 1` dispatches; `x in xs` compares each element on the left; `!=` is its negation |
 | `__lt__(self, other)` | `<`; `>` is `other < self`; `<=` and `>=` are `<` or `==`; `sorted`, `min`, `max`, `list.sort` |
 | `__len__(self)` | `len`; truthiness of the instance when defined |
-| `__contains__(self, item)` | `in` |
-| `__getitem__(self, key)`, `__setitem__(self, key, value)` | subscript read and write; `for` iterates `x[0]`, `x[1]`, … up to `len(x)` when both `__getitem__` and `__len__` exist |
+| `__contains__(self, item)` | `in`; an instance without it as the right operand of `in` is a `TypeError` |
+| `__getitem__(self, key)`, `__setitem__(self, key, value)` | subscript read and write; `for` iterates `x[0]`, `x[1]`, … up to `len(x)`, evaluated **once** at loop entry, when both `__getitem__` and `__len__` exist |
 | `__add__`, `__sub__`, `__mul__`, `__neg__` | `+ - *` with the instance on the **left**, unary `-`; there are no reflected (`__radd__`) or in-place (`__iadd__`) forms, so `2 * v` is a `TypeError` and `v += w` is `v = v + w` |
 
 No `__hash__`, `__iter__`, `__next__`, `__call__`, `__getattr__`,
@@ -360,12 +365,12 @@ if any, is true runs. No arm matching is not an error. The pattern forms:
 
 | Pattern | Matches |
 |---|---|
-| literal: `0`, `1.5`, `"s"`, `True`, `None` | by `==` (`None`, `True`, `False` by identity) |
+| literal: `0`, `1.5`, `"s"`, `True`, `None` | by `==`, except that `True` and `False` match only a `bool` of that value and `None` only `None` — so `1` does not match `case True:` |
 | capture: `name` | anything, binding `name` |
 | wildcard: `_` | anything, binding nothing |
 | sequence: `[a, b]`, `(a, *rest)` | a `list` or `tuple` of that shape; `str` is never a sequence here |
 | mapping: `{"k": p, **rest}` | a `dict` holding those keys; extra keys are allowed |
-| class: `Scout(target=t)` | an instance of that class or a subclass, with **keyword sub-patterns only**, each read as an attribute; positional class patterns need `__match_args__`, which does not exist |
+| class: `Scout(target=t)` | an instance of that class or a subclass, with **keyword sub-patterns only**, each read as an attribute — a name the instance lacks fails the arm rather than raising; positional class patterns need `__match_args__`, which does not exist |
 | or: `p1 \| p2` | either; both must bind the same names |
 | as: `p as name` | `p`, also binding the whole to `name` |
 | guard: `case p if cond:` | `cond` evaluated after binding |
@@ -381,7 +386,9 @@ same name twice is a parse error.
   import *`, relative imports, dotted names and packages are not.
 - **Resolution.** A name is looked up first among the bundle's files, then
   among the game's modules. A bundle file whose name is also a game module is a
-  load error, not a shadowing.
+  load error, not a shadowing; a name found in neither is a load error too,
+  since both sets are known at load. `from m import x` where `m` has no `x`
+  when the import runs is an `AttributeError`, exactly as `m.x` would be.
 - **Circular imports are a load error.** The import graph is walked at load;
   a cycle rejects the bundle.
 - **A module runs once per unit** — its top-level statements execute the first
@@ -472,7 +479,7 @@ difference not listed here is a defect in this doc.
     tab in indentation is a parse error.
 11. **Strings are ASCII-classed.** `upper`, `lower`, `isdigit`, `isalpha` and
     the notion of whitespace touch ASCII only.
-12. **Execution is metered.** A program is interrupted between operations and
+12. **Execution is metered.** A program is paused between operations and
     resumed on a later tick. This has no Python equivalent at all and is the
     one divergence a player must learn rather than merely avoid.
 13. **A fault restarts the program.** An uncaught exception runs `on_fault` and
@@ -491,3 +498,20 @@ difference not listed here is a defect in this doc.
 17. **A module's attributes are read-only**: `mod.name = …` is a `TypeError`.
 18. **`:.Nf` floors** rather than rounding, like every arithmetic result;
     `round` is the one operation that rounds to nearest.
+19. **`round(x, n)` takes `0 ≤ n ≤ 12` only**; Python's negative places are
+    a `ValueError`.
+20. **A fractional exponent is a `TypeError`.** `x ** 0.5` does not exist; a
+    root is a game builtin.
+21. **`tuple` is a name that cannot be called.** `tuple(xs)` is a
+    `TypeError`; write a literal.
+22. **Instances are dict keys by identity even with `__eq__`.** Python makes
+    them unhashable.
+23. **`str(e)` of any exception** is the class name and its arguments, joined
+    as the exceptions section states; Python prints the arguments alone.
+24. **`isinstance(x, int)` is a `TypeError`**, since `int` is a function.
+25. **`<=` and `>=` are derived** from `<` and `==`, so an instance defines
+    `__lt__` and `__eq__` only.
+26. **`for` iterates a snapshot** of a list, dict or set taken at loop entry,
+    so the body may mutate the collection; Python raises or misbehaves.
+27. **`def` and `class` live only at a module's top level or directly in a
+    class body**; inside any compound statement they are a parse error.

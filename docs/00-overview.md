@@ -72,9 +72,9 @@ pass.
   replay is `(seed, timed command log)`, and determinism rule 7 is load-bearing:
   which byte-exact program version a unit runs is part of the state hash.
 - **The unit language's rulings live in [01-language](01-language.md)** — Q5
-  and Q13 (the boundary), Q8, Q11, Q17 and Q18 (execution and interrupts) and
-  Q14 and Q19 (numbers) are the Decided entries of its parts, and they are not
-  repeated here.
+  and Q13 (the boundary), Q8, Q11, Q17, Q18 and Q20 (execution and
+  interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
+  that elaborate them, and they are not repeated here.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -88,7 +88,7 @@ inserted without renumbering:
 | Doc | Owns | Blocked on |
 |---|---|---|
 | `01` | The unit language — syntax, execution model, cost model | — |
-| `02` | Units — what they are, what they sense, what they do | Q7, Q9 |
+| `02` | Units — what they are, what they sense, what they do | Q7, Q9, Q16 |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | Q7 |
 | `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |

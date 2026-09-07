@@ -83,7 +83,9 @@ one rounding rule, and `:.Nf` formatting follows it too. `2 / 3` is
 `0.666666666666`; `-2 / 3` is `-0.666666666667`; `0.1 * 0.1` is `0.01`. For
 `+`, `-`, `*` and `/` the error of one operation is less than one trillionth
 and always in the same direction; `**` is a sequence of such operations and
-its error is the sum of theirs.
+its error is the sum of theirs. Two named operations round differently, and
+only these: `round` to nearest, half to even, and `int` toward zero. Neither
+is an arithmetic result, and nothing else uses either direction.
 
 **Division and modulo by zero** — `/`, `//`, `%` — raise `ZeroDivisionError`.
 
@@ -94,7 +96,9 @@ are set operators only ([syntax](syntax.md#collections)).
 
 **Comparison chains** (`0 <= x < w`) evaluate each operand once, left to right,
 short-circuiting, as in Python. Comparing a number with a non-number by `<` is
-a `TypeError`; `==` between a number and a non-number is `False`.
+a `TypeError`; `==` between a number and a non-number is `False`, with no
+reflected dispatch — an instance's `__eq__` runs only with the instance on the
+left ([syntax](syntax.md#classes)).
 
 ### Exponentiation
 
@@ -110,7 +114,7 @@ a `TypeError`; `==` between a number and a non-number is `False`.
 
 | Call | Result |
 |---|---|
-| `int(x)` | of a `num`, the integral value nearest zero: `int(-1.5)` is `-1`, `int(True)` is `1`. Of a `str`: optional surrounding whitespace (the ASCII set [syntax](syntax.md#methods) fixes), an optional sign, then digits and `_` only — `int("1.5")` is a `ValueError`, as in Python |
+| `int(x)` | of a `num`, the integral value nearest zero: `int(-1.5)` is `-1`, `int(True)` is `1`. Of a `str`: optional surrounding whitespace (the ASCII set [syntax](syntax.md#methods) fixes), an optional sign, then digits with `_` allowed only between two digits — `int("1.5")`, `int("1_")` and `int("_")` are `ValueError`, as in Python — and a value past the range is an `OverflowError` |
 | `num(x)` | of a `num`, itself; of a `bool`, `0` or `1`. Of a `str`: optional surrounding whitespace (the same ASCII set), an optional sign, then exactly what the parser accepts as a literal, else `ValueError` — `num(" +2 ")` is `2` and `num("0.0000000000001")` is a `ValueError` |
 | `str(x)` | the **shortest exact decimal**: a leading `-` if negative, the integer part, then a point and the fractional digits with trailing zeros removed — and no point at all when there are none. `str(2)` is `"2"`, `str(1.5)` is `"1.5"`, `str(1 / 3)` is `"0.333333333333"`, `str(-0.5)` is `"-0.5"`. Never scientific notation. |
 | `bool(x)` | `False` for zero, else `True` |
@@ -125,9 +129,11 @@ a `TypeError`; `==` between a number and a non-number is `False`.
 | `:,` | as `str`, with `,` every three digits of the integer part |
 | `:0Wd` | as `:d`, zero-padded to width `W` |
 
-The alignment specs `:>W`, `:<W`, `:^W` apply to any value and are
-[syntax](syntax.md#expressions)'s. No other numeric specs exist; `:e`, `:g`,
-`:%`, `:x` and `:b` are parse errors.
+The alignment specs `:>W`, `:<W`, `:^W` apply to any value, are
+[syntax](syntax.md#expressions)'s, and may precede a numeric spec in one
+field: `:>8.2f` is legal and means what it means in Python. No other numeric
+specs exist; `:e`, `:g`, `:%`, `:x`, `:b` and `:.Nf` with `N > 12` are parse
+errors.
 
 ## The numeric builtins
 
@@ -152,7 +158,7 @@ library.
 
 | Exception | Raised by |
 |---|---|
-| `OverflowError` | any result outside the range; `-` or `abs` of the minimum value |
+| `OverflowError` | any result outside the range; `-` or `abs` of the minimum value; `int` or `num` of a string whose value is past the range |
 | `ZeroDivisionError` | `/`, `//`, `%` by zero; `0 ** n` for negative `n` |
 | `TypeError` | a fractional exponent; a fractional value in an integral context; `<` against a non-number |
 | `ValueError` | `int` or `num` of an unparsable string; `round` with `n` out of range |

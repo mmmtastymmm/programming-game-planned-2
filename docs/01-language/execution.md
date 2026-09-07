@@ -34,26 +34,33 @@ bound all of it. Every rule here is hash-affecting.
   escalates exactly as a fault in that hook would. So a handler holds off a
   lower-priority interrupt by at most its budget.
 - **A redeploy is an interrupt (Q11)** — the lowest kind, `redeploy`, below
-  `fault`, and the one with no player hook. The role's program slot changes on
+  `fault`, with no player hook, like `death`. The role's program slot changes on
   the tick Q12 agrees; each unit takes the interrupt at its own next operation
   boundary, and the boundary before the first operation counts. The epilogue is
   the swap: the unit takes its role's current program, every variable is
   cleared, and main flow restarts from the top. A unit inside a handler finishes
-  that handler first, which Q17's hook budget bounds. Nothing survives a swap,
-  which discharges the dependency Q13's boundary carried.
+  that handler first, which Q17's hook budget bounds. No program state
+  survives a swap — the deficit, the pending set and the fault record belong
+  to the unit, not the program — which discharges the dependency Q13's
+  boundary carried.
 - **The epilogue rewards success, and a unit is never halted or idle (Q18).**
   The epilogue is the last step of a hook that *returned*. A hook that raises
   an exception nothing catches, or exhausts its budget, gets no epilogue:
   control escalates to the next kind up — `on_fault` to `dying`, `on_dying` to
   `death` — and preemption abandons the whole handler, epilogue included.
-  `death`, having no hook, is the one kind whose epilogue always runs. Every
-  kind's handler exists whether or not its hook is defined, so a missing hook is
-  an empty one and there is no halt state. Main flow that runs off the end of
-  `main.py` starts again from the top with all variables cleared, with no
-  interrupt involved, so there is no idle state either: a unit is always in
+  `death`, having no hook, is the one kind whose epilogue nothing can skip.
+  Every kind's handler exists whether or not its hook is defined, so a missing
+  hook is an empty one and there is no halt state. Main flow that runs off the
+  end of `main.py` starts again from the top with all variables cleared, with
+  no interrupt involved, so there is no idle state either: a unit is always in
   main flow or in a handler. Hooks are bound at load, before any statement
   runs, and the binding survives every variable clear; rebinding the name at
   runtime changes a global, not the hook.
+- **The fault record is written by every failure and survives a redeploy
+  (Q20).** An exception escaping main flow or a hook, a hook's budget running
+  out, and an exception whose unwinding an interrupt cuts off each write it —
+  with the bundle version it belongs to — and nothing but the next write
+  replaces it. Q18's "cleared by a `redeploy`" is withdrawn.
 
 ## Lifecycle
 
@@ -66,16 +73,22 @@ world and therefore of the state hash:
 | **handler** | executing one interrupt's prologue, hook and epilogue | the epilogue completes; the hook escalates; or a higher-priority interrupt preempts |
 
 There is no idle state and no halted state (Q18). A "dying unit" is one in
-the `dying` handler. A unit's **fault record** — its last fault's exception,
-`file`, `line` and tick, written by the `fault` prologue before any hook — is
-world state, so any renderer can show a unit that is faulting and a replay
-reproduces it. How it is shown is the renderer's, once Q15 picks one. The
-record survives restarts and is cleared by a `redeploy`.
+the `dying` handler. A unit's **fault record** is world state, so any renderer
+can show a unit that is faulting and a replay reproduces it; how it is shown is
+the renderer's, once Q15 picks one. It is written by every failure (Q20): by
+the `fault` prologue when an exception escapes main flow; by the escalation
+when an exception escapes a hook or a hook's budget runs out; and by the
+abandonment when an interrupt cuts off an exception's unwinding, before that
+interrupt's prologue. It holds the exception's class and arguments — or the
+kind of hook whose budget ran out — the `file` and `line` of the raising
+operation, or of the last operation the hook completed, the tick of the raise,
+and the version of the bundle it belongs to. Nothing clears it: not a restart,
+not a `redeploy`, not `dying`. The next write replaces it.
 
 **Starting main flow** — at match start, after main flow's last statement,
 after a `fault`'s epilogue, or after a `redeploy`'s — means: every global of
-every module is cleared, the pending module set is emptied, and `main.py`
-begins at its first statement. Imports re-run as they are reached
+every module is cleared, the set of modules already run in this run is
+emptied, and `main.py` begins at its first statement. Imports re-run as they are reached
 ([syntax](syntax.md#import-and-modules)). A program is therefore a body the
 unit runs over and over; one that wants memory across runs writes a
 `while True:` loop.
@@ -96,12 +109,16 @@ has to learn rather than avoid.
   operation costs one and `a + b * c` as an expression statement costs six
   (three names, two operators, one statement); that is a reading those
   constants make true, not the definition, and a tuning change moves it.
-- **An operation boundary** is the point between any two operations, and the
-  point before the first operation of main flow or of a hook. Budget checks and
-  interrupt delivery happen only at boundaries; an operation, once begun,
-  completes, and is charged in full.
+- **The boundaries** are: the point between any two operations; the point
+  before the first operation, and after the last, of main flow or of a hook;
+  the point after any prologue, before the hook or the epilogue; and an
+  escape, which is a boundary at which only the `fault` is delivered
+  ([delivery](#delivery) rule 1). Budget checks and interrupt delivery happen
+  only at boundaries; an operation, once begun, completes, and is charged in
+  full. Main flow restarts at most once per tick: a `main.py` with no
+  operations reaches its end boundary, restarts, and yields.
 - **The tick budget** is a per-unit tuning constant. Each tick, every unit runs
-  its slice in turn until its budget is spent or it has nothing to run. The
+  its slice in turn until its budget is spent or it yields at a restart. The
   order of slices is the tick loop's, which `docs/06` will own; this doc
   assumes ascending entity id and nothing here depends on more than the order
   being fixed. Unspent budget does not carry over; **overspend does**, and
@@ -148,7 +165,7 @@ it runs that interrupt's **handler**: a locked system **prologue**, then the
 player's **hook** if the kind has one, then a locked system **epilogue**. The
 epilogue is what a hook earns by returning: a hook that escapes or runs out of
 budget gets escalation instead, and a preempted handler gets nothing. Only
-`death`, which has no hook, has an epilogue that always runs. A kind whose hook
+`death`, which has no hook, has an epilogue nothing can skip. A kind whose hook
 is not defined still has its handler — prologue then epilogue, back to back.
 
 ### Kinds
@@ -170,6 +187,8 @@ unit stops moving, whether a redeploying one drops what it carries — is
 
 A hook is a top-level `def` in `main.py` with one of the two closed names.
 Defining either is optional. Any other `on_` name is an ordinary function.
+`on_fault` takes exactly one parameter and `on_dying` none; a hook of another
+arity, or two top-level `def`s of one hook name, is a load error.
 
 **Hooks are bound at load, not when their `def` runs.** The loader finds the
 two names among `main.py`'s top-level `def` statements and binds them before
@@ -195,8 +214,10 @@ def on_dying():
   locals are gone: a `fault` abandoned the frame that held them.
 - A hook's code is metered like main flow and may span ticks; its **hook
   budget** is a total per invocation, a tuning constant per kind, debited in
-  full for every operation alongside the tick budget. It is exhausted when it
-  reaches zero or below at a boundary; that abandons the hook and escalates
+  full for every operation alongside the tick budget. It is exhausted when the
+  total debited **exceeds** it, checked at every boundary including the one
+  after the hook's last operation — a hook whose total equals its budget has
+  returned; that abandons the hook and escalates
   exactly as an escaping exception would ([escalation](#escalation)). It is not
   an exception and cannot be caught.
 
@@ -213,7 +234,8 @@ def on_dying():
    is silent and nothing holds an interrupt off. When nothing has caught it
    and the outermost frame of main flow (or of the running hook) is gone, the
    `fault` is delivered **at that instant, before any pending interrupt is
-   considered** — the escape is not a delivery boundary — located at the
+   considered** — the escape is a boundary at which only the `fault` is
+   delivered — located at the
    operation that raised it, with the record's tick the tick of the raise,
    which the exception carries. A pending `dying` or `death` then preempts at
    the fault handler's first boundary, after the prologue has written the
@@ -228,7 +250,9 @@ def on_dying():
 3. **Priority.** If a handler is running, an interrupt of higher priority
    **preempts** it: the running handler is abandoned where it stands, hook and
    epilogue both, and the new handler's prologue runs. There is no handler
-   stack. An interrupt of equal or lower priority
+   stack. A hookless handler has a boundary after its prologue, so a pending
+   higher kind preempts a `fault` handler there — after the record is written,
+   before the epilogue restarts anything. An interrupt of equal or lower priority
    **waits** until the running handler's epilogue completes, then is delivered
    at the next boundary. An exception raised by the running hook's *own* code
    is not an arriving interrupt: it is delivered at once by rule 1 and goes
@@ -258,12 +282,15 @@ so it terminates.
   nothing is a restart and a fault record, and a program that faults on its
   first line restarts every time, visibly.
 - A fault inside **`on_fault`**, or its budget running out, escalates to
-  **`dying`**. `fault`'s epilogue does not run — the unit is dying, and a
-  software failure still gets last words.
+  **`dying`**. The fault record is rewritten for it (Q20); `fault`'s epilogue
+  does not run — the unit is dying, and a software failure still gets last
+  words.
 - A fault inside **`on_dying`**, or its budget running out, escalates to
-  **`death`**. `dying`'s epilogue does not run; it would only have raised
-  `death`, which is now delivered directly.
-- `death` has no hook, so nothing can fail in it; its epilogue always runs.
+  **`death`**. The record is rewritten for it; `dying`'s epilogue does not
+  run, since it would only have raised `death`, which is now delivered
+  directly.
+- `death` has no hook, so nothing can fail in it; nothing can skip its
+  epilogue.
 - **`death` during `on_dying`** preempts it: `on_dying` and `dying`'s epilogue
   are abandoned, and `death`'s prologue and epilogue run.
 - **`redeploy` during `on_fault`** waits. `on_fault` returns, its epilogue
@@ -303,7 +330,7 @@ below that has a value, which the language crate loads beside the cost table
 | hook budget, per kind | cost units per hook invocation, total across ticks, debited in full for every operation | abandon the hook and its epilogue; escalate — `on_fault` to `dying`, `on_dying` to `death` |
 | call depth | nested calls, including recursion and `__init__` | `RecursionError` |
 | nesting depth | how deep a walk may descend. A non-container has depth 0 and a container one more than its deepest element; the operations that walk — `==`, `!=` and `<` on containers, `in` on a container, `list.index`, `list.count`, `list.remove`, `tuple.index`, `tuple.count`, sorting and `min`/`max` through their comparisons, `str`, a `tuple` used as a `dict` or `set` key, and a sequence or mapping `match` pattern — raise when they would descend past it. Building a container never walks: a display, `append` and assignment write references without descending. Brackets and blocks nested in source have the same bound | `LimitError` at the operation that would descend past it; a parse error at load for source |
-| collection size | elements in any one list, tuple, dict or set; scalars in any one `str` | `LimitError` at the operation that would grow it |
+| collection size | elements in any one list, tuple, dict or set; scalars in any one `str` | `LimitError` at the operation that would grow it, raised before its first write — the target is unchanged and only the base cost is charged |
 | live values | elements and scalars reachable from the unit's globals and frames. A list, dict, set or instance is an object counted once however many names or containers reference it; a `str` or `tuple` is a value, counted once per variable or container slot that holds it, so `[s] * 10` holds ten copies of `s`. Measured at every operation that creates a value or stores a reference — an assignment, an `append`, a display | `LimitError` at that operation |
 | bundle size | files per bundle, which is also the module limit; bytes per file | refused at load |
 | pending interrupts | one entry per kind, by construction; no value, since nothing can tune it | cannot be exhausted |
