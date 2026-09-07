@@ -115,9 +115,10 @@ pass.
   Production is ordinary program behavior: the printer is a building kind
   whose program calls a `print` builtin with the role the new bot runs, and
   a bot's program calls a `build` builtin with a building kind and a tile.
-  All bots are one kind; what differs is the role. A print or a build takes
-  time and costs resources, both tuning, and one the unit cannot afford is a
-  `ValueError` fault. A printed bot appears on a tile adjacent to the printer
+  All bots are one kind; what differs is the role. A print takes time and,
+  as Q23 amended, costs nothing else; a build takes time and costs resources,
+  and one the unit cannot afford is a `ValueError` fault. A printed bot
+  appears on a tile adjacent to the printer
   on the tick the print completes, running its role's current bundle from the
   top; printing a role with no bundle is a fault. The opening program set is
   the command log's first entries, one deploy per role agreed for tick 0; a
@@ -133,15 +134,21 @@ pass.
   regrowth rate per tick, remembered by Q21 as last seen. A bot has a capacity
   and a load, `pick`s from an adjacent deposit or depot and `drop`s into an
   adjacent building, and carries while doing anything else. Every building
-  has a store with a capacity per kind: the printer's is small and a print
-  spends from it; the **depot** is a building whose store is large and whose
+  has a store with a capacity per kind: the printer's is zero, since Q23 made
+  prints free; the **depot** is a building whose store is large and whose
   purpose is to hold. A `build` places a site with a store whose capacity is
   the building's cost; bots fill it, construction runs for the build time,
-  and the building appears with an empty store. The starting printer starts
-  stocked, so the first prints need no hauler. Nothing spends from a store it
-  does not own. The building list is `docs/02`'s table and holds printer and
+  and the building appears with an empty store. Nothing starts stocked and
+  nothing spends from a store it does not own; ore goes into sites and
+  depots only. The building list is `docs/02`'s table and holds printer and
   depot; the numbers are tuning in data; `03` defines deposits and places
   them. This ruling moves to `docs/03` and `02` when they are written.
+- **Printing costs time only; building costs resources (Q23).** A printer
+  prints one bot per print time and consults no store; a `drop` into a
+  printer is a fault. Fleet size is bounded by printers and time, and a
+  second printer costs ore to build, so the economy still bounds the fleet
+  one step removed. Q9's priced print and Q22's opening stock and printer
+  store are withdrawn.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
