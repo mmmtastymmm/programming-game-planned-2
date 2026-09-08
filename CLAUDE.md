@@ -1,22 +1,22 @@
 # Programming Game 2 (working title)
 
 A lockstep-multiplayer programming game. The player writes a small number of
-programs, a fleet of identical units runs them, and **the player rewrites those
+programs, a fleet of identical machines runs them, and **the player rewrites those
 programs while the match is running** — each update a lockstep-synchronized
 command applied on the same tick by every peer (Q3). The player never commands an
-individual unit. The simulation runs identically on every machine.
+individual machine. The simulation runs identically on every peer.
 
 The design is in its first pass. The framing rulings live in
-[docs/00-overview.md](docs/00-overview.md)'s Decided section and the language's
-in [docs/01-language.md](docs/01-language.md)'s parts; **everything still
-undecided is in
+[docs/00-overview.md](docs/00-overview.md)'s Decided section, the language's
+in [docs/01-language.md](docs/01-language.md)'s parts, and the machines' in
+[docs/02-machines.md](docs/02-machines.md); **everything still undecided is in
 [docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
 list of open topics repeated here would drift on every ruling. The corpus
 scaffolding and the determinism gate are ported from the predecessor project
 `../programming_game_planned` and proven in CI.
 
 Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
-unit-language crate is ruled in — Q5 and Q13, whose rulings
+language crate is ruled in — Q5 and Q13, whose rulings
 [docs/01-language.md](docs/01-language.md) owns and this file does not repeat —
 but unbuilt: that doc is its spec, and milestone M2 in
 [docs/TASKS.md](docs/TASKS.md) builds it. A renderer crate is
@@ -24,7 +24,7 @@ open — Q15. Neither is needed for the determinism gate to be real.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
 
-The entire `sim` layer must be bit-for-bit deterministic across machines.
+The entire `sim` layer must be bit-for-bit deterministic across peers.
 Violations surface as multiplayer desyncs, which are miserable to debug and
 cheap to prevent. Non-negotiable rules for any code in `sim`, and for the
 language crate when it lands:
@@ -43,7 +43,7 @@ language crate when it lands:
    systems ([crates/sim/src/rng.rs](crates/sim/src/rng.rs)).
 5. **All external input enters as ordered `Command` values** — even in
    single-player, which is lockstep with one peer.
-6. Any query a unit program can make must return results in a stable sorted
+6. Any query a machine program can make must return results in a stable sorted
    order, with ties broken by entity id.
 7. Player programs are stored as **byte-exact plain text** (no whitespace
    normalization, UTF-8); program versions are identified by hashing source
@@ -205,8 +205,7 @@ is lost instead — strictly worse than a file saying "misread this, here is why
   record than a hand-maintained one, and one that cannot be forgotten.
 - Every numeric value in docs (cycle costs, XP curves, timers) is a tuning
   constant, expected to live in data files, not code — `data/` holds them, and
-  `data/language/costs.toml` is the first — except a constant of the
-  unit language itself, such as the scale of `num` (Q14, amended by Q19),
+  `data/language/costs.toml` is the first — except a constant of the language itself, such as the scale of `num` (Q14, amended by Q19),
   which is spec:
   changing it changes every replay hash, so it is stated once in `docs/01` and
   changed only under a new question number.

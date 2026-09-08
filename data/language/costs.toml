@@ -1,4 +1,4 @@
-# Operation costs for the unit language — the values behind the formulas in
+# Operation costs for the language — the values behind the formulas in
 # docs/01-language/costs.md. This file is the one place a cost is a number;
 # the doc owns what each cost depends on. Every value is a non-negative
 # integer, spent from the tick budget and the hook budget alike.
@@ -77,6 +77,18 @@ map = 1
 test = 1
 
 [game]
-# One key per game builtin, named and shaped by docs/02. Empty until 02 is
-# written; the language crate treats a game builtin with no row as a load
-# error, not as free.
+# One key per game builtin, named and shaped by docs/02: a base cost, plus
+# factor.traverse per element for a query that returns a list. An action's
+# base is charged when it begins; its wait costs nothing.
+see = 2
+hear = 2
+tile = 1
+tiles = 2
+me = 1
+move = 1
+pick = 1
+drop = 1
+print = 2
+build = 2
+wait = 1
+log = 1

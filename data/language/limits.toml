@@ -1,11 +1,11 @@
-# Limits of the unit language — the values behind the limits table in
+# Limits of the language — the values behind the limits table in
 # docs/01-language/execution.md. This file is the one place a limit is a
 # number; the doc owns what each limit bounds and what exhausting it does.
 # Every value is a non-negative integer, and every key is hash-affecting:
 # changing one changes the golden-replay fixtures, and the PR says why.
 
 [budget]
-# cost units per unit per tick, main flow or hook; exhausting it yields, and a
+# cost units per machine per tick, main flow or hook; exhausting it yields, and a
 # deficit carries forward until it is paid
 tick = 200
 # cost units per hook invocation, total across ticks; exhausting one escalates
@@ -23,7 +23,7 @@ nesting = 32
 [size]
 # elements in one list, tuple, dict or set; scalars in one str
 collection = 10000
-# elements and scalars reachable from the unit: objects counted once, str and
+# elements and scalars reachable from the machine: objects counted once, str and
 # tuple values once per slot that holds them
 live_values = 100000
 

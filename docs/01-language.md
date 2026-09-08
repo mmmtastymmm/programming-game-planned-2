@@ -1,6 +1,6 @@
-# 01 — The unit language
+# 01 — The language
 
-The language every unit program is written in: a purpose-built interpreter for
+The language every machine program is written in: a purpose-built interpreter for
 a Python-shaped language, deterministic by construction, whose surface a Python
 programmer recognises on sight and whose semantics are entirely this document's.
 This is what the language crate is built from. It is normative: two
@@ -20,7 +20,7 @@ repeated here.
 | Part | Owns |
 |---|---|
 | [syntax](01-language/syntax.md) | The program bundle and its identity; lexical rules; the boundary — every statement, expression, type, builtin and method that exists; classes and the closed dunder set; `match` patterns; `import` and module resolution; exceptions; the complete divergence list |
-| [execution](01-language/execution.md) | A unit's program lifecycle; metering and the cost model; the interrupt model — kinds, handlers, hooks, delivery, preemption, escalation; every limit |
+| [execution](01-language/execution.md) | A machine's program lifecycle; metering and the cost model; the interrupt model — kinds, handlers, hooks, delivery, preemption, escalation; every limit |
 | [numbers](01-language/numbers.md) | `num`, the one number type; literals; every operator's rounding; conversions; the numeric builtins; the faults arithmetic can raise |
 | [costs](01-language/costs.md) | One row per operation, builtin and method with its cost formula over named constants; the shape of a game builtin's row; the values live in `data/language/costs.toml` |
 
@@ -55,7 +55,7 @@ repeated here.
    and changes only under a new question number.
 5. **A program is its bytes.** A bundle of named files, byte-exact and never
    normalised, identified by the hash [syntax](01-language/syntax.md#the-bundle)
-   defines (determinism rule 7). Which version each unit is running is state,
+   defines (determinism rule 7). Which version each machine is running is state,
    and the state hash sees it.
 6. **Every rule here is hash-affecting.** Changing any of them changes the
    golden-replay fixtures, and a PR that does so says why (CLAUDE.md).

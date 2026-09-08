@@ -96,7 +96,7 @@ with entity-ID tiebreaks.
 
 ## DI8 — Shipped programs are source code
 
-Once the docs print programs in the unit language, they are the *actual shipped
+Once the docs print programs in the language, they are the *actual shipped
 source*, not illustrations. They are subject to the language reference, not to
 prose review.
 

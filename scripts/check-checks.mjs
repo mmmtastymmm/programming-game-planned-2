@@ -793,7 +793,7 @@ const MUTATIONS = [
     mutate: (d) => {
       mkdirSync(join(d, "docs/01-language"), { recursive: true });
       writeFileSync(join(d, "docs/01-language/syntax.md"),
-        "*Part of [02-units](../02-units.md).*\n\n# Syntax\n");
+        "*Part of [99-elsewhere](../99-elsewhere.md).*\n\n# Syntax\n");
     } },
   { name: "a README.md inside a split doc's parts directory", check: "layout",
     expect: "a second index beside the parts",
@@ -1211,8 +1211,24 @@ const MUTATIONS = [
   { name: "the corpus losing its last mermaid block", check: "mermaid",
     expect: "the check is checking nothing",
     // Zero FILES was guarded and zero BLOCKS was not, so deleting or renaming
-    // the one diagram left the step printing a tick over nothing.
-    mutate: (d) => edit(join(d, "docs/00-overview.md"), /```mermaid[\s\S]*?```\n/, "") },
+    // the one diagram left the step printing a tick over nothing. Every block
+    // in every doc is stripped, not the overview's alone: the day a second
+    // diagram landed, stripping one left one, and this case went red on a
+    // correct commit.
+    mutate: (d) => {
+      const walk = (dir) => {
+        for (const name of readdirSync(dir)) {
+          const f = join(dir, name);
+          if (name === "node_modules" || name.startsWith(".")) continue;
+          if (name.endsWith(".md")) {
+            const before = readFileSync(f, "utf8");
+            const after = before.replace(/```mermaid[\s\S]*?```\n/g, "");
+            if (after !== before) writeFileSync(f, after);
+          } else if (!name.includes(".")) walk(f);
+        }
+      };
+      walk(join(d, "docs"));
+    } },
 ];
 
 const run = (check, dir) => CHECKS[check](dir);

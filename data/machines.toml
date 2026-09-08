@@ -1,0 +1,46 @@
+# Machines — the values behind the kind table in docs/02-machines.md. This file is
+# the one place a machine number is a number; the doc owns what each means.
+# Every value is a num (an integer, or a decimal with up to twelve places),
+# and every key is hash-affecting: changing one changes the golden-replay
+# fixtures, and the PR says why.
+
+[resource]
+# the resource table (Q22): one row per kind, in this order
+kinds = ["ore"]
+
+[kind.bot]
+vision = 6
+hearing = 4
+capacity = { ore = 10 }
+move_ticks = 2
+pick_ticks = 3
+pick_rate = { ore = 5 }
+drop_ticks = 1
+
+[kind.printer]
+vision = 8
+hearing = 6
+store = { ore = 0 }
+cost = { ore = 100 }
+build_ticks = 60
+print_ticks = 30
+
+[kind.depot]
+vision = 4
+hearing = 4
+store = { ore = 500 }
+cost = { ore = 40 }
+build_ticks = 20
+
+[kind.site]
+# a site's store capacity is the cost of what it becomes; its ranges are these
+vision = 2
+hearing = 2
+
+[loudness]
+# per sound cause (docs/02, Sounds); added to the hearer's range
+move = 1
+pick = 2
+drop = 2
+print = 4
+build = 4
