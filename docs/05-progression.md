@@ -8,7 +8,7 @@ nothing persists when the match ends.
 ## Decided
 
 - **Progression is inside a match, and it is printers changing hands
-  (Q30).** A bot may convert an adjacent printer of another team, after which
+  (Q30, as amended by Q31, which made printers unbuildable).** A bot may convert an adjacent printer of another team, after which
   the printer is its team's: it prints for them, and by Q24's rules its new
   team's cap rises by ten and its next color unlocks while the old team's cap
   falls and its last color locks. A printer defends itself, dealing one
@@ -20,19 +20,20 @@ nothing persists when the match ends.
 ## Inside a match
 
 A team's reach is measured in printers. Each one it holds is ten more bots
-it may print and one more deployment it may write for (Q24), and there are
-three ways to hold more:
+it may print and one more deployment it may write for (Q24). None is ever
+built (Q31): the map placed every printer there will be, so there are two
+ways to hold more, and the second is the only way up:
 
 | Way | Costs | Ruled in |
 |---|---|---|
-| **build** one | ore, hauled to a site by bots, and the build time | Q9, Q22, Q23 |
 | **convert** a rival's | a bot adjacent to it for `convert_ticks`, taking `defence_damage` every tick from the printer it is converting | Q30, [02-machines](02-machines.md) |
 | **keep** the ones it has | bots to stand between them and the rival's, and a program that knows when to | Q25, Q30 |
 
 Conversion is the progression rule, and it is the reason a match has an
 arc: a printer taken is ten bots and a color taken, and a printer taken
 back is the same in reverse. Deconstruction (Q28) removes a rival's printer
-instead of taking it, which is faster and gains nothing; a program chooses.
+instead of taking it, which is faster, gains nothing, and is permanent — one
+fewer printer in the world for everyone; a program chooses.
 
 **The arithmetic the numbers are set for.** With `convert_ticks` and bot
 health both at ten and `defence_damage` at one, one full-health bot converts

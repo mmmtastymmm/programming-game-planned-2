@@ -139,16 +139,17 @@ A map fixes:
 
 - **the starting speed** (Q6), one of the steps in `data/world.toml`, the same
   for every team; and, for each team,
-- **one starting tile**, on which the team's starting printer stands at
-  tick 0 (Q9), with full health and an empty store, on the `printer`
-  deployment; and
+- **one or more starting tiles**, on each of which a printer stands at
+  tick 0 (Q9, Q31), with full health and an empty store, on the `printer`
+  deployment — these are every printer the team will ever have except the
+  ones it takes, since none is ever built; and
 - nothing else — no bots, no ore held, no memory. The first slice belongs
   to the printer, which prints the first bot once the opening program set
   (Q9) has reached it.
 
-A map is **valid** only if every starting tile is buildable, no two teams
-share one, and every team's starting tile can reach at least one deposit
-by passable terrain. The sim refuses an invalid map at load, as it refuses
+A map is **valid** only if every starting tile is buildable, no two are the
+same tile, every team has at least one, and every starting tile can reach
+at least one deposit by passable terrain. The sim refuses an invalid map at load, as it refuses
 an invalid bundle.
 
 **Symmetry** is a map author's business and not a rule: a fair map places
