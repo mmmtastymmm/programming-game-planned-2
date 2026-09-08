@@ -35,7 +35,8 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   a sound can also interrupt a program was Q16, which ruled it cannot:
   programs poll.
 - **Bots are printed by a printer, buildings are built by bots, and a match
-  starts with one printer per team (Q9).** There is no fixed roster.
+  starts with the printers the map places (Q9, as amended by Q31, which
+  made printers unbuildable).** There is no fixed roster.
   Production is ordinary program behavior: the printer is a building whose
   program calls `print` with the deployment the new bot runs, and a bot's
   program calls `build` with a building kind and a tile. All bots are one
@@ -81,8 +82,8 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   numbers are tuning in data; `03` defines deposits and places them.
 - **Printing costs time only; building costs resources (Q23).** A printer
   prints one bot per print time and consults no store; a `drop` into a
-  printer is a fault. A second printer costs ore to build, so the economy
-  bounds the fleet one step removed. Q9's priced print and Q22's opening
+  printer is a fault. Printers cannot be built (Q31), so the economy prices
+  depots and what follows them, never the objective. Q9's priced print and Q22's opening
   stock and printer store are withdrawn; Q23's own bound, printers and time,
   is replaced by Q24's cap.
 - **Every machine has health; damage lowers it; zero is `dying`, the
@@ -101,6 +102,10 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   data in order, plus one deployment per building kind, not counted; losing
   a printer locks the last unlocked deployment, whose bots keep running until
   they die. What deals damage beyond a fault is Q25's bullet below.
+- **Printers cannot be built; a team holds the map's, takes a rival's, or
+  loses its own (Q31).** `build` refuses the model `printer`, there is no
+  printer-site, and the number of printers in the world is fixed at load and
+  only falls, by death or deconstruction. A team is out when it has none.
 - **Printers change hands, and defend themselves (Q30).** A bot's
   `convert(id)` on an adjacent printer of another team makes it the bot's
   team's after `convert_ticks`, keeping its store, health, name and any print
@@ -225,7 +230,7 @@ carries a team and a position like any building.
 | Model | Moves | Store | Made by | Does |
 |---|---|---|---|---|
 | `bot` | yes | none; a **load** up to its capacity | a printer, in `print_ticks`, under the team's cap | senses, moves, picks, drops, builds |
-| `printer` | no | capacity zero | a bot's `build`, for `cost` in `build_ticks`; one per team at match start, placed by the map (`03`) | senses, prints; unlocks a color and ten bots |
+| `printer` | no | capacity zero | **the map only** (Q31): every printer there will be stands at tick 0 on a team's starting tile (`03`); none is ever built, and the count only falls | senses, prints, defends itself; unlocks a color and ten bots |
 | `depot` | no | capacity per kind, large | a bot's `build` | senses, holds |
 | `site` | no | capacity equal to the cost of what it becomes | a bot's `build`, at once | holds; becomes its building when full and built |
 
@@ -334,14 +339,14 @@ sound.
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
 | `print(color)` | printer | `color` must be an unlocked deployment with a bundle (Q9, Q24), the team must be under its bot cap, and a free adjacent tile must exist at completion — the first free of `n`, `e`, `s`, `w`; the bot appears there, on the printer's team, named `color` plus its `id`, in main flow, its first slice next tick; no free tile at completion cancels the print with nothing produced | `print_ticks` | yes |
-| `build(model, x, y)` | bot | `model` a building model other than `site`; `(x, y)` adjacent and buildable (`03`): `ground`, no deposit, **no building** — a tile carrying the team's building plan for `model` (Q27) is the usual target, and if that tile has a building the plan deconstructs it first (Q28), as one action of both durations; placing the site consumes the plan and no other mark. The site appears at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0`, or `deconstruct_ticks` of the old building first — the site is busy after that | yes, twice |
+| `build(model, x, y)` | bot | `model` a building model other than `site` or `printer` (Q31); `(x, y)` adjacent and buildable (`03`): `ground`, no deposit, **no building** — a tile carrying the team's building plan for `model` (Q27) is the usual target, and if that tile has a building the plan deconstructs it first (Q28), as one action of both durations; placing the site consumes the plan and no other mark. The site appears at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0`, or `deconstruct_ticks` of the old building first — the site is busy after that | yes, twice |
 | `paint(x, y)` | bot | `(x, y)` adjacent and carrying the team's paint plan with a color; if the tile is already painted, the unpaint runs first (Q28), as one action of both durations; on completion the tile's paint is the plan's color and the plan is gone; no plan is a `ValueError` | `paint_ticks`, plus `unpaint_ticks` if painted | no |
 | `unpaint(x, y)` | bot | `(x, y)` adjacent and painted; on completion its paint is `None`. Any team's bot may do it. A paint plan whose value is `None` is realised by this action and consumed | `unpaint_ticks` | no |
 | `overlay(x, y)`, `unoverlay(x, y)` | bot | as `paint` and `unpaint`, for the overlay slot | `overlay_ticks`, `unoverlay_ticks` | no |
 | `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store lost, and its team's cap and deployments updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `attack(id)` | bot | `id` a machine the team can currently see — a sighting's `id` — within `attack_range` by squared distance and in the attacker's line of sight (`03`); any team, the bot's own included; anything with health: a bot, a building, a site. On completion, if the target still exists and is still in range and sight, `attack_damage` is subtracted from its health in the tick's damage step (`06`), where hits on one target are summed before `dying` or `death` is raised (Q25); otherwise nothing | `attack_ticks` | yes |
-| `convert(id)` | bot | `id` an adjacent printer or printer-site of another team; on completion, if it still stands and the bot is still adjacent, its `team` becomes the bot's and its `deployment` the new team's `printer`, keeping its store, health, name and any print in progress; the two teams' caps and colors follow (Q24); a printer converted twice on one tick goes to the lower entity id's team (Q30) | `convert_ticks` | yes |
+| `convert(id)` | bot | `id` an adjacent printer of another team; on completion, if it still stands and the bot is still adjacent, its `team` becomes the bot's and its `deployment` the new team's `printer`, keeping its store, health, name and any print in progress; the two teams' caps and colors follow (Q24); a printer converted twice on one tick goes to the lower entity id's team (Q30) | `convert_ticks` | yes |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
 | `rename(name)` | any | sets `name`; a `str` longer than `name_max` is a `ValueError` | `0` | no |

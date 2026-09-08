@@ -49,8 +49,7 @@ hearing = 6
 health = 60
 death_threshold = -30
 store = { ore = 0 }
-cost = { ore = 100 }
-build_ticks = 60
+# no cost and no build time: printers are the map's and are never built (Q31)
 deconstruct_ticks = 30
 print_ticks = 30
 # damage dealt each tick to every adjacent enemy bot (Q30); zero on other models

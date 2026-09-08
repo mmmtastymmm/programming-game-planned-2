@@ -69,12 +69,12 @@ a command log that grows until the match ends.
 
 ### Ending
 
-**A team is out** on the tick it has no printer and no site that would
-become one — the moment its last printer's `death` epilogue runs, its last
-printer or printer-site is **converted** to another team (Q30), or its last
-printer-site is deconstructed, with no other printer or printer-site
-standing. A converted printer is not removed with the team that lost it; it
-is no longer theirs. An out team's machines are removed at the end of that tick's
+**A team is out** on the tick it has no printer — the moment its last
+printer's `death` epilogue runs, it is deconstructed (Q28), or it is
+**converted** to another team (Q30), with no other printer standing. There
+is no site that could become one, since printers are never built (Q31). A
+converted printer is not removed with the team that lost it; it is no
+longer theirs. An out team's machines are removed at the end of that tick's
 damage step (`06`, step 4), its plans are cleared, and its command log is
 closed: further commands from it are dropped at submission. `Resign` (Q10)
 puts a team out at once on its agreed tick.
@@ -93,11 +93,10 @@ new question number.
 ### Why the printer
 
 The printer is the team's one irreplaceable machine: it is the only source
-of bots, and a bot is the only thing that can build a printer. A team with
-no printer and no printer-site cannot ever have one again, so it is out the
-moment that is true, not when its last bot dies. Sites count because a
-site is a printer in the making, and a team with bots hauling to one is
-alive.
+of bots, and nothing can make one (Q31) — the map placed every printer
+there will be. A team with no printer can gain one only by converting a
+rival's, and it has no bots left to do it with once its last dies, so it is
+out the moment it holds none, not when its last bot dies.
 
 ## PvE
 
@@ -105,7 +104,7 @@ The first mode. One player's team, and one or more scripted teams, on a map
 the player chose. The scripted teams' scripts and bundles are what
 [data/opposition/](../data/opposition/) holds, one directory per opposition,
 each named for a tarot card. The first opposition is **`fool`**, the Fool:
-a team that prints bots, hauls ore, builds a depot and a second printer, and
+a team that prints bots, hauls ore, builds depots, and
 never attacks — a target to learn on, wandering with its eyes on the road.
 The roster is one card long (Q29): each further card — one that fights
 back, one that goes for printers — is a new question number, ruled when a
