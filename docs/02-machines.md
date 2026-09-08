@@ -165,6 +165,9 @@ classDiagram
     wait()
     log()
     rename()
+    blueprints()
+    painted()
+    layered()
   }
   class bot {
     load
@@ -243,7 +246,8 @@ Every rule that says "adjacent" means those four.
 
 Sensing is **passive**: every machine sees and hears every tick without
 doing anything, and the queries below read what the whole team senses now.
-Two queries, and two more that read the colony's memory. All of them return
+Two queries, two more that read the colony's memory, and three that read the
+team's marks (Q10). All of them return
 lists or records sorted as Q7 and Q21 rule, computed when called, and cost
 their `[game]` row plus `factor.traverse` per element returned
 ([costs](01-language/costs.md)).
@@ -252,9 +256,12 @@ their `[game]` row plus `factor.traverse` per element returned
 |---|---|
 | `see()` | a list of **sightings**: every machine any of the team's machines sees now, each once, sorted by squared distance from the calling machine then by `id`. A sighting is a machine's attribute record. The team's own machines are always included. |
 | `hear()` | a list of **sounds** emitted during the previous tick that any of the team's machines hears, each once, sorted by squared distance from the calling machine, then by position, then by cause. A sound is a record `cause`, `pos`, `loudness`, `tick`. |
-| `tile(x, y)` | the tile's record for the team — `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `building` a machine record or `None`; `seen_at` the tick — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
+| `tile(x, y)` | the tile's record for the team — `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `building` a machine record or `None`; `seen_at` the tick; `marks` the team's marks on it as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
 | `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle that is not unknown, sorted by row then column. |
 | `me()` | the calling machine's own attribute record. |
+| `blueprints()` | the team's tiles carrying a blueprint mark (Q10), as `(x, y, model)` tuples, sorted by row then column. |
+| `painted(color)` | the team's tiles painted `color`, as `(x, y)` tuples, sorted by row then column. |
+| `layered(label)` | the team's tiles carrying the layer `label`, as `(x, y)` tuples, sorted by row then column. |
 
 **Vision** (Q7): machine `u` sees a machine at `q` if
 `dist²(u.pos, q) ≤ vision²` for `u`'s model and the line of sight from
@@ -301,7 +308,7 @@ sound.
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
 | `print(color)` | printer | `color` must be an unlocked deployment with a bundle (Q9, Q24), the team must be under its bot cap, and a free adjacent tile must exist at completion — the first free of `n`, `e`, `s`, `w`; the bot appears there, on the printer's team, named `color` plus its `id`, in main flow, its first slice next tick; no free tile at completion cancels the print with nothing produced | `print_ticks` | yes |
-| `build(model, x, y)` | bot | `model` a building model other than `site`; `(x, y)` adjacent, buildable (`03`) and unoccupied; places a **site** there at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0` — the bot is not busy; the site is | yes, twice |
+| `build(model, x, y)` | bot | `model` a building model other than `site`; `(x, y)` adjacent, buildable (`03`) and unoccupied — a tile carrying the team's blueprint for `model` (Q10) is the usual target, and the blueprint is removed when the building completes; places a **site** there at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0` — the bot is not busy; the site is | yes, twice |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |

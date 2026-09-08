@@ -20,8 +20,10 @@ Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
 language crate is ruled in — Q5 and Q13, whose rulings
 [docs/01-language.md](docs/01-language.md) owns and this file does not repeat —
 but unbuilt: that doc is its spec, and milestone M2 in
-[docs/TASKS.md](docs/TASKS.md) builds it. A renderer crate is
-open — Q15. Neither is needed for the determinism gate to be real.
+[docs/TASKS.md](docs/TASKS.md) builds it. A `render` crate is ruled in — Q15:
+Bevy, depending on `sim` and never the reverse, reading only completed-tick
+snapshots — and unbuilt (T16). Neither is needed for the determinism gate to
+be real, which runs `sim` headless.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
 
@@ -130,7 +132,7 @@ Rules common to all four, enforced by `scripts/check-registers.mjs`:
 What each register uniquely holds:
 
 - **Questions** — anything undecided, and **only** here. Another doc may cite a
-  number inline ("open — Q12") but never restates a question's substance or its
+  number inline ("open — `Q73`") but never restates a question's substance or its
   leaning; a question restated in two places gets answered in one of them.
 - **Problems** — defects in *already-decided* text: a ruling that never
   propagated to its owning doc, a tuning number that fails arithmetic against its

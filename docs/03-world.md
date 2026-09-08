@@ -31,9 +31,11 @@ Every tile holds exactly:
 |---|---|
 | `terrain` | one of the terrain kinds below, fixed for the match |
 | `deposit` | a `dict` of resource kind to amount, or `None`; only on `ore` terrain |
+| `marks` | per team: a blueprint (a building model) or `None`, a paint (a deployment color) or `None`, and a set of layer labels — placed by the player through the command log (Q10), read by that team's programs, never sensed or remembered, and part of the state hash |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
 
-A tile's `terrain` never changes. A tile is never destroyed, so the second
+A tile's `terrain` never changes; its `marks` change only by command. The
+layer labels are the closed list `mark.layers` in `data/world.toml`. A tile is never destroyed, so the second
 cause of `death` that `02` reserves for this doc **does not occur**: a
 machine dies of damage or not at all. Deposits change amount and nothing
 else.
@@ -117,8 +119,10 @@ deposit's cap and regrowth, and the starting positions. The format is
 command log)` reproduces a match, and the map's bytes are hashed into the
 replay's identity as the bundle's are (rule 7).
 
-A map fixes, for each team:
+A map fixes:
 
+- **the starting speed** (Q6), one of the steps in `data/world.toml`, the same
+  for every team; and, for each team,
 - **one starting tile**, on which the team's starting printer stands at
   tick 0 (Q9), with full health and an empty store, on the `printer`
   deployment; and
