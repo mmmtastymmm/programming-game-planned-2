@@ -1,4 +1,4 @@
-# The hauler's red bots: find a deposit, carry ore to the nearest site the
+# The Fool's red bots: find a deposit, carry ore to the nearest site the
 # team has planned, and build a depot and then a second printer where the
 # plans say. Shipped source (design-invariant DI8).
 
