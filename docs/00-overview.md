@@ -59,13 +59,13 @@ pass.
   architecture is inherited and already proven in CI; the game around it is
   re-decided, and so is the corpus discipline that holds it.
 - **The player programs a fleet of identical machines (Q2).** Many machines, few
-  programs. Programs are addressed to a role or group, never to an individual
+  programs. Programs are addressed to a deployment, never to an individual
   machine, so the language needs no machine-identity concept in its core. Difficulty
   is sourced from interaction between copies rather than from authored puzzles.
 - **The player updates programs while the match runs, and never orders an
   individual machine (Q3).** A program update is a lockstep-synchronized command,
   agreed for a future tick so every peer applies it on the same tick. Updates
-  are to programs, which by Q2 address a role or group. Whether anything
+  are to programs, which by Q2 address a deployment. Whether anything
   *besides* a program update — match control such as resigning — enters the sim
   mid-match is open (Q10); this ruling forbids machine orders, not that. So
   `Command` is a real ordered log whose principal variant is a program deploy, a
@@ -76,7 +76,7 @@ pass.
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9 and Q23 (production), and Q22 (the economy,
+  (sensing and memory), Q9, Q23 and Q24 (production, health and the cap), and Q22 (the economy,
   which `docs/03` will cite) are its Decided entries, and they are not
   repeated here.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
@@ -94,7 +94,7 @@ inserted without renumbering:
 | `01` | The language — syntax, execution model, cost model | — |
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | — |
-| `04` | Opposition — PvE now, PvP later | Q24 |
+| `04` | Opposition — PvE now, PvP later | Q25 |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
 
