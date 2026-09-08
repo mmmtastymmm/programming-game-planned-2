@@ -101,6 +101,13 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   data in order, plus one deployment per building kind, not counted; losing
   a printer locks the last unlocked deployment, whose bots keep running until
   they die. What deals damage beyond a fault is Q25's bullet below.
+- **Printers change hands, and defend themselves (Q30).** A bot's
+  `convert(id)` on an adjacent printer of another team makes it the bot's
+  team's after `convert_ticks`, keeping its store, health, name and any print
+  in progress; the caps and colors follow by Q24. Every printer deals
+  `defence_damage` each tick to every adjacent bot of another team, in the
+  damage step, so a conversion is a fight. Progression is
+  [05-progression](05-progression.md)'s doc; the mechanism is this one's.
 - **Bots attack, and nothing else does (Q25).** A bot's `attack(id)` hits a
   machine its team can see, within `attack_range` and in line of sight, for
   `attack_damage` health when the action completes, landed in the tick's
@@ -186,6 +193,7 @@ classDiagram
     build_nearest()
     deconstruct()
     attack()
+    convert()
     paint()
     unpaint()
     overlay()
@@ -298,6 +306,7 @@ The causes, which are the `cause` strings a sound carries:
 | `"build"` | a bot placing a site, and a site completing |
 | `"deconstruct"` | a bot beginning a deconstruction |
 | `"attack"` | a bot beginning an attack |
+| `"convert"` | a bot beginning a conversion |
 
 Loudness per cause is in `data/machines.toml`. A sound never names its
 emitter.
@@ -332,6 +341,7 @@ sound.
 | `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store lost, and its team's cap and deployments updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `attack(id)` | bot | `id` a machine the team can currently see — a sighting's `id` — within `attack_range` by squared distance and in the attacker's line of sight (`03`); any team, the bot's own included; anything with health: a bot, a building, a site. On completion, if the target still exists and is still in range and sight, `attack_damage` is subtracted from its health in the tick's damage step (`06`), where hits on one target are summed before `dying` or `death` is raised (Q25); otherwise nothing | `attack_ticks` | yes |
+| `convert(id)` | bot | `id` an adjacent printer or printer-site of another team; on completion, if it still stands and the bot is still adjacent, its `team` becomes the bot's and its `deployment` the new team's `printer`, keeping its store, health, name and any print in progress; the two teams' caps and colors follow (Q24); a printer converted twice on one tick goes to the lower entity id's team (Q30) | `convert_ticks` | yes |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
 | `rename(name)` | any | sets `name`; a `str` longer than `name_max` is a `ValueError` | `0` | no |
@@ -363,8 +373,13 @@ charged by the `fault` prologue beside the record it writes, so a program
 that faults on every restart dies after `health / fault_damage` faults
 instead of looping forever. **An attack costs `attack_damage`** (Q25), landed
 in the tick's damage step, where every hit on one target this tick is summed
-before the rules below run. Nothing else — no building, no terrain — deals
-damage, and nothing repairs; each is a new question number if wanted.
+before the rules below run. **A printer defends itself** (Q30): in the same
+step, every printer deals its model's `defence_damage` to every bot of
+another team on an adjacent tile, every tick it stands — the one thing in
+the design that acts without a program, because a building does not decide.
+`defence_damage` is per model and zero for every model but the printer.
+Nothing else deals damage, and nothing repairs; each is a new question
+number if wanted.
 
 [01-language](01-language/execution.md) fixes what each interrupt does to
 *execution*. This table fixes what it does to the machine's **body**, which
@@ -372,8 +387,8 @@ is what the prologues and epilogues do beyond the language's rules.
 
 | Kind | Raised by | Prologue does to the body | The hook may | Epilogue does to the body |
 |---|---|---|---|---|
-| `death` | health at or below the threshold, from faults or attacks; `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
-| `dying` | health at or below zero, from faults or attacks | cancels the action in progress; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
+| `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
+| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 

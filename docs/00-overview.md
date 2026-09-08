@@ -85,11 +85,13 @@ pass.
   Q12 (scheduling) and Q15 (the renderer) are its Decided entries, and they
   are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
-  Q4 (PvE before PvP) is its Decided entry, and it is not repeated here.
+  Q4 (PvE before PvP) is its Decided entry — and **progression's in
+  [05-progression](05-progression.md)** — Q30 (printers change hands); neither
+  is repeated here.
 
 ## What the numbered docs will hold
 
-`01`, `02`, `03`, `04` and `06` are written; `05` is reserved, not written. The numbering is
+Every numbered doc is written. The numbering is
 deliberately sparse so a topic can be
 inserted without renumbering:
 
@@ -99,7 +101,7 @@ inserted without renumbering:
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
 | `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | Q29 |
-| `05` | Progression | — |
+| `05` | Progression — printers changing hands inside a match; nothing between matches | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 
 Each becomes a doorway plus a parts directory only when it outgrows one file
@@ -109,9 +111,10 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01`, `02`, `03`, `04` and `06` are written** —
+map from question to doc. **Every numbered doc is written** —
 [01-language](01-language.md), [02-machines](02-machines.md),
-[03-world](03-world.md), [04-opposition](04-opposition.md) and
+[03-world](03-world.md), [04-opposition](04-opposition.md),
+[05-progression](05-progression.md) and
 [06-architecture](06-architecture.md) — and the table
 above, not this sentence, is the authority on what blocks the rest: earlier
 passes misread `01` as having a single blocker while it had three.

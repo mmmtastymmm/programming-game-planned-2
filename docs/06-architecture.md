@@ -128,9 +128,10 @@ loop:
 3. **Action completions**, in ascending entity id: moves land, transfers
    happen, prints place bots, sites complete, deconstructions finish (`02`).
    A bot printed this tick has its first slice next tick.
-4. **Damage and death**: health changes from this tick's causes are applied,
-   `dying` and `death` are raised where Q24 says, and `death` epilogues
-   remove machines. A machine removed here is absent from everything below.
+4. **Damage and death**: health changes from this tick's causes are applied
+   — attacks that completed, and every printer's defence against adjacent
+   enemy bots (Q30) — `dying` and `death` are raised where Q24 says, and
+   `death` epilogues remove machines. A machine removed here is absent from everything below.
 5. **Regrowth**: every deposit grows (`03`).
 6. **The vision pass**: each team's visible tiles are computed and their
    snapshots refreshed (Q21).
