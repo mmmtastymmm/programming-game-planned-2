@@ -32,8 +32,7 @@ commit,
 as the amendments that the history rules require to be new numbers. The rulings of
 Q7, Q9, Q21, Q22, Q23 and Q24 are [02-machines](02-machines.md)'s Decided
 entries, `docs/03` cites Q21 and Q22 from there, and the rulings of Q6, Q10,
-Q12 and Q15 sit in the overview's Decided section until `docs/06` exists to
-own them. Every other number this
+Q12, Q15 and Q26 through Q28 are [06-architecture](06-architecture.md)'s. Every other number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
@@ -46,9 +45,10 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**`docs/01`, `02` and `03` are written** — [01-language](01-language.md),
-[02-machines](02-machines.md) and [03-world](03-world.md), each with the
-rulings it waited on as its Decided entries or citing them from `02`. `02`
+**`docs/01`, `02`, `03` and `06` are written** — [01-language](01-language.md),
+[02-machines](02-machines.md), [03-world](03-world.md) and
+[06-architecture](06-architecture.md), each with the rulings it waited on
+as its Decided entries or citing them from `02`. `02`
 opened Q24 in the writing. The overview's table says the same.
 
 ## Open

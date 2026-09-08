@@ -33,14 +33,14 @@ Two conventions carried over from the predecessor project:
 
 ## M0 — Scaffolding
 
-**T7 — Replace the placeholder sim in `crates/sim` with the real world model**
+**T7 — Replace the placeholder sim in `crates/sim` with the real world model, and split out `lang`, `net` and `replay`**
 
 ⚠HASH — this regenerates the golden fixture by definition. The world model
 has its rulings — Q7, Q9, Q21, Q22, Q23 and Q24 — in `docs/02` and its
-world in `docs/03`, so it is buildable. `Command` is shaped: Q10 fixed its five kinds
-— `Deploy`, `Mark`, `Unmark`, `SetSpeed`, `Resign` — and Q12 its stamp, a
-sender and the tick it is agreed for; the replay's inputs are `(map, command
-log)` (`03`).
+world in `docs/03`, so it is buildable, and `docs/06` fixes the tick's seven steps,
+the command's fields, the snapshot's parts and the state hash's coverage and
+order. The crate split `06` draws — `lang`, `sim`, `net`, `replay` — is this
+task's too; `render` is T16.
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
 — but its principal variant is a program deploy, not a machine order. The
@@ -60,8 +60,11 @@ path most likely to differ between peers.
 its numbers in `data/machines.toml`; `docs/03` is written, citing Q21 and Q22
 from `02`, with its numbers in `data/world.toml` and the first map in
 `data/maps/first.toml`. Writing `02` opened Q24, whose answer opened Q25,
-which `docs/04` waits on. Q6, Q10, Q12 and Q15 are
-answered and `docs/06` is writable; `docs/05` waits on nothing.
+which `docs/04` waits on. `docs/06` is written,
+with Q6, Q10, Q12, Q15 and Q26 through Q28 as its Decided entries; it pins
+the crate layout — `lang`, `sim`, `net`, `render`, `replay` — the driver,
+the tick's seven steps, the command's fields, the snapshot and the state
+hash. `docs/05` waits on nothing.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.

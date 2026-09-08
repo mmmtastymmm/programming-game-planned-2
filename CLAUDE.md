@@ -9,21 +9,22 @@ individual machine. The simulation runs identically on every peer.
 The design is in its first pass. The framing rulings live in
 [docs/00-overview.md](docs/00-overview.md)'s Decided section, the language's
 in [docs/01-language.md](docs/01-language.md)'s parts, the machines' in
-[docs/02-machines.md](docs/02-machines.md) and the world's in
-[docs/03-world.md](docs/03-world.md); **everything still undecided is in
+[docs/02-machines.md](docs/02-machines.md), the world's in
+[docs/03-world.md](docs/03-world.md) and the architecture's in
+[docs/06-architecture.md](docs/06-architecture.md); **everything still
+undecided is in
 [docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
 list of open topics repeated here would drift on every ruling. The corpus
 scaffolding and the determinism gate are ported from the predecessor project
 `../programming_game_planned` and proven in CI.
 
-Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**). A
-language crate is ruled in — Q5 and Q13, whose rulings
-[docs/01-language.md](docs/01-language.md) owns and this file does not repeat —
-but unbuilt: that doc is its spec, and milestone M2 in
-[docs/TASKS.md](docs/TASKS.md) builds it. A `render` crate is ruled in — Q15:
-Bevy, depending on `sim` and never the reverse, reading only completed-tick
-snapshots — and unbuilt (T16). Neither is needed for the determinism gate to
-be real, which runs `sim` headless.
+Crate layout: `crates/sim` today (deterministic world — **plain Rust, no
+ECS**), growing into the five crates [docs/06-architecture.md](docs/06-architecture.md)
+draws — `lang`, `sim`, `net`, `render`, `replay` — of which only `render`
+may hold a float or a Bevy dependency, and nothing depends on `render`. The
+language crate is specified by [docs/01-language.md](docs/01-language.md) and
+built by milestone M2 in [docs/TASKS.md](docs/TASKS.md); `render` is T16.
+Neither is needed for the determinism gate to be real, which runs headless.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
 
