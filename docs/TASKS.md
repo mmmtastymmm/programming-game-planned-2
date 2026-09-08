@@ -54,7 +54,7 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q29, and write `docs/05`, the numbered doc that remains**
+**T9 — Answer Q29, the last open question**
 
 `docs/02` is written, with Q7, Q9, Q21, Q22, Q23 and Q24 as its Decided entries and
 its numbers in `data/machines.toml`; `docs/03` is written, citing Q21 and Q22
@@ -67,7 +67,9 @@ roster. `docs/06` is written,
 with Q6, Q10, Q12, Q15 and Q26 through Q28 as its Decided entries; it pins
 the crate layout — `lang`, `sim`, `net`, `render`, `replay` — the driver,
 the tick's seven steps, the command's fields, the snapshot and the state
-hash. `docs/05` waits on nothing.
+hash. `docs/05` is written, with Q30 as its Decided entry: progression is
+printers changing hands, and nothing persists between matches. Every
+numbered doc is written; what remains of the first design pass is Q29.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.

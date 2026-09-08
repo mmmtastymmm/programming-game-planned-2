@@ -63,9 +63,11 @@ a command log that grows until the match ends.
 ### Ending
 
 **A team is out** on the tick it has no printer and no site that would
-become one — the moment its last printer's `death` epilogue runs, or its
-last printer-site is deconstructed, with no other printer or printer-site
-standing. An out team's machines are removed at the end of that tick's
+become one — the moment its last printer's `death` epilogue runs, its last
+printer or printer-site is **converted** to another team (Q30), or its last
+printer-site is deconstructed, with no other printer or printer-site
+standing. A converted printer is not removed with the team that lost it; it
+is no longer theirs. An out team's machines are removed at the end of that tick's
 damage step (`06`, step 4), its plans are cleared, and its command log is
 closed: further commands from it are dropped at submission. `Resign` (Q10)
 puts a team out at once on its agreed tick.
