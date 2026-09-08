@@ -100,7 +100,14 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   A team has one bot deployment per printer, named from a color list in
   data in order, plus one deployment per building kind, not counted; losing
   a printer locks the last unlocked deployment, whose bots keep running until
-  they die. What deals damage beyond a fault is Q25.
+  they die. What deals damage beyond a fault is Q25's bullet below.
+- **Bots attack, and nothing else does (Q25).** A bot's `attack(id)` hits a
+  machine its team can see, within `attack_range` and in line of sight, for
+  `attack_damage` health when the action completes, landed in the tick's
+  damage step; both numbers are per model in data and start at one. Anything
+  with health is a target, on any team. An attack is loud. No building
+  defends by rule, nothing repairs, and the world deals no damage; each is a
+  new question number if wanted.
 
 ## A machine
 
@@ -178,6 +185,7 @@ classDiagram
     build()
     build_nearest()
     deconstruct()
+    attack()
     paint()
     unpaint()
     overlay()
@@ -289,6 +297,7 @@ The causes, which are the `cause` strings a sound carries:
 | `"print"` | a printer beginning a print |
 | `"build"` | a bot placing a site, and a site completing |
 | `"deconstruct"` | a bot beginning a deconstruction |
+| `"attack"` | a bot beginning an attack |
 
 Loudness per cause is in `data/machines.toml`. A sound never names its
 emitter.
@@ -322,6 +331,7 @@ sound.
 | `overlay(x, y)`, `unoverlay(x, y)` | bot | as `paint` and `unpaint`, for the overlay slot | `overlay_ticks`, `unoverlay_ticks` | no |
 | `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store lost, and its team's cap and deployments updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
+| `attack(id)` | bot | `id` a machine the team can currently see — a sighting's `id` — within `attack_range` by squared distance and in the attacker's line of sight (`03`); any team, the bot's own included; anything with health: a bot, a building, a site. On completion, if the target still exists and is still in range and sight, `attack_damage` is subtracted from its health in the tick's damage step (`06`), where hits on one target are summed before `dying` or `death` is raised (Q25); otherwise nothing | `attack_ticks` | yes |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
 | `rename(name)` | any | sets `name`; a `str` longer than `name_max` is a `ValueError` | `0` | no |
@@ -348,12 +358,13 @@ own making — a fault in `on_dying` — escalates as the language rules and
 deals nothing. A tile is never destroyed (`03`), so damage is the only
 cause of `death` today.
 
-The causes of damage today are one. **A fault costs `fault_damage`
-health**, charged by the `fault` prologue beside the record it writes, so a
-program that faults on every restart dies after `health / fault_damage`
-faults instead of looping forever. Every other cause — an attack, a turret,
-terrain, the opposition — is Q25's, and the attribute table gains what that
-ruling needs when it is made.
+The causes of damage are two. **A fault costs `fault_damage` health**,
+charged by the `fault` prologue beside the record it writes, so a program
+that faults on every restart dies after `health / fault_damage` faults
+instead of looping forever. **An attack costs `attack_damage`** (Q25), landed
+in the tick's damage step, where every hit on one target this tick is summed
+before the rules below run. Nothing else — no building, no terrain — deals
+damage, and nothing repairs; each is a new question number if wanted.
 
 [01-language](01-language/execution.md) fixes what each interrupt does to
 *execution*. This table fixes what it does to the machine's **body**, which
@@ -361,8 +372,8 @@ is what the prologues and epilogues do beyond the language's rules.
 
 | Kind | Raised by | Prologue does to the body | The hook may | Epilogue does to the body |
 |---|---|---|---|---|
-| `death` | health at or below the threshold; `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
-| `dying` | health at or below zero | cancels the action in progress; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
+| `death` | health at or below the threshold, from faults or attacks; `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
+| `dying` | health at or below zero, from faults or attacks | cancels the action in progress; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 
@@ -384,7 +395,7 @@ when it begins; its wait costs nothing, since the program is paused.
 
 ## What this doc leaves open
 
-- **Q25**: combat — what deals damage beyond a fault, whether bots attack,
-  whether a building defends, and whether anything repairs.
+- **A building that defends, and repair.** Q25 ruled bots attack and nothing
+  else; a turret model or a repair action is a new question number.
 - **Further models**: a building that extends senses, a second bot model, a
   second resource. Each is a new question number and a row here.
