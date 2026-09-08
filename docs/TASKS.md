@@ -52,28 +52,6 @@ The golden fixture must exercise a mid-match redeploy. Q11 made it an interrupt
 delivered per machine at its next operation boundary, which is the hash-affecting
 path most likely to differ between peers.
 
-## M1 — First design pass
-
-**T9 — Answer Q29, the last open question**
-
-`docs/02` is written, with Q7, Q9, Q21, Q22, Q23 and Q24 as its Decided entries and
-its numbers in `data/machines.toml`; `docs/03` is written, citing Q21 and Q22
-from `02`, with its numbers in `data/world.toml` and the first map in
-`data/maps/first.toml`. Writing `02` opened Q24, whose answer opened Q25,
-which is answered: bots attack. `docs/04` is written, with Q4 as its Decided
-entry; it defines teams, scripted teams, how a match ends, and ships the
-first opposition, `fool`, in `data/opposition/`; it opened Q29 for the
-roster. `docs/06` is written,
-with Q6, Q10, Q12, Q15 and Q26 through Q28 as its Decided entries; it pins
-the crate layout — `lang`, `sim`, `net`, `render`, `replay` — the driver,
-the tick's seven steps, the command's fields, the snapshot and the state
-hash. `docs/05` is written, with Q30 as its Decided entry: progression is
-printers changing hands, and nothing persists between matches. Every
-numbered doc is written; what remains of the first design pass is Q29.
-
-Split a doc (doorway + parts directory) only once it actually outgrows one file —
-the split has a real cost in cross-part invariants.
-
 ## M2 — Language implementation
 
 Staged deliberately: Q13's boundary is materially larger than the procedural
