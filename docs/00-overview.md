@@ -1,7 +1,7 @@
 # 00 — Overview
 
 A lockstep-multiplayer programming game. The player writes a small number of
-programs and a fleet of identical units runs them — and when a program turns out
+programs and a fleet of identical machines runs them — and when a program turns out
 to be wrong, the player rewrites it while the match is still running. Watching a
 plan meet the world, and patching it under fire, is the game.
 
@@ -44,7 +44,7 @@ peer's edits enter by the same road — the ordered command log — and neither
 reaches the world any other way. That single funnel is what makes a mid-match
 program update synchronizable at all: an update is agreed for a future tick, so
 every peer holds it before that tick runs. There is deliberately no arrow from
-the player to an individual unit.
+the player to an individual machine.
 
 ## Decided
 
@@ -55,116 +55,46 @@ per ruling, each carrying the worksheet behind it. Don't read those in a normal
 pass.
 
 - **This is a fresh take on the predecessor project's core idea (Q1).** Lockstep
-  multiplayer, player-programmed units, deterministic plain-Rust sim. The
+  multiplayer, player-programmed machines, deterministic plain-Rust sim. The
   architecture is inherited and already proven in CI; the game around it is
   re-decided, and so is the corpus discipline that holds it.
-- **The player programs a fleet of identical units (Q2).** Many units, few
+- **The player programs a fleet of identical machines (Q2).** Many machines, few
   programs. Programs are addressed to a role or group, never to an individual
-  unit, so the language needs no unit-identity concept in its core. Difficulty
+  machine, so the language needs no machine-identity concept in its core. Difficulty
   is sourced from interaction between copies rather than from authored puzzles.
 - **The player updates programs while the match runs, and never orders an
-  individual unit (Q3).** A program update is a lockstep-synchronized command,
+  individual machine (Q3).** A program update is a lockstep-synchronized command,
   agreed for a future tick so every peer applies it on the same tick. Updates
   are to programs, which by Q2 address a role or group. Whether anything
   *besides* a program update — match control such as resigning — enters the sim
-  mid-match is open (Q10); this ruling forbids unit orders, not that. So
+  mid-match is open (Q10); this ruling forbids machine orders, not that. So
   `Command` is a real ordered log whose principal variant is a program deploy, a
   replay is `(seed, timed command log)`, and determinism rule 7 is load-bearing:
-  which byte-exact program version a unit runs is part of the state hash.
-- **The unit language's rulings live in [01-language](01-language.md)** — Q5
+  which byte-exact program version a machine runs is part of the state hash.
+- **The language's rulings live in [01-language](01-language.md)** — Q5
   and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
-- **A unit senses by vision and by sound, and everything sensed is shared
-  across its player's units (Q7).** Units come in kinds — `bot`, and several
-  kinds of building — and each kind has a vision range and a hearing range,
-  tuning constants in data. Distance is squared Euclidean in `num` against a
-  squared range. Vision is state: a unit sees what is within its range and in
-  line of sight, and `docs/03` pins what blocks sight and the ray-walk. Sound
-  is a record of events: a noisy action emits a sound at the actor's position
-  with a loudness from its cause, heard by any unit whose hearing range plus
-  that loudness covers the distance, through terrain, and a hearing query
-  returns the previous tick's sounds. A query from any unit returns the union
-  of what every unit of its player senses, each thing once, sightings sorted
-  by distance then entity id and sounds by distance, position and cause.
-  The live list is computed at query time from the world and never stored,
-  so the state hash carries none of it; what the colony *remembers* is Q21's
-  table, which is stored. A sighting carries the sighted unit's
-  attributes as `docs/02` defines them; a sound carries its cause, position,
-  loudness and tick, never its emitter. Whether a sound can also interrupt a
-  program was Q16, which ruled it cannot: programs poll. Whether the colony
-  remembers what it no longer senses is Q21's bullet below. This ruling moves
-  to `docs/02` when it is written.
-- **The colony remembers tiles, not units (Q21).** The world is a grid of
-  tiles, and for each player every tile is unknown, visible, or remembered as
-  it was on the tick it was last seen. A remembered tile holds the terrain
-  and any building on it with its attributes, and the tick — never a bot,
-  which is only ever a live sighting. After every unit's slice and before the
-  tick's state hash, the sim computes each player's visible tiles and
-  refreshes their snapshots, so a tile that leaves vision keeps its last one.
-  Memory has no expiry and belongs to the player: nothing clears it until the
-  match ends, a destroyed building stays remembered until its tile is seen
-  again, and sound is never remembered. A tile query returns the live tile if
-  visible, the snapshot with its tick if remembered, and nothing at all if
-  unknown; tiles sort by row then column. The memory table, per player and
-  per tile, is the first sensing data in the state hash. `docs/02` names the
-  queries, `03` says what a tile and its terrain are, `06` places the pass in
-  the tick loop. This ruling moves to `docs/02` when it is written.
-- **Bots are printed by a printer, buildings are built by bots, and a match
-  starts with one printer per player (Q9).** There is no fixed roster.
-  Production is ordinary program behavior: the printer is a building kind
-  whose program calls a `print` builtin with the role the new bot runs, and
-  a bot's program calls a `build` builtin with a building kind and a tile.
-  All bots are one kind; what differs is the role. A print takes time and,
-  as Q23 amended, costs nothing else; a build takes time and costs resources,
-  and one the unit cannot afford is a `ValueError` fault. A printed bot
-  appears on a tile adjacent to the printer
-  on the tick the print completes, running its role's current bundle from the
-  top; printing a role with no bundle is a fault. The opening program set is
-  the command log's first entries, one deploy per role agreed for tick 0; a
-  unit whose role has no bundle runs the empty program, which restarts once
-  per tick and is not a state. The building list is `docs/02`'s table,
-  seeded with the printer; the rest, and the resources that price it, are
-  Q22's bullet below. This ruling moves to `docs/02` when it is written.
-- **One resource today, gathered by bots from deposits that regrow, carried
-  to buildings that hold it, and spent from where it is held (Q22).**
-  Resources are a table keyed by kind, holding `ore`, and every capacity,
-  cost, load and deposit amount is a map from kind to `num`, so a second
-  resource is a data row. Deposits are terrain with an amount, a cap and a
-  regrowth rate per tick, remembered by Q21 as last seen. A bot has a capacity
-  and a load, `pick`s from an adjacent deposit or depot and `drop`s into an
-  adjacent building, and carries while doing anything else. Every building
-  has a store with a capacity per kind: the printer's is zero, since Q23 made
-  prints free; the **depot** is a building whose store is large and whose
-  purpose is to hold. A `build` places a site with a store whose capacity is
-  the building's cost; bots fill it, construction runs for the build time,
-  and the building appears with an empty store. Nothing starts stocked and
-  nothing spends from a store it does not own; ore goes into sites and
-  depots only. The building list is `docs/02`'s table and holds printer and
-  depot; the numbers are tuning in data; `03` defines deposits and places
-  them. This ruling moves to `docs/03` and `02` when they are written.
-- **Printing costs time only; building costs resources (Q23).** A printer
-  prints one bot per print time and consults no store; a `drop` into a
-  printer is a fault. Fleet size is bounded by printers and time, and a
-  second printer costs ore to build, so the economy still bounds the fleet
-  one step removed. Q9's priced print and Q22's opening stock and printer
-  store are withdrawn.
+- **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
+  (sensing and memory), Q9 and Q23 (production), and Q22 (the economy,
+  which `docs/03` will cite) are its Decided entries, and they are not
+  repeated here.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
 
 ## What the numbered docs will hold
 
-`01` is written; the rest are reserved, not written. The numbering is
+`01` and `02` are written; the rest are reserved, not written. The numbering is
 deliberately sparse so a topic can be
 inserted without renumbering:
 
 | Doc | Owns | Blocked on |
 |---|---|---|
-| `01` | The unit language — syntax, execution model, cost model | — |
-| `02` | Units — what they are, what they sense, what they do | — |
+| `01` | The language — syntax, execution model, cost model | — |
+| `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — terrain, resources, whatever the economy turns out to be | — |
-| `04` | Opposition — PvE now, PvP later | — |
+| `04` | Opposition — PvE now, PvP later | Q24 |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
 
@@ -175,7 +105,7 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01` is written** — [01-language](01-language.md)
-— and the table above, not this sentence, is the authority on what blocks the
-rest: earlier passes misread `01` as having a single blocker while it had
-three.
+map from question to doc. **`01` and `02` are written** —
+[01-language](01-language.md) and [02-machines](02-machines.md) — and the table
+above, not this sentence, is the authority on what blocks the rest: earlier
+passes misread `01` as having a single blocker while it had three.

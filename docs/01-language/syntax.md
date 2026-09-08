@@ -8,7 +8,7 @@ player reads; everything above it exists so that the list is complete.
 
 ## Decided
 
-- **The unit language is ours, Python-shaped, deterministic by construction
+- **The language is ours, Python-shaped, deterministic by construction
   (Q5).** A purpose-built interpreter rather than an embedded runtime — not
   because an embedded one failed, but because owning it means determinism is
   designed in rather than audited for, the cost model is a design lever, and no
@@ -19,7 +19,7 @@ player reads; everything above it exists so that the list is complete.
   `match` and `import`. Excluded: generators (implementation cost); dynamic
   reflection (permanently, since it defeats static analysis and makes the module
   graph dynamic); decorators, `with` and `async`/`await` (grammar for use cases a
-  unit program does not have); nested `def`, `global` and `nonlocal`, which
+  machine program does not have); nested `def`, `global` and `nonlocal`, which
   removes closure capture as a question while leaving `lambda` and methods in a
   `class` body; multiple inheritance; and floats, which rule 2 forbids in
   state-affecting paths anyway and which Q14, as amended by Q19, replaces with
@@ -43,7 +43,7 @@ player reads; everything above it exists so that the list is complete.
 
 ## The bundle
 
-A **program** is a bundle of named source files. Every unit of a role runs the
+A **program** is a bundle of named source files. Every machine of a role runs the
 same bundle once a redeploy has reached it; until then, the one it had.
 
 - **File names** match `[a-z_][a-z0-9_]*\.py` and are unique within the bundle.
@@ -248,8 +248,8 @@ effects, the sequence of comparisons is spec:
 
 Python's rules, minus the two statements that were excluded:
 
-- A module's top-level names are its **globals**. Each unit has its own copy
-  of every global; there is no state shared between units.
+- A module's top-level names are its **globals**. Each machine has its own copy
+  of every global; there is no state shared between machines.
 - A `def` body is a **local** scope. A name assigned anywhere in the body is
   local throughout it (so reading it before assignment is an `UnboundLocalError`
   as in Python). A name only read resolves to a global, then to a builtin.
@@ -312,11 +312,11 @@ Recursion is allowed up to the call-depth limit
 ## Classes
 
 ```python
-class Scout(Unit):
+class Scout(Machine):
     speed = 2                      # class attribute
 
     def __init__(self, target):
-        Unit.__init__(self, target) # no super(): name the base
+        Machine.__init__(self, target) # no super(): name the base
         self.target = target
 
     def __str__(self):
@@ -337,7 +337,7 @@ class Scout(Unit):
 - **Identity.** An instance — an exception instance included — is keyed in a
   `dict` or `set` by identity, and `==`
   between instances is identity unless `__eq__` is defined. Identity is the
-  instance's allocation order within the unit, which is deterministic; it is
+  instance's allocation order within the machine, which is deterministic; it is
   not observable as a number.
 - **The closed dunder set.** These special methods dispatch, and only these.
   Any other `__name__` is an ordinary method with an unusual name.
@@ -391,11 +391,11 @@ same name twice is a parse error.
   when the import runs is an `AttributeError`, exactly as `m.x` would be.
 - **Circular imports are a load error.** The import graph is walked at load;
   a cycle rejects the bundle.
-- **A module runs once per unit** — its top-level statements execute the first
+- **A module runs once per machine** — its top-level statements execute the first
   time it is imported during a main-flow run, in the order the imports are
   reached, and a second import returns the same module. Since a restart of main
   flow clears all variables, a restart re-runs every module it imports. Module
-  globals are per unit, like all globals.
+  globals are per machine, like all globals.
 - A module's attributes are its globals; `mod.name` reads one, and assignment
   to `mod.name` is a `TypeError`.
 - Hooks (`on_fault`, `on_dying`) are recognised in `main.py` only.
@@ -486,7 +486,7 @@ difference not listed here is a defect in this doc.
     then main flow starts over from the top of `main.py` with every variable
     cleared. Python's script simply ends.
 14. **A program that runs off the end of `main.py` starts again** from the
-    top, with every variable cleared. A program is a body the unit runs over
+    top, with every variable cleared. A program is a body the machine runs over
     and over; memory across runs is an explicit `while True:` loop.
 15. **Many names are missing.** The statements, builtins, methods and dunders
     above are the whole set; Python has more of each. A missing name is an

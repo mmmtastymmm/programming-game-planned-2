@@ -36,27 +36,27 @@ Two conventions carried over from the predecessor project:
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model**
 
 ⚠HASH — this regenerates the golden fixture by definition. The world model
-has its rulings — Q7, Q9, Q21, Q22 and Q23 — and waits on `docs/02` and `03`
-being written from them; the shape of `Command` is blocked on Q10 and Q12.
+has its rulings — Q7, Q9, Q21, Q22 and Q23 — in `docs/02` and waits on
+`docs/03` being written; the shape of `Command` is blocked on Q10 and Q12.
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
-— but its principal variant is a program deploy, not a unit order. The
-placeholder's `Spawn` / `SetGoal` / `Despawn` variants command individual units,
+— but its principal variant is a program deploy, not a machine order. The
+placeholder's `Spawn` / `SetGoal` / `Despawn` variants command individual machines,
 which Q3 forbids outright. They are scaffolding, not a model: not a register
 entry, since the placeholder never claimed to be one, but wrong to copy from.
 
 The golden fixture must exercise a mid-match redeploy. Q11 made it an interrupt
-delivered per unit at its next operation boundary, which is the hash-affecting
+delivered per machine at its next operation boundary, which is the hash-affecting
 path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q6, Q10, Q12 and Q15, then write the numbered docs they unblock**
+**T9 — Answer Q6, Q10, Q12, Q15 and Q24, then write the numbered docs they unblock**
 
-`docs/02` and `docs/03` wait on nothing now that Q7, Q9, Q21, Q22 and Q23 are
-ruled; their rulings — held in the overview's Decided section meanwhile — move
-into those docs when they are written, and the resource, building and deposit
-numbers they name go into data beside the language's.
+`docs/02` is written, with Q7, Q9, Q21, Q22 and Q23 as its Decided entries and
+its numbers in `data/machines.toml`. `docs/03` waits on nothing and cites Q22
+from `02`; its deposit and terrain numbers go into data beside the machines'.
+Writing `02` opened Q24, which `docs/04` waits on.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
@@ -116,7 +116,7 @@ source.
 
 **T15 — Cross-architecture determinism check in CI**
 
-The language spike ran every process on one arm64 machine, which is not the
+The language spike ran every process on one arm64 host, which is not the
 property lockstep needs. Owning the interpreter (Q5) does not grant it; it only
 means the bug would be ours to fix. The workflow already exists to hang this on:
 run the battery on `ubuntu-latest` and compare against a checked-in hash.

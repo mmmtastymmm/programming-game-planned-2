@@ -30,9 +30,8 @@ Known-wrong *decided* text is not a question — it goes in
 Q14, Q16 through Q23 with them — Q17 through Q20 and Q23 were each opened
 and answered in one commit, as the amendments to Q8, Q9, Q14, Q18 and Q22
 that the history rules require to be new numbers. The rulings of Q7, Q9,
-Q21, Q22 and Q23 sit in the overview's Decided section until `docs/02` and
-`03` exist to own them.
-Every other number this
+Q21, Q22 and Q23 are [02-machines](02-machines.md)'s Decided entries, and `docs/03`
+will cite Q22 from there. Every other number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
@@ -45,8 +44,9 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**`docs/01` is written** — [01-language](01-language.md), with the rulings it
-waited on as its parts' Decided entries. The overview's table says the same.
+**`docs/01` and `docs/02` are written** — [01-language](01-language.md) and
+[02-machines](02-machines.md), each with the rulings it waited on as its Decided
+entries. `02` opened Q24 in the writing. The overview's table says the same.
 
 ## Open
 
@@ -80,14 +80,14 @@ else* does, and it decides how many categories of command the netcode carries.
 |---|---|
 | Nothing else — program updates are the whole input surface | Cleanest. Leaves no way to resign and no way to end a stalemate early. |
 | Plus match-control only (resign, agreed draw) | Keeps every sim-affecting input a program update while remaining playable. A second command category with different rules is a permanent small complication. |
-| Plus spectator-visible annotations | Nice for streaming and teaching. Anything visible risks becoming load-bearing, and then it is unit-level live input by another name — which Q3 forbids. |
+| Plus spectator-visible annotations | Nice for streaming and teaching. Anything visible risks becoming load-bearing, and then it is machine-level live input by another name — which Q3 forbids. |
 
 **Q12 — How is a program update scheduled in lockstep?**
 
 The player presses deploy at some wall-clock moment; every peer must apply the
 update on the *same tick*. The standard answer is to agree it for a future tick,
 far enough ahead that every peer holds it in time. Q11 fixed what *applying*
-means — the role's program slot changes on the agreed tick, and each unit takes
+means — the role's program slot changes on the agreed tick, and each machine takes
 the `redeploy` interrupt at its next operation boundary — so what this question
 owns is the tick.
 
@@ -122,3 +122,30 @@ Also to settle here: whether the renderer runs in the sim's process at all, and
 what it is allowed to read. A renderer that samples state mid-tick sees a torn
 world; one that reads only a completed tick's snapshot does not, and that is a
 shape the sim has to offer deliberately.
+
+**Q24 — What destroys a machine: damage, health, and the causes of `dying` and `death`**
+
+Q17 gave machines two ways to end — `dying`, with last words, and `death`,
+without — and left to `docs/02` the list of world causes that raise each.
+Writing `docs/02` found the list empty: nothing in the design damages a
+machine, so no machine has health, and the only path to `dying` is a fault inside
+`on_fault`. A game whose colonies cannot touch each other is not the game Q4
+deferred PvP from, and PvE needs an opposition (`docs/04`) that can hurt.
+
+What this has to settle, each hash-affecting: whether machines have health and
+how much, per kind; what deals damage — a bot action, a building that
+defends, terrain, the opposition — and how much; which damage raises
+`dying` (the ordinary case, Q17) and which goes straight to `death` (bad
+enough); whether buildings and sites can be damaged; and what a dying machine's
+last words may still do beyond what `docs/02` allows now.
+
+| Option | What it costs |
+|---|---|
+| No combat — colonies compete on economy and territory only | Nothing to specify, and `dying` never fires from the world. The fleet fantasy loses its failure mode, and PvE has no teeth. |
+| Bots attack: an `attack` action with a range, a damage, and a cooldown | The smallest combat that makes programs matter — targeting is code. Health per kind, damage per hit, and the first tuning that decides matches. |
+| Buildings defend: a turret kind that fires by rule, no program needed | Territory becomes defensible without writing a fighter. Passive, so defence is placement; a second building row with a range and a damage. |
+| Both, with damage in `num` so armour and modifiers can multiply later | The full surface. Every number above, twice, and a balance problem Q4 chose to defer. |
+
+Whatever wins names the causes of `dying` and `death`, adds health and
+damage to the attribute table in `docs/02`, and prices any new action or
+building kind in data.
