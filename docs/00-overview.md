@@ -100,7 +100,7 @@ inserted without renumbering:
 | `01` | The language — syntax, execution model, cost model | — |
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
-| `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | Q29 |
+| `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | — |
 | `05` | Progression — printers changing hands inside a match; nothing between matches | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 
