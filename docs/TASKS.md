@@ -37,8 +37,10 @@ Two conventions carried over from the predecessor project:
 
 ⚠HASH — this regenerates the golden fixture by definition. The world model
 has its rulings — Q7, Q9, Q21, Q22, Q23 and Q24 — in `docs/02` and its
-world in `docs/03`, so it is buildable; the shape of `Command` is blocked on
-Q10 and Q12, and the replay's inputs are `(map, command log)` (`03`).
+world in `docs/03`, so it is buildable. `Command` is shaped: Q10 fixed its five kinds
+— `Deploy`, `Mark`, `Unmark`, `SetSpeed`, `Resign` — and Q12 its stamp, a
+sender and the tick it is agreed for; the replay's inputs are `(map, command
+log)` (`03`).
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
 — but its principal variant is a program deploy, not a machine order. The
@@ -52,13 +54,14 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q6, Q10, Q12, Q15 and Q25, then write the numbered docs they unblock**
+**T9 — Answer Q25, then write the numbered docs that remain**
 
 `docs/02` is written, with Q7, Q9, Q21, Q22, Q23 and Q24 as its Decided entries and
 its numbers in `data/machines.toml`; `docs/03` is written, citing Q21 and Q22
 from `02`, with its numbers in `data/world.toml` and the first map in
 `data/maps/first.toml`. Writing `02` opened Q24, whose answer opened Q25,
-which `docs/04` waits on.
+which `docs/04` waits on. Q6, Q10, Q12 and Q15 are
+answered and `docs/06` is writable; `docs/05` waits on nothing.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.
@@ -122,3 +125,15 @@ The language spike ran every process on one arm64 host, which is not the
 property lockstep needs. Owning the interpreter (Q5) does not grant it; it only
 means the bug would be ours to fix. The workflow already exists to hang this on:
 run the battery on `ubuntu-latest` and compare against a checked-in hash.
+
+## M4 — Renderer
+
+**T16 — The `render` crate: Bevy, the driver, the snapshot, the mark tools**
+
+Q15's shape: a crate depending on `sim` and Bevy, never the reverse; the
+driver as a Bevy system owning the sim as a resource, applying the speed
+(Q6) and the peer wait (Q12); every other system reading the completed-tick
+snapshot `docs/06` defines; interpolation in floats, never read back; input
+becoming `Deploy`, `Mark`, `Unmark`, `SetSpeed` and `Resign` commands (Q10)
+that the renderer submits and forgets. The review rule — flag any arrow from
+`render` to `sim` — starts applying with this crate's first commit.

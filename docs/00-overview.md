@@ -65,9 +65,9 @@ pass.
 - **The player updates programs while the match runs, and never orders an
   individual machine (Q3).** A program update is a lockstep-synchronized command,
   agreed for a future tick so every peer applies it on the same tick. Updates
-  are to programs, which by Q2 address a deployment. Whether anything
-  *besides* a program update — match control such as resigning — enters the sim
-  mid-match is open (Q10); this ruling forbids machine orders, not that. So
+  are to programs, which by Q2 address a deployment. What else enters the
+  sim mid-match — marks on the map, the speed, a resignation — is Q10's
+  bullet below; this ruling forbids machine orders and nothing else. So
   `Command` is a real ordered log whose principal variant is a program deploy, a
   replay is `(map, timed command log)` — the map being a data file, `docs/03`
   — and determinism rule 7 is load-bearing:
@@ -80,6 +80,43 @@ pass.
   (sensing and memory), Q9, Q23 and Q24 (production, health and the cap), and Q22 (the economy,
   which `docs/03` will cite) are its Decided entries, and they are not
   repeated here.
+- **The sim has no rate; the players choose the speed together (Q6).** A
+  tick is the unit of simulated time and every duration is a count of ticks.
+  How many ticks pass per real second is a `SetSpeed` command in the log,
+  agreed for a tick like a deploy, applied by each peer's driver and never
+  read by the sim, from a closed list of steps in data with `0` as pause;
+  the map sets the starting speed. The renderer interpolates between
+  completed ticks. This ruling moves to `docs/06` when it is written.
+- **The player may mark the map, and everything the player does enters one
+  ordered command log (Q10).** Besides `Deploy`, the log carries `Mark` and
+  `Unmark` — a blueprint (a building model, which `build` may target and
+  `blueprints()` returns), a paint (a deployment color), or a layer (a label
+  from a closed list) on a tile, per team, visible to that team only, read by
+  programs and never sensed or remembered — `SetSpeed` (Q6) and `Resign`,
+  which removes the sender's team on the agreed tick. A mark changes what a
+  program can read about a tile and never what a machine does: the player
+  authors programs and marks the map, and never commands a machine. Every
+  command carries its sender and its tick; one that cannot apply is dropped,
+  except a deploy to a locked deployment, which waits. This ruling moves to
+  `docs/06` when it is written.
+- **A fixed delay, and a stall for a late peer (Q12).** A command entered at
+  tick `t` is agreed for `t + delay`, a tuning constant in ticks fixed at
+  match start; a peer missing another's command set for the next tick issues
+  no tick until it arrives, so nothing is dropped and nothing desyncs.
+  Single-player is lockstep with one peer and feels the same delay. Within a
+  tick, commands apply by sender then submission order. Rate-limiting is
+  deferred with PvP; the sender stamp is its hook. This ruling moves to
+  `docs/06` when it is written.
+- **Bevy renders, in its own crate, in the sim's process, reading only
+  completed-tick snapshots and writing only to the command log (Q15).** A
+  `render` crate depends on `sim` and Bevy; `sim` depends on neither. The
+  driver — wall clock, speed, peer wait, next tick — is a Bevy system that
+  owns the sim as a resource; every other system sees only the snapshot the
+  sim publishes after each tick, from which the renderer's own entities are
+  built. Interpolation is in floats and never read back. Input becomes
+  commands the renderer submits and forgets. Headless — `sim` plus a driver
+  with no Bevy — stays the build CI runs. This ruling moves to `docs/06`
+  when it is written.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
   not retrofittable, so deferring PvP costs nothing architecturally and buys
   slack on balance while the sim changes fastest.
@@ -97,7 +134,7 @@ inserted without renumbering:
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
 | `04` | Opposition — PvE now, PvP later | Q25 |
 | `05` | Progression | — |
-| `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
+| `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, testing strategy | — |
 
 Each becomes a doorway plus a parts directory only when it outgrows one file
 (CLAUDE.md, *Splitting a doc*).

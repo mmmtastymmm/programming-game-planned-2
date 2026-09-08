@@ -5,6 +5,8 @@
 # This file is part of a replay's inputs and is hashed into its identity.
 
 name = "first"
+# starting ticks per real second, one of data/world.toml's speed steps
+speed = 10
 width = 24
 height = 16
 

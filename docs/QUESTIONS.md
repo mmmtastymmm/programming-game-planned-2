@@ -26,12 +26,13 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-08.** Q1 through Q5 are answered, and Q7, Q8, Q9, Q11, Q13,
-Q14, Q16 through Q24 with them — Q17 through Q20, Q23 and Q24 were each
-opened and answered in one commit, as the amendments to Q8, Q9, Q14, Q18, Q22
-and Q23 that the history rules require to be new numbers. The rulings of Q7,
-Q9, Q21, Q22, Q23 and Q24 are [02-machines](02-machines.md)'s Decided
-entries, and `docs/03` will cite Q22 from there. Every other number this
+**Status 2026-09-08.** Q1 through Q24 are all answered except Q25 — Q17
+through Q20, Q23 and Q24 were each opened and answered in one commit, as the
+amendments that the history rules require to be new numbers. The rulings of
+Q7, Q9, Q21, Q22, Q23 and Q24 are [02-machines](02-machines.md)'s Decided
+entries, `docs/03` cites Q21 and Q22 from there, and the rulings of Q6, Q10,
+Q12 and Q15 sit in the overview's Decided section until `docs/06` exists to
+own them. Every other number this
 file has issued is still undecided, and each one is below under **Open**. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
@@ -50,79 +51,6 @@ rulings it waited on as its Decided entries or citing them from `02`. `02`
 opened Q24 in the writing. The overview's table says the same.
 
 ## Open
-
-**Q6 — What is the tick, and how many ticks per second?**
-
-Lockstep pins this early and every tuning constant in the corpus inherits it.
-
-| Option | What it costs |
-|---|---|
-| Slow tick (5–10/s), one action per tick | Cheap to simulate, easy to reason about, and a program's cost is legible. Movement looks stepped unless the renderer interpolates. |
-| Medium tick (20–30/s) | Conventional and smooth. More sim work per second — but not more than the sim can afford; see **Unblocked** below. |
-| Fast tick (60/s) | Renderer and sim agree; no interpolation needed. The most sim work per second, and the tightest window for Q12's scheduling. |
-| Decouple: slow sim tick, interpolating renderer | Best of both, at the cost of a rendering layer that must never feed anything back into the sim. |
-
-**Unblocked.** Interpretation cost does not bound the tick rate — not at any
-option in the table above, and not at any fleet size contemplated. The
-measurement and its arithmetic are owned by
-[spikes/lang-determinism](../spikes/lang-determinism/README.md), finding 5, and
-are cited here rather than restated: a second copy of a measured number drifts
-away from the conclusion drawn from it, and the number is the whole reason this
-question is unblocked. What is left is a game-feel and netcode decision, not a
-performance one. A slower tick widens the window Q12 needs for scheduling
-updates, which is the remaining reason not to guess.
-
-**Q10 — What else, besides program updates, may enter the sim mid-match?**
-
-Q3 settled that program updates do. This is the question of whether *anything
-else* does, and it decides how many categories of command the netcode carries.
-
-| Option | What it costs |
-|---|---|
-| Nothing else — program updates are the whole input surface | Cleanest. Leaves no way to resign and no way to end a stalemate early. |
-| Plus match-control only (resign, agreed draw) | Keeps every sim-affecting input a program update while remaining playable. A second command category with different rules is a permanent small complication. |
-| Plus spectator-visible annotations | Nice for streaming and teaching. Anything visible risks becoming load-bearing, and then it is machine-level live input by another name — which Q3 forbids. |
-
-**Q12 — How is a program update scheduled in lockstep?**
-
-The player presses deploy at some wall-clock moment; every peer must apply the
-update on the *same tick*. The standard answer is to agree it for a future tick,
-far enough ahead that every peer holds it in time. Q11 fixed what *applying*
-means — the deployment's program slot changes on the agreed tick, and each machine takes
-the `redeploy` interrupt at its next operation boundary — so what this question
-owns is the tick.
-
-| Option | What it costs |
-|---|---|
-| Fixed turn delay (apply at tick `now + N`) | The classic RTS answer: simple, predictable, and the delay is a tunable felt directly as input lag. Picking `N` trades responsiveness against tolerance for a slow peer. |
-| Delay negotiated from measured latency | Feels better on good connections and adapts to bad ones. The negotiation itself becomes shared state that must be deterministic. |
-| Lockstep barrier — the tick does not advance until every peer has acked | No input lag and no wrong guesses, but one slow peer stalls everyone, which is the failure mode lockstep games are most hated for. |
-
-Also to settle here: what happens when a peer **misses** its window — drop the
-update, stall, or desync-and-resync. And whether updates are rate-limited, which
-is where PvP fairness re-enters (Q4 defers PvP, so this may be deferred with it,
-but the *hook* has to exist in the command format from the start).
-
-**Q15 — What renders the game, and on what stack?**
-
-`sim` is renderer-free plain Rust and the arrow from renderer back to sim does
-not exist ([00-overview.md](00-overview.md)). What is undecided is **whether a
-renderer crate exists yet and what it is built on** — determinism rule 1 makes
-the second half a sim question too, because an ECS engine brings a second world
-model alongside the authoritative one, which may reach the sim only as ordered
-`Command`s.
-
-| Option | What it costs |
-|---|---|
-| Bevy — full engine, ECS, its own scheduler | Most given for free: assets, input, windowing, UI. Brings a second world model into the process, which determinism rule 1 permits — but only for as long as nothing ECS-side reaches sim state except through ordered `Command`s, which is the boundary CLAUDE.md asks reviewers to flag every time, and which then has to be defended in review forever. |
-| macroquad / miniquad — immediate-mode 2D | Small, no ECS and no scheduler of its own, so drawing from sim state is a plain read. Little given for free above drawing: UI, input mapping and asset handling are all ours. |
-| `wgpu` directly | No opinions imposed and no engine to fight; the crate boundary is trivially safe. The most work by a wide margin, and none of it is game design. |
-| Headless for now — no renderer crate until the sim earns one | Costs nothing today and keeps the corpus honest about what is built. A sim nobody watches hides the problems only visible in motion, and the renderer's needs then arrive late, as sim changes. |
-
-Also to settle here: whether the renderer runs in the sim's process at all, and
-what it is allowed to read. A renderer that samples state mid-tick sees a torn
-world; one that reads only a completed tick's snapshot does not, and that is a
-shape the sim has to offer deliberately.
 
 **Q25 — Combat: what deals damage beyond a fault, whether bots attack, whether a building defends, and whether anything repairs**
 

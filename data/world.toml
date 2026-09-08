@@ -27,3 +27,11 @@ blocks_sight = false
 # a map may set a deposit's cap and regrowth per tile up to these
 max_cap = 1000
 max_regrowth = 2
+
+[mark]
+# the closed list of layer labels a player may place on a tile (Q10)
+layers = ["a", "b", "c", "d"]
+
+[speed]
+# ticks per real second a match may run at (Q6); 0 is pause
+steps = [0, 1, 2, 5, 10, 20, 60]
