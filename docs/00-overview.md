@@ -88,11 +88,15 @@ pass.
   the map sets the starting speed. The renderer interpolates between
   completed ticks. This ruling moves to `docs/06` when it is written.
 - **The player may mark the map, and everything the player does enters one
-  ordered command log (Q10).** Besides `Deploy`, the log carries `Mark` and
-  `Unmark` — a blueprint (a building model, which `build` may target and
-  `blueprints()` returns), a paint (a deployment color), or a layer (a label
-  from a closed list) on a tile, per team, visible to that team only, read by
-  programs and never sensed or remembered — `SetSpeed` (Q6) and `Resign`,
+  ordered command log (Q10, as amended by Q26).** Besides `Deploy`, the log
+  carries `Mark` and `Unmark` — for each team a tile holds a paint (a
+  deployment color, which influences nothing) and an overlay (a label from a
+  closed list, which influences bots through the programs that read it),
+  independently and beside any building; an overlay naming a building model
+  is a blueprint, which `build` may target and `blueprints()` returns, and
+  placing its site consumes it, the one mark the world ever removes; marks
+  are visible to their team only, read by programs and never sensed or
+  remembered — `SetSpeed` (Q6) and `Resign`,
   which removes the sender's team on the agreed tick. A mark changes what a
   program can read about a tile and never what a machine does: the player
   authors programs and marks the map, and never commands a machine. Every
