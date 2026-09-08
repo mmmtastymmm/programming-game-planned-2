@@ -62,7 +62,7 @@ from `02`, with its numbers in `data/world.toml` and the first map in
 `data/maps/first.toml`. Writing `02` opened Q24, whose answer opened Q25,
 which is answered: bots attack. `docs/04` is written, with Q4 as its Decided
 entry; it defines teams, scripted teams, how a match ends, and ships the
-first opposition, `hauler`, in `data/opposition/`; it opened Q29 for the
+first opposition, `fool`, in `data/opposition/`; it opened Q29 for the
 roster. `docs/06` is written,
 with Q6, Q10, Q12, Q15 and Q26 through Q28 as its Decided entries; it pins
 the crate layout — `lang`, `sim`, `net`, `render`, `replay` — the driver,

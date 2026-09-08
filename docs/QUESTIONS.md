@@ -55,11 +55,12 @@ opened Q24 in the writing. The overview's table says the same.
 
 ## Open
 
-**Q29 — The opposition roster: what the shipped teams do, how they escalate, and who picks**
+**Q29 — The opposition roster: which tarot cards ship, what each does, how they escalate, and who picks**
 
 `docs/04` made the opposition a scripted team — a command log written in
-advance plus ordinary bundles — and shipped one, `hauler`, which builds and
-never attacks. A game needs more than a target: an opposition that fights
+advance plus ordinary bundles — and shipped one, `fool`, the Fool, which
+builds and never attacks. The roster is **tarot-themed**: each team is a
+card, named for what it does. A game needs more than a target: an opposition that fights
 back, and some order in which a player meets them. This question is the
 roster, and it is design content rather than mechanism, which is why it is
 a question and not a doc edit.
@@ -73,7 +74,7 @@ or only the player.
 
 | Option | What it costs |
 |---|---|
-| A fixed ladder — `hauler`, then a raider that attacks bots, then one that attacks printers, then one that does all three well | Legible progression and a clear target for the first bundles. Every rung is a bundle to write and keep correct as the language changes. |
+| A fixed ladder — the Fool, then a card that attacks bots, then one that attacks printers, then one that does all three well | Legible progression and a clear target for the first bundles. Every rung is a bundle to write and keep correct as the language changes. |
 | The player picks any shipped team for any map | Maximum freedom, no progression; the ladder becomes the player's to find. |
 | The map names its opposition | Maps become scenarios. Couples `03`'s data to `04`'s, and a new map needs a new script. |
 | Data-tuned handicaps on one good bundle — slower prints, fewer bots — rather than many bundles | One bundle to keep correct. The opposition is only ever as varied as its numbers. |

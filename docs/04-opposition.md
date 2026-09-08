@@ -116,7 +116,7 @@ number when PvP is scheduled. The hooks are already in the command format
 
 ## What this doc leaves open
 
-- **Q29**: the opposition roster beyond `hauler` — what the shipped teams
+- **Q29**: the opposition roster beyond the Fool — what the shipped teams
   do, how they escalate, and whether the player picks one or the map does.
 - **A time limit and a score**, for PvP, under a new number.
 - **Spectating**: a peer with no team, which is a `docs/06` matter.

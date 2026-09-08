@@ -1,9 +1,9 @@
-# The first opposition: a team that hauls and builds and never attacks. A
+# The first opposition, the Fool: a team that hauls and builds and never attacks. A
 # script is a command log written in advance — (tick, command) pairs, applied
 # by the driver as if a peer had sent them (docs/04). This file and the bundles
 # beside it are part of a replay's inputs and are hashed into its identity.
 
-name = "hauler"
+name = "fool"
 
 # One deploy per deployment the team's bundles name, agreed for tick 0 (Q9).
 [[command]]
