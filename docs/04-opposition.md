@@ -12,6 +12,13 @@ reading it must agree on the tick a match ends (design-invariant DI7).
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it
   is not retrofittable, so deferring PvP costs nothing architecturally and
   buys slack on balance while the sim changes fastest.
+- **The roster is the Fool, and grows one card at a time under a new
+  question number each (Q29).** The ladder's shape is fixed: each card a
+  directory of shipped source and one thing more than the last, named for a
+  tarot card chosen when it is written; the player picks any card for any
+  map, and any number of them; two scripted teams on one map fight each other
+  as they would a player; a card's bundles are the reference programs and
+  stay simple; no card is a handicap by data.
 
 Everything the opposition *does* is ruled elsewhere and not repeated here:
 what a machine is and how it attacks is [02-machines](02-machines.md), what
@@ -100,8 +107,9 @@ the player chose. The scripted teams' scripts and bundles are what
 each named for a tarot card. The first opposition is **`fool`**, the Fool:
 a team that prints bots, hauls ore, builds a depot and a second printer, and
 never attacks — a target to learn on, wandering with its eyes on the road.
-What the other cards are, and how they escalate into an opposition that
-fights back, is Q29.
+The roster is one card long (Q29): each further card — one that fights
+back, one that goes for printers — is a new question number, ruled when a
+sim exists to test it against, and ships as its own directory here.
 
 Everything a scripted team does is visible to the player as it would be in
 PvP: its machines are sighted, its sounds heard, its buildings remembered.
@@ -119,7 +127,6 @@ number when PvP is scheduled. The hooks are already in the command format
 
 ## What this doc leaves open
 
-- **Q29**: the opposition roster beyond the Fool — what the shipped teams
-  do, how they escalate, and whether the player picks one or the map does.
+- **The next card**, under a new question number, once the game runs.
 - **A time limit and a score**, for PvP, under a new number.
 - **Spectating**: a peer with no team, which is a `docs/06` matter.
