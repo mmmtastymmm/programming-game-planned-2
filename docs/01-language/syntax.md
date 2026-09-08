@@ -43,7 +43,7 @@ player reads; everything above it exists so that the list is complete.
 
 ## The bundle
 
-A **program** is a bundle of named source files. Every machine of a role runs the
+A **program** is a bundle of named source files. Every machine of a deployment runs the
 same bundle once a redeploy has reached it; until then, the one it had.
 
 - **File names** match `[a-z_][a-z0-9_]*\.py` and are unique within the bundle.

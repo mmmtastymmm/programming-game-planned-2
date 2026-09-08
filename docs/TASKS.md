@@ -51,12 +51,12 @@ path most likely to differ between peers.
 
 ## M1 — First design pass
 
-**T9 — Answer Q6, Q10, Q12, Q15 and Q24, then write the numbered docs they unblock**
+**T9 — Answer Q6, Q10, Q12, Q15 and Q25, then write the numbered docs they unblock**
 
-`docs/02` is written, with Q7, Q9, Q21, Q22 and Q23 as its Decided entries and
+`docs/02` is written, with Q7, Q9, Q21, Q22, Q23 and Q24 as its Decided entries and
 its numbers in `data/machines.toml`. `docs/03` waits on nothing and cites Q22
 from `02`; its deposit and terrain numbers go into data beside the machines'.
-Writing `02` opened Q24, which `docs/04` waits on.
+Writing `02` opened Q24, whose answer opened Q25, which `docs/04` waits on.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.

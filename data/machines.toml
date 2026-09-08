@@ -1,5 +1,5 @@
-# Machines — the values behind the kind table in docs/02-machines.md. This file is
-# the one place a machine number is a number; the doc owns what each means.
+# Machines — the values behind the tables in docs/02-machines.md. This file
+# is the one place a machine number is a number; the doc owns what each means.
 # Every value is a num (an integer, or a decimal with up to twelve places),
 # and every key is hash-affecting: changing one changes the golden-replay
 # fixtures, and the PR says why.
@@ -8,34 +8,56 @@
 # the resource table (Q22): one row per kind, in this order
 kinds = ["ore"]
 
-[kind.bot]
+[deployment]
+# bot deployments, unlocked one per printer, in this order (Q24)
+colors = ["red", "blue", "green", "yellow", "purple", "orange", "cyan", "magenta"]
+bots_per_printer = 10
+# scalars a name may hold (docs/02, A machine)
+name_max = 32
+
+[damage]
+# health a fault costs, charged by the fault prologue (Q24)
+fault = 1
+
+[model.bot]
 vision = 6
 hearing = 4
+health = 10
+death_threshold = -5
 capacity = { ore = 10 }
 move_ticks = 2
 pick_ticks = 3
 pick_rate = { ore = 5 }
 drop_ticks = 1
+# how far build_nearest looks, in tiles by squared distance
+build_reach = 3
 
-[kind.printer]
+[model.printer]
 vision = 8
 hearing = 6
+health = 60
+death_threshold = -30
 store = { ore = 0 }
 cost = { ore = 100 }
 build_ticks = 60
 print_ticks = 30
 
-[kind.depot]
+[model.depot]
 vision = 4
 hearing = 4
+health = 40
+death_threshold = -20
 store = { ore = 500 }
 cost = { ore = 40 }
 build_ticks = 20
 
-[kind.site]
-# a site's store capacity is the cost of what it becomes; its ranges are these
+[model.site]
+# a site's store capacity is the cost of what it becomes; its ranges and
+# health are these
 vision = 2
 hearing = 2
+health = 10
+death_threshold = -5
 
 [loudness]
 # per sound cause (docs/02, Sounds); added to the hearer's range

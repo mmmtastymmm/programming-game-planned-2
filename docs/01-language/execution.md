@@ -35,10 +35,10 @@ bound all of it. Every rule here is hash-affecting.
   escalates exactly as a fault in that hook would. So a handler holds off a
   lower-priority interrupt by at most its budget.
 - **A redeploy is an interrupt (Q11)** — the lowest kind, `redeploy`, below
-  `fault`, with no player hook, like `death`. The role's program slot changes on
+  `fault`, with no player hook, like `death`. The deployment's program slot changes on
   the tick Q12 agrees; each machine takes the interrupt at its own next operation
   boundary, and the boundary before the first operation counts. The epilogue is
-  the swap: the machine takes its role's current program, every variable is
+  the swap: the machine takes its deployment's current program, every variable is
   cleared, and main flow restarts from the top. A machine inside a handler finishes
   that handler first, which Q17's hook budget bounds. No program state
   survives a swap — the deficit, the pending set and the fault record belong
@@ -188,7 +188,7 @@ Highest priority first. The set is closed; adding a kind is a new question.
 | `death` | the world, when things are bad enough (`docs/02`); `dying`'s epilogue; a fault inside `on_dying` or its budget running out | none | — | the machine leaves the world |
 | `dying` | the world, when the machine is destroyed in the ordinary way (`docs/02`); a fault inside `on_fault` or its budget running out | `on_dying()` | yes | raises `death` |
 | `fault` | the machine's own code: an exception nothing caught | `on_fault(e)` | yes | main flow starts over, all variables cleared |
-| `redeploy` | the command log: a program update agreed for a tick (Q12) | none | — | the machine takes its role's current bundle, all variables cleared, main flow starts over |
+| `redeploy` | the command log: a program update agreed for a tick (Q12) | none | — | the machine takes its deployment's current bundle, all variables cleared, main flow starts over |
 
 What each prologue and epilogue does to the machine's *body* — whether a dying
 machine stops moving, whether a redeploying one drops what it carries — is
@@ -271,7 +271,7 @@ def on_dying():
 4. **Coalescing.** At most one pending entry per kind: a second `dying`,
    `death` or `redeploy` arriving while one is pending or running merges into
    it. A `redeploy` carries no bundle of its own — its epilogue loads whatever
-   the role's slot holds at swap time — so coalescing cannot deliver a stale
+   the deployment's slot holds at swap time — so coalescing cannot deliver a stale
    version. A `fault` is never pending: it exists at the moment an exception
    escapes and is delivered at that moment (rule 1).
 5. **The pending set survives everything except `death`.** A `fault`'s
@@ -312,7 +312,7 @@ so it terminates.
 
 ### Worked example
 
-A machine is in main flow with three cost units of budget left when its role is
+A machine is in main flow with three cost units of budget left when its deployment is
 redeployed on this tick and, on the same tick, it takes lethal damage.
 
 1. It completes the operation in progress. At the boundary, two interrupts are
