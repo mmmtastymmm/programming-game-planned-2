@@ -95,10 +95,11 @@ alive.
 The first mode. One player's team, and one or more scripted teams, on a map
 the player chose. The scripted teams' scripts and bundles are what
 [data/opposition/](../data/opposition/) holds, one directory per opposition,
-each named for what it does. The first opposition is **`hauler`**: a team
-that prints bots, hauls ore, builds a depot and a second printer, and never
-attacks — a target to learn on. What the others are, and how they escalate
-into an opposition that fights back, is Q29.
+each named for a tarot card. The first opposition is **`fool`**, the Fool:
+a team that prints bots, hauls ore, builds a depot and a second printer, and
+never attacks — a target to learn on, wandering with its eyes on the road.
+What the other cards are, and how they escalate into an opposition that
+fights back, is Q29.
 
 Everything a scripted team does is visible to the player as it would be in
 PvP: its machines are sighted, its sounds heard, its buildings remembered.
