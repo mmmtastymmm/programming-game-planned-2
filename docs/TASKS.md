@@ -36,8 +36,9 @@ Two conventions carried over from the predecessor project:
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model**
 
 ⚠HASH — this regenerates the golden fixture by definition. The world model
-has its rulings — Q7, Q9, Q21, Q22 and Q23 — in `docs/02` and waits on
-`docs/03` being written; the shape of `Command` is blocked on Q10 and Q12.
+has its rulings — Q7, Q9, Q21, Q22, Q23 and Q24 — in `docs/02` and its
+world in `docs/03`, so it is buildable; the shape of `Command` is blocked on
+Q10 and Q12, and the replay's inputs are `(map, command log)` (`03`).
 
 Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
 — but its principal variant is a program deploy, not a machine order. The
@@ -54,9 +55,10 @@ path most likely to differ between peers.
 **T9 — Answer Q6, Q10, Q12, Q15 and Q25, then write the numbered docs they unblock**
 
 `docs/02` is written, with Q7, Q9, Q21, Q22, Q23 and Q24 as its Decided entries and
-its numbers in `data/machines.toml`. `docs/03` waits on nothing and cites Q22
-from `02`; its deposit and terrain numbers go into data beside the machines'.
-Writing `02` opened Q24, whose answer opened Q25, which `docs/04` waits on.
+its numbers in `data/machines.toml`; `docs/03` is written, citing Q21 and Q22
+from `02`, with its numbers in `data/world.toml` and the first map in
+`data/maps/first.toml`. Writing `02` opened Q24, whose answer opened Q25,
+which `docs/04` waits on.
 
 Split a doc (doorway + parts directory) only once it actually outgrows one file —
 the split has a real cost in cross-part invariants.

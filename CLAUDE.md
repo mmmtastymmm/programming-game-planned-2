@@ -8,8 +8,9 @@ individual machine. The simulation runs identically on every peer.
 
 The design is in its first pass. The framing rulings live in
 [docs/00-overview.md](docs/00-overview.md)'s Decided section, the language's
-in [docs/01-language.md](docs/01-language.md)'s parts, and the machines' in
-[docs/02-machines.md](docs/02-machines.md); **everything still undecided is in
+in [docs/01-language.md](docs/01-language.md)'s parts, the machines' in
+[docs/02-machines.md](docs/02-machines.md) and the world's in
+[docs/03-world.md](docs/03-world.md); **everything still undecided is in
 [docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
 list of open topics repeated here would drift on every ruling. The corpus
 scaffolding and the determinism gate are ported from the predecessor project
@@ -59,7 +60,7 @@ Rules 2, 3 and 4 are *syntactic*, so they are also scanned mechanically by
 `crates/sim/tests/no_floats.rs`. That test is a backstop, not the rule — it
 finds banned names, not banned behavior.
 
-Testing expectation: golden-replay tests (`(seed, command log) → state hash`)
+Testing expectation: golden-replay tests (`(map, command log) → state hash`)
 guard determinism in CI. **A PR that changes a replay hash must explain why.**
 Regenerate with `UPDATE_GOLDEN=1 cargo test -p sim --test golden`. A fixture
 that gets silently regenerated whenever it goes red is worse than no fixture,

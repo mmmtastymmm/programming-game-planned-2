@@ -1,0 +1,29 @@
+# The world — the values behind the tables in docs/03-world.md. This file is
+# the one place a world number is a number; the doc owns what each means.
+# Every value is a num, and every key is hash-affecting: changing one changes
+# the golden-replay fixtures, and the PR says why.
+
+[terrain.ground]
+passable = true
+buildable = true
+blocks_sight = false
+
+[terrain.ore]
+passable = true
+buildable = false
+blocks_sight = false
+
+[terrain.rock]
+passable = false
+buildable = false
+blocks_sight = true
+
+[terrain.water]
+passable = false
+buildable = false
+blocks_sight = false
+
+[deposit.ore]
+# a map may set a deposit's cap and regrowth per tile up to these
+max_cap = 1000
+max_regrowth = 2

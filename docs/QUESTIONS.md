@@ -44,9 +44,10 @@ This block is **rewritten in place**, never stacked or archived: `git log -p
 docs/QUESTIONS.md` already records every status this file has carried, dated and
 attached to the commit that changed it.
 
-**`docs/01` and `docs/02` are written** — [01-language](01-language.md) and
-[02-machines](02-machines.md), each with the rulings it waited on as its Decided
-entries. `02` opened Q24 in the writing. The overview's table says the same.
+**`docs/01`, `02` and `03` are written** — [01-language](01-language.md),
+[02-machines](02-machines.md) and [03-world](03-world.md), each with the
+rulings it waited on as its Decided entries or citing them from `02`. `02`
+opened Q24 in the writing. The overview's table says the same.
 
 ## Open
 
