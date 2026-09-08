@@ -100,3 +100,6 @@ painted = 2
 overlaid = 2
 paint = 1
 overlay = 1
+unpaint = 1
+unoverlay = 1
+deconstruct = 1

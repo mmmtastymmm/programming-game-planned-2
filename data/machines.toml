@@ -31,9 +31,11 @@ pick_rate = { ore = 5 }
 drop_ticks = 1
 # how far build_nearest looks, in tiles by squared distance
 build_reach = 3
-# realising a paint or overlay plan (Q27)
+# realising a paint or overlay plan (Q27), and emptying the slot first (Q28)
 paint_ticks = 2
 overlay_ticks = 2
+unpaint_ticks = 2
+unoverlay_ticks = 2
 
 [model.printer]
 vision = 8
@@ -43,6 +45,7 @@ death_threshold = -30
 store = { ore = 0 }
 cost = { ore = 100 }
 build_ticks = 60
+deconstruct_ticks = 30
 print_ticks = 30
 
 [model.depot]
@@ -53,6 +56,7 @@ death_threshold = -20
 store = { ore = 500 }
 cost = { ore = 40 }
 build_ticks = 20
+deconstruct_ticks = 10
 
 [model.site]
 # a site's store capacity is the cost of what it becomes; its ranges and
@@ -61,6 +65,7 @@ vision = 2
 hearing = 2
 health = 10
 death_threshold = -5
+deconstruct_ticks = 5
 
 [loudness]
 # per sound cause (docs/02, Sounds); added to the hearer's range
@@ -69,3 +74,4 @@ pick = 2
 drop = 2
 print = 4
 build = 4
+deconstruct = 3
