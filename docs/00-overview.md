@@ -84,13 +84,12 @@ pass.
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling) and Q15 (the renderer) are its Decided entries, and they
   are not repeated here.
-- **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it is
-  not retrofittable, so deferring PvP costs nothing architecturally and buys
-  slack on balance while the sim changes fastest.
+- **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
+  Q4 (PvE before PvP) is its Decided entry, and it is not repeated here.
 
 ## What the numbered docs will hold
 
-`01`, `02`, `03` and `06` are written; the rest are reserved, not written. The numbering is
+`01`, `02`, `03`, `04` and `06` are written; `05` is reserved, not written. The numbering is
 deliberately sparse so a topic can be
 inserted without renumbering:
 
@@ -99,7 +98,7 @@ inserted without renumbering:
 | `01` | The language — syntax, execution model, cost model | — |
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
-| `04` | Opposition — PvE now, PvP later | — |
+| `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | Q29 |
 | `05` | Progression | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 
@@ -110,9 +109,9 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01`, `02`, `03` and `06` are written** —
+map from question to doc. **`01`, `02`, `03`, `04` and `06` are written** —
 [01-language](01-language.md), [02-machines](02-machines.md),
-[03-world](03-world.md) and [06-architecture](06-architecture.md) — and the
-table
+[03-world](03-world.md), [04-opposition](04-opposition.md) and
+[06-architecture](06-architecture.md) — and the table
 above, not this sentence, is the authority on what blocks the rest: earlier
 passes misread `01` as having a single blocker while it had three.

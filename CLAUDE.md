@@ -10,7 +10,8 @@ The design is in its first pass. The framing rulings live in
 [docs/00-overview.md](docs/00-overview.md)'s Decided section, the language's
 in [docs/01-language.md](docs/01-language.md)'s parts, the machines' in
 [docs/02-machines.md](docs/02-machines.md), the world's in
-[docs/03-world.md](docs/03-world.md) and the architecture's in
+[docs/03-world.md](docs/03-world.md), the opposition's in
+[docs/04-opposition.md](docs/04-opposition.md) and the architecture's in
 [docs/06-architecture.md](docs/06-architecture.md); **everything still
 undecided is in
 [docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
