@@ -31,13 +31,14 @@ Every tile holds exactly:
 |---|---|
 | `terrain` | one of the terrain kinds below, fixed for the match |
 | `deposit` | a `dict` of resource kind to amount, or `None`; only on `ore` terrain |
-| `paint`, `overlay` | per team, independently: a **paint**, a deployment color or `None`, which influences nothing; and an **overlay**, a label from `mark.overlays` in data or `None`, which influences bots through the programs that read it — an overlay naming a building model is a blueprint. Placed by the player through the command log (Q10, Q26), read by that team's programs, never sensed or remembered, and part of the state hash. A building disturbs neither, except that placing a site consumes the blueprint it was built from |
+| `paint`, `overlay` | per team, the **realised** marks: a paint, a deployment color or `None`, which influences nothing; and an overlay, a label from `mark.overlays` in data or `None`, which influences bots through the programs that read it. Set only by a bot's `paint` or `overlay` action carrying out a plan (Q27); never sensed or remembered; part of the state hash. A building disturbs neither |
+| `plans` | per team, three **plans** — paint, overlay, building — each `None` or a value (a color, a label, a model; or a plan to clear). Placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q26, Q27), read by that team's programs, realised only by a bot's action, which consumes the plan; never sensed or remembered; part of the state hash |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
 
-A tile's `terrain` never changes; its `paint` and `overlay` change only by
-command, except that a blueprint is consumed by the site built from it. The
-overlay labels are the closed list `mark.overlays` in `data/world.toml`, and
-every building model's name is one of them. A tile is never destroyed, so the second
+A tile's `terrain` never changes; its `plans` change only by command, and
+its `paint` and `overlay` only by a bot carrying a plan out. The overlay
+labels are the closed list `mark.overlays` in `data/world.toml`. A tile is
+never destroyed, so the second
 cause of `death` that `02` reserves for this doc **does not occur**: a
 machine dies of damage or not at all. Deposits change amount and nothing
 else.

@@ -31,6 +31,9 @@ pick_rate = { ore = 5 }
 drop_ticks = 1
 # how far build_nearest looks, in tiles by squared distance
 build_reach = 3
+# realising a paint or overlay plan (Q27)
+paint_ticks = 2
+overlay_ticks = 2
 
 [model.printer]
 vision = 8
