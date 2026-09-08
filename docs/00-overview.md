@@ -88,15 +88,17 @@ pass.
   the map sets the starting speed. The renderer interpolates between
   completed ticks. This ruling moves to `docs/06` when it is written.
 - **The player may mark the map, and everything the player does enters one
-  ordered command log (Q10, as amended by Q26).** Besides `Deploy`, the log
-  carries `Mark` and `Unmark` — for each team a tile holds a paint (a
-  deployment color, which influences nothing) and an overlay (a label from a
-  closed list, which influences bots through the programs that read it),
-  independently and beside any building; an overlay naming a building model
-  is a blueprint, which `build` may target and `blueprints()` returns, and
-  placing its site consumes it, the one mark the world ever removes; marks
-  are visible to their team only, read by programs and never sensed or
-  remembered — `SetSpeed` (Q6) and `Resign`,
+  ordered command log (Q10, as amended by Q26 and Q27).** Besides `Deploy`,
+  the log carries `Mark` and `Unmark`, which place and withdraw **plans** —
+  for each team a tile holds a paint plan, an overlay plan and a building
+  plan, each a request that only a bot makes real: `paint` and `overlay`
+  actions realise the first two, `build` the third, consuming the plan. A
+  realised paint (a deployment color) influences nothing; a realised overlay
+  (a label from a closed list) influences bots through the programs that read
+  it; a building disturbs neither. Plans and marks are visible to their team
+  only, read by programs through `plans(kind)`, `painted(color)` and
+  `overlaid(label)`, and never sensed or remembered. The player's only effect
+  on the world is through programs — `SetSpeed` (Q6) and `Resign`,
   which removes the sender's team on the agreed tick. A mark changes what a
   program can read about a tile and never what a machine does: the player
   authors programs and marks the map, and never commands a machine. Every

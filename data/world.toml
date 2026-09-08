@@ -29,9 +29,9 @@ max_cap = 1000
 max_regrowth = 2
 
 [mark]
-# the closed list of overlay labels a player may place on a tile (Q10, Q26);
-# a building model's name is a blueprint for that model
-overlays = ["printer", "depot", "a", "b", "c", "d"]
+# the closed list of overlay labels a player may plan on a tile (Q10, Q26,
+# Q27); a building plan names a model instead and is not an overlay
+overlays = ["a", "b", "c", "d"]
 
 [speed]
 # ticks per real second a match may run at (Q6); 0 is pause
