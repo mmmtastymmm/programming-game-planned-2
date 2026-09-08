@@ -26,14 +26,14 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-08.** Q1 through Q28 are all answered except Q25 — Q17
-through Q20, Q23, Q24 and Q26 through Q28 were each opened and answered in one
-commit,
-as the amendments that the history rules require to be new numbers. The rulings of
-Q7, Q9, Q21, Q22, Q23 and Q24 are [02-machines](02-machines.md)'s Decided
-entries, `docs/03` cites Q21 and Q22 from there, and the rulings of Q6, Q10,
-Q12, Q15 and Q26 through Q28 are [06-architecture](06-architecture.md)'s. Every other number this
-file has issued is still undecided, and each one is below under **Open**. The
+**Status 2026-09-08.** Every question this file has issued, Q1 through Q28,
+is answered — Q17 through Q20, Q23, Q24 and Q26 through Q28 were each opened
+and answered in one commit, as the amendments that the history rules require
+to be new numbers. The rulings of Q7, Q9, Q21, Q22, Q23, Q24 and Q25 are
+[02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and Q22
+from there, and the rulings of Q6, Q10, Q12, Q15 and Q26 through Q28 are
+[06-architecture](06-architecture.md)'s. Nothing is undecided, and **Open**
+below is empty until the next question is opened. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
 here. Each worksheet is a file of its own in
@@ -53,28 +53,4 @@ opened Q24 in the writing. The overview's table says the same.
 
 ## Open
 
-**Q25 — Combat: what deals damage beyond a fault, whether bots attack, whether a building defends, and whether anything repairs**
-
-Q24 gave every machine health and made damage the one mechanism that lowers
-it, with a single cause — a fault costs one health — and deferred every
-other cause here. A game whose colonies cannot touch each other is not the
-game Q4 deferred PvP from, and PvE needs an opposition (`docs/04`) that can
-hurt. This is the largest tuning surface the game will have, which is why it
-gets its own number rather than riding on `docs/02`.
-
-What it has to settle, each hash-affecting: what deals damage — a bot
-action, a building that fires by rule, terrain, the opposition — with what
-range, amount and cooldown; whether damage is in `num` so armour and
-modifiers can multiply later; whether buildings and sites take damage the
-same way; whether anything repairs, and what it costs; and what a dying
-machine's last words may still do beyond what `docs/02` allows now.
-
-| Option | What it costs |
-|---|---|
-| Bots attack: an `attack` action with a range, a damage, and a cooldown | The smallest combat that makes programs matter — targeting is code. Damage per hit and range per model, and the first tuning that decides matches. |
-| Buildings defend: a turret model that fires by rule, no program needed | Territory becomes defensible without writing a fighter. Passive, so defence is placement; a building row with a range and a damage. |
-| Both, with repair as a bot action that spends ore | The full surface: every number above, twice, plus a repair rate and cost, and a balance problem Q4 chose to defer. |
-| Neither yet — faults are the only damage until PvE needs more | Nothing to tune, and `dying` fires only from bugs. Defers the failure mode the fleet fantasy wants until `docs/04` demands it. |
-
-Whatever wins adds its causes to the interrupt table in `docs/02`, its
-actions or models to that doc's tables, and its numbers to data.
+*(none — every question issued so far is answered)*

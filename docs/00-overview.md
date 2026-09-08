@@ -77,7 +77,7 @@ pass.
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9, Q23 and Q24 (production, health and the cap), and Q22 (the economy,
+  (sensing and memory), Q9, Q23, Q24 and Q25 (production, health, the cap and combat), and Q22 (the economy,
   which `docs/03` will cite) are its Decided entries, and they are not
   repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
@@ -99,7 +99,7 @@ inserted without renumbering:
 | `01` | The language — syntax, execution model, cost model | — |
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
-| `04` | Opposition — PvE now, PvP later | Q25 |
+| `04` | Opposition — PvE now, PvP later | — |
 | `05` | Progression | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 

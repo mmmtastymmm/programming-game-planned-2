@@ -139,7 +139,12 @@ const citationClaim = ({ name, id, cite, before = "", after = "", expect, file =
   expect,
   rule: `citation:${id}`,
   probe: { before, after },
-  mutate: (d) => appendFileSync(join(d, file), `\n${before}${cite}${after}\n`),
+  mutate: (d) => {
+    if (cite === OPEN_Q && OPEN_Q_SEEDED) {
+      appendFileSync(join(d, "docs/QUESTIONS.md"), `\n**${OPEN_Q} — seeded so an open question exists to cite**\n`);
+    }
+    appendFileSync(join(d, file), `\n${before}${cite}${after}\n`);
+  },
 });
 
 const qa = (d) => join(d, "docs/history/questions-answered");
@@ -154,10 +159,17 @@ const it = (d) => join(d, "docs/history/inbox-triaged");
 // on every ruling is a fixture nobody keeps, so both are read from the corpus
 // under test: the first open entry in QUESTIONS.md, the lowest-numbered file in
 // questions-answered/.
+// When no question is open — which happens the day the last one is answered —
+// the case seeds one at the next free number, so an empty register does not
+// take the suite down with it. `OPEN_Q_SEEDED` tells citationClaim to write
+// that entry into the fixture before the claim that cites it.
 const openQuestion = () => {
-  const m = readFileSync(join(repo, "docs/QUESTIONS.md"), "utf8").match(/^\*\*(Q\d+) [—–-] /m);
-  if (!m) throw new Error("check-checks: docs/QUESTIONS.md has no open entry to seed a claim against");
-  return m[1];
+  const live = readFileSync(join(repo, "docs/QUESTIONS.md"), "utf8");
+  const m = live.match(/^\*\*(Q\d+) [—–-] /m);
+  if (m) return { id: m[1], seeded: false };
+  const closed = readdirSync(qa(repo))
+    .map((n) => n.match(/^question-answered-0*(\d+)\.md$/)).filter(Boolean).map((x) => Number(x[1]));
+  return { id: `Q${Math.max(0, ...closed) + 1}`, seeded: true };
 };
 const closedQuestion = () => {
   const m = readdirSync(qa(repo)).sort()
@@ -165,7 +177,7 @@ const closedQuestion = () => {
   if (!m) throw new Error("check-checks: questions-answered/ has no entry to seed a claim against");
   return `Q${m[1]}`;
 };
-const OPEN_Q = openQuestion();
+const { id: OPEN_Q, seeded: OPEN_Q_SEEDED } = openQuestion();
 const CLOSED_Q = closedQuestion();
 
 // Same defect, other register: three cases seeded a closed `I1` into the inbox

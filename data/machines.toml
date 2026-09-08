@@ -29,6 +29,10 @@ move_ticks = 2
 pick_ticks = 3
 pick_rate = { ore = 5 }
 drop_ticks = 1
+# attack (Q25): squared range in tiles, damage per hit, ticks per attack
+attack_range = 1
+attack_damage = 1
+attack_ticks = 3
 # how far build_nearest looks, in tiles by squared distance
 build_reach = 3
 # realising a paint or overlay plan (Q27), and emptying the slot first (Q28)
@@ -75,3 +79,4 @@ drop = 2
 print = 4
 build = 4
 deconstruct = 3
+attack = 3
