@@ -5,22 +5,14 @@
 
 [terrain.ground]
 passable = true
-buildable = true
-blocks_sight = false
-
-[terrain.ore]
-passable = true
-buildable = false
 blocks_sight = false
 
 [terrain.rock]
 passable = false
-buildable = false
 blocks_sight = true
 
 [terrain.water]
 passable = false
-buildable = false
 blocks_sight = false
 
 [deposit.ore]

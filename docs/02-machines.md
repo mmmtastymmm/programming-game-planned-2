@@ -177,8 +177,11 @@ classDiagram
     drop()
     build()
     build_nearest()
+    deconstruct()
     paint()
+    unpaint()
     overlay()
+    unoverlay()
   }
   class building {
     model
@@ -242,7 +245,9 @@ occupied tile, a print needs a free adjacent tile, and a build needs a free
 tile.
 
 **Adjacency** is the four tiles sharing an edge, `(x, y±1)` and `(x±1, y)`.
-Every rule that says "adjacent" means those four.
+Every rule that says "adjacent" means those four. North is `+y` and east
+is `+x` (`03`), and "row then column" means north to south, then west to
+east.
 
 ## Senses
 
@@ -258,12 +263,12 @@ their `[game]` row plus `factor.traverse` per element returned
 |---|---|
 | `see()` | a list of **sightings**: every machine any of the team's machines sees now, each once, sorted by squared distance from the calling machine then by `id`. A sighting is a machine's attribute record. The team's own machines are always included. |
 | `hear()` | a list of **sounds** emitted during the previous tick that any of the team's machines hears, each once, sorted by squared distance from the calling machine, then by position, then by cause. A sound is a record `cause`, `pos`, `loudness`, `tick`. |
-| `tile(x, y)` | the tile's record for the team — `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the team's realised marks, and `plans`, its pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
+| `tile(x, y)` | the tile's record for the team — `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
 | `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle that is not unknown, sorted by row then column. |
 | `me()` | the calling machine's own attribute record. |
 | `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"` or `"building"` (Q27) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label or a model, or `None` for a plan to clear. |
-| `painted(color)` | the team's tiles whose realised paint is `color`, as `(x, y)` tuples, sorted by row then column. |
-| `overlaid(label)` | the team's tiles whose realised overlay is `label`, as `(x, y)` tuples, sorted by row then column. |
+| `painted(color)` | every tile the team sees or remembers whose paint is `color` — paint is the tile's, not a team's (Q28) — as `(x, y)` tuples, sorted by row then column. |
+| `overlaid(label)` | every tile the team sees or remembers whose overlay is `label`, as `(x, y)` tuples, sorted by row then column. |
 
 **Vision** (Q7): machine `u` sees a machine at `q` if
 `dist²(u.pos, q) ≤ vision²` for `u`'s model and the line of sight from
@@ -283,6 +288,7 @@ The causes, which are the `cause` strings a sound carries:
 | `"pick"`, `"drop"` | a bot beginning a pick or a drop |
 | `"print"` | a printer beginning a print |
 | `"build"` | a bot placing a site, and a site completing |
+| `"deconstruct"` | a bot beginning a deconstruction |
 
 Loudness per cause is in `data/machines.toml`. A sound never names its
 emitter.
@@ -310,9 +316,11 @@ sound.
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
 | `print(color)` | printer | `color` must be an unlocked deployment with a bundle (Q9, Q24), the team must be under its bot cap, and a free adjacent tile must exist at completion — the first free of `n`, `e`, `s`, `w`; the bot appears there, on the printer's team, named `color` plus its `id`, in main flow, its first slice next tick; no free tile at completion cancels the print with nothing produced | `print_ticks` | yes |
-| `build(model, x, y)` | bot | `model` a building model other than `site`; `(x, y)` adjacent, buildable (`03`) and unoccupied — a tile carrying the team's building plan for `model` (Q27) is the usual target, and placing the site consumes that plan and no other mark; places a **site** there at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0` — the bot is not busy; the site is | yes, twice |
-| `paint(x, y)` | bot | `(x, y)` adjacent and carrying the team's paint plan; on completion the tile's realised paint becomes the plan's value — a color, or `None` to clear — and the plan is gone; no plan is a `ValueError` | `paint_ticks` | no |
-| `overlay(x, y)` | bot | as `paint`, for the overlay plan | `overlay_ticks` | no |
+| `build(model, x, y)` | bot | `model` a building model other than `site`; `(x, y)` adjacent and buildable (`03`): `ground`, no deposit, **no building** — a tile carrying the team's building plan for `model` (Q27) is the usual target, and if that tile has a building the plan deconstructs it first (Q28), as one action of both durations; placing the site consumes the plan and no other mark. The site appears at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0`, or `deconstruct_ticks` of the old building first — the site is busy after that | yes, twice |
+| `paint(x, y)` | bot | `(x, y)` adjacent and carrying the team's paint plan with a color; if the tile is already painted, the unpaint runs first (Q28), as one action of both durations; on completion the tile's paint is the plan's color and the plan is gone; no plan is a `ValueError` | `paint_ticks`, plus `unpaint_ticks` if painted | no |
+| `unpaint(x, y)` | bot | `(x, y)` adjacent and painted; on completion its paint is `None`. Any team's bot may do it. A paint plan whose value is `None` is realised by this action and consumed | `unpaint_ticks` | no |
+| `overlay(x, y)`, `unoverlay(x, y)` | bot | as `paint` and `unpaint`, for the overlay slot | `overlay_ticks`, `unoverlay_ticks` | no |
+| `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store lost, and its team's cap and deployments updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
