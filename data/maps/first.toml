@@ -1,0 +1,39 @@
+# The first map: two teams, mirrored across the centre. Terrain is one
+# character per tile, one row per line, y running south:
+#   .  ground    o  ore    #  rock    ~  water
+# Every ore tile takes the deposit below unless [[deposit]] overrides it.
+# This file is part of a replay's inputs and is hashed into its identity.
+
+name = "first"
+width = 24
+height = 16
+
+terrain = """
+........................
+..o.........##..........
+..o.........##......~~..
+............##......~~..
+........................
+....##..................
+....##.......oo.........
+.............oo.........
+.........oo.............
+.........oo.......##....
+..................##....
+........................
+..~~......##............
+..~~......##.........o..
+.....................o..
+........................
+"""
+
+[deposit_default]
+cap = 500
+regrowth = 1
+amount = 500
+
+[[team]]
+start = [3, 3]
+
+[[team]]
+start = [20, 12]

@@ -326,8 +326,8 @@ follows depends only on the result:
 
 A machine already in `dying` has its health **frozen**; further damage of its
 own making — a fault in `on_dying` — escalates as the language rules and
-deals nothing. Whether a tile can be destroyed under a machine, which is the
-other cause of `death`, is `03`'s.
+deals nothing. A tile is never destroyed (`03`), so damage is the only
+cause of `death` today.
 
 The causes of damage today are one. **A fault costs `fault_damage`
 health**, charged by the `fault` prologue beside the record it writes, so a
@@ -342,7 +342,7 @@ is what the prologues and epilogues do beyond the language's rules.
 
 | Kind | Raised by | Prologue does to the body | The hook may | Epilogue does to the body |
 |---|---|---|---|---|
-| `death` | health at or below the threshold; the tile destroyed (`03`); `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
+| `death` | health at or below the threshold; `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
 | `dying` | health at or below zero | cancels the action in progress; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |

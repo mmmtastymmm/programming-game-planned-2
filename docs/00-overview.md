@@ -24,7 +24,7 @@ reopened by this corpus:
 
 ```mermaid
 flowchart LR
-  seed["map seed"] --> sim["sim: deterministic world"]
+  seed["map (data file)"] --> sim["sim: deterministic world"]
   progs["opening program set"] --> log["ordered command log"]
   edit["mid-match program update"] --> log
   peer["remote peer's updates"] --> log
@@ -32,7 +32,7 @@ flowchart LR
   sim --> hash["state hash per tick"]
   sim --> render["renderer: floats fine here"]
   hash --> desync{"hashes agree?"}
-  desync -->|no| report["replay: seed + command log"]
+  desync -->|no| report["replay: map + command log"]
 ```
 
 The diagram is why the crate boundary is worth its inconvenience: the arrow from
@@ -69,7 +69,8 @@ pass.
   *besides* a program update — match control such as resigning — enters the sim
   mid-match is open (Q10); this ruling forbids machine orders, not that. So
   `Command` is a real ordered log whose principal variant is a program deploy, a
-  replay is `(seed, timed command log)`, and determinism rule 7 is load-bearing:
+  replay is `(map, timed command log)` — the map being a data file, `docs/03`
+  — and determinism rule 7 is load-bearing:
   which byte-exact program version a machine runs is part of the state hash.
 - **The language's rulings live in [01-language](01-language.md)** — Q5
   and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
@@ -85,7 +86,7 @@ pass.
 
 ## What the numbered docs will hold
 
-`01` and `02` are written; the rest are reserved, not written. The numbering is
+`01`, `02` and `03` are written; the rest are reserved, not written. The numbering is
 deliberately sparse so a topic can be
 inserted without renumbering:
 
@@ -93,7 +94,7 @@ inserted without renumbering:
 |---|---|---|
 | `01` | The language — syntax, execution model, cost model | — |
 | `02` | Machines — what they are, what they sense, what they do | — |
-| `03` | The world — terrain, resources, whatever the economy turns out to be | — |
+| `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
 | `04` | Opposition — PvE now, PvP later | Q25 |
 | `05` | Progression | — |
 | `06` | Architecture — crates, tick loop, netcode, testing strategy | Q6, Q10, Q12, Q15 |
@@ -105,7 +106,8 @@ Each becomes a doorway plus a parts directory only when it outgrows one file
 
 [QUESTIONS.md](QUESTIONS.md) holds what is still open — in numeric order, since
 numbering is append-only, so it is not a reading order. The table above is the
-map from question to doc. **`01` and `02` are written** —
-[01-language](01-language.md) and [02-machines](02-machines.md) — and the table
+map from question to doc. **`01`, `02` and `03` are written** —
+[01-language](01-language.md), [02-machines](02-machines.md) and
+[03-world](03-world.md) — and the table
 above, not this sentence, is the authority on what blocks the rest: earlier
 passes misread `01` as having a single blocker while it had three.
