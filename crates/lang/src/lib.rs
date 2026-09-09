@@ -17,16 +17,19 @@
 //!   between any two operations and resumed on a later tick.
 //! - [`value`] — what a program computes with.
 //! - [`vm`] — the metered evaluator: frames, budgets, boundaries, faults.
+//! - [`dispatch`] — operations that run user code: the dunder set, `key=`,
+//!   the comparisons a sort makes; resumable, so a budget can pause them.
 //! - [`data`] — the cost and limit tables, loaded from `data/language/`.
 //!
-//! This is T10's slice: the lexer, the procedural core, metering, costs and
-//! limits. Classes, `match` and `import` are T11–T13; the interrupt kinds
-//! beyond `fault` land with the sim that raises them (T7).
+//! T10 built the lexer, the procedural core, metering, costs and limits;
+//! T11 added `class`. `match` and `import` are T12 and T13; the interrupt
+//! kinds beyond `fault` land with the sim that raises them (T7).
 
 pub mod ast;
 pub mod builtins;
 pub mod compile;
 pub mod data;
+pub mod dispatch;
 pub mod errors;
 pub mod lexer;
 pub mod num;

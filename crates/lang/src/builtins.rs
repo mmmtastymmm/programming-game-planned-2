@@ -4,11 +4,206 @@
 //! consults the host for anything but memory.
 
 use crate::ast::BinOp;
+use crate::dispatch::{FindMode, Native, Then};
 use crate::errors::{ExcClass, Exception};
 use crate::num::{Num, PLACES};
-use crate::value::{R, Record, Value, check_key, dict_find, quoted, set_find};
+use crate::value::{R, Record, Value, check_key, dict_find, has_instance, quoted, set_find};
 use crate::vm::{Machine, method};
 use std::rc::Rc;
+
+/// How a builtin or method call ends: with a value, with a native that
+/// still has user code to run (`dispatch.rs`), or not here at all — a game
+/// builtin, which is the host's.
+pub enum Outcome {
+    Value(Value),
+    Native(Native),
+    NotOurs,
+}
+
+/// The argument positions a builtin iterates, so an instance there is
+/// gathered (`__len__`, then `__getitem__` in order) before the builtin
+/// runs, as Python does.
+fn iterable_slots(name: &str, argc: usize) -> &'static [usize] {
+    match name {
+        "list" | "set" | "dict" | "sorted" | "sum" | "enumerate" | "any" | "all" => &[0],
+        "min" | "max" if argc == 1 => &[0],
+        "zip" => &[0, 1, 2, 3, 4, 5, 6, 7],
+        _ => &[],
+    }
+}
+
+/// The entry the VM calls: gathers instance iterables, routes what needs
+/// user code to a native, and runs the rest synchronously.
+pub fn builtin_entry(
+    m: &mut Machine,
+    name: &str,
+    args: &[Value],
+    kwargs: &[(String, Value)],
+) -> R<Outcome> {
+    for &slot in iterable_slots(name, args.len()) {
+        if let Some(Value::Inst(inst)) = args.get(slot) {
+            let then = Then::Builtin {
+                name: name.to_string(),
+                args: args.to_vec(),
+                kwargs: kwargs.to_vec(),
+                slot,
+            };
+            return Ok(Outcome::Native(Native::materialise(inst.clone(), then)));
+        }
+    }
+    let c = m.costs().clone();
+    let depth = m.limits().depth_nesting as u32;
+    let no_kw = |kwargs: &[(String, Value)]| -> R<()> {
+        if kwargs.is_empty() {
+            Ok(())
+        } else {
+            Err(Exception::type_error())
+        }
+    };
+    match name {
+        "len" if matches!(args, [Value::Inst(_)]) => {
+            no_kw(kwargs)?;
+            m.charge(c.builtin_len);
+            Ok(Outcome::Native(Native::Len {
+                v: args[0].clone(),
+                stage: 0,
+            }))
+        }
+        "str" if args.len() == 1 && has_instance(&args[0], depth) => {
+            no_kw(kwargs)?;
+            m.charge(c.builtin_convert);
+            Ok(Outcome::Native(Native::str_of(args[0].clone())))
+        }
+        "bool" if matches!(args, [Value::Inst(_)]) => {
+            no_kw(kwargs)?;
+            m.charge(c.builtin_convert);
+            Ok(Outcome::Native(Native::truthy(args[0].clone())))
+        }
+        "sorted" => {
+            let key = kwarg(kwargs, "key", &["key", "reverse"])?;
+            let reverse =
+                kwarg(kwargs, "reverse", &["key", "reverse"])?.is_some_and(|v| v.truthy());
+            m.charge(c.builtin_sorted);
+            let items = m.snapshot(one(args)?)?;
+            m.charge_each(items.len(), c.factor_sort);
+            Ok(Outcome::Native(Native::sort(items, key, reverse, None)))
+        }
+        "min" | "max" => {
+            let key = kwarg(kwargs, "key", &["key"])?;
+            m.charge(c.builtin_minmax);
+            let items: Vec<Value> = match args {
+                [single] if !matches!(single, Value::Num(_) | Value::Bool(_)) => {
+                    m.snapshot(single)?
+                }
+                [] => return Err(Exception::type_error()),
+                many => many.to_vec(),
+            };
+            if items.is_empty() {
+                return Err(Exception::value_error());
+            }
+            m.charge_each(items.len(), c.factor_traverse);
+            Ok(Outcome::Native(Native::min_max(items, key, name == "min")))
+        }
+        "any" | "all" => {
+            no_kw(kwargs)?;
+            m.charge(c.builtin_anyall);
+            let items = m.snapshot(one(args)?)?;
+            Ok(Outcome::Native(Native::AnyAll {
+                items,
+                i: 0,
+                is_any: name == "any",
+            }))
+        }
+        _ => Ok(match call_builtin(m, name, args, kwargs)? {
+            Some(v) => Outcome::Value(v),
+            None => Outcome::NotOurs,
+        }),
+    }
+}
+
+/// The method entry the VM calls, with the same routing as
+/// [`builtin_entry`].
+pub fn method_entry(
+    m: &mut Machine,
+    recv: &Value,
+    name: &'static str,
+    args: &[Value],
+    kwargs: &[(String, Value)],
+) -> R<Outcome> {
+    let gathers = matches!(
+        (recv, name),
+        (Value::List(_), "extend") | (Value::Str(_), "join")
+    );
+    if gathers && let Some(Value::Inst(inst)) = args.first() {
+        let then = Then::Method {
+            recv: recv.clone(),
+            name,
+            args: args.to_vec(),
+            kwargs: kwargs.to_vec(),
+            slot: 0,
+        };
+        return Ok(Outcome::Native(Native::materialise(inst.clone(), then)));
+    }
+    let c = m.costs().clone();
+    match (recv, name) {
+        (Value::List(l), "sort") => {
+            let key = kwarg(kwargs, "key", &["key", "reverse"])?;
+            let reverse =
+                kwarg(kwargs, "reverse", &["key", "reverse"])?.is_some_and(|v| v.truthy());
+            if !args.is_empty() {
+                return Err(Exception::type_error());
+            }
+            m.charge(c.method_list_sort);
+            let items = l.items.borrow().clone();
+            m.charge_each(items.len(), c.factor_sort);
+            Ok(Outcome::Native(Native::sort(
+                items,
+                key,
+                reverse,
+                Some(l.clone()),
+            )))
+        }
+        (Value::List(l), "remove" | "index" | "count") => {
+            if !kwargs.is_empty() {
+                return Err(Exception::type_error());
+            }
+            m.charge(c.method_list_search);
+            let target = one(args)?.clone();
+            let mode = match name {
+                "remove" => FindMode::Remove(l.clone()),
+                "index" => FindMode::Index,
+                _ => FindMode::Count,
+            };
+            Ok(Outcome::Native(Native::Find {
+                items: l.items.borrow().clone(),
+                target,
+                i: 0,
+                count: 0,
+                mode,
+            }))
+        }
+        (Value::Tuple(t), "index" | "count") => {
+            if !kwargs.is_empty() {
+                return Err(Exception::type_error());
+            }
+            m.charge(c.method_list_search);
+            let target = one(args)?.clone();
+            let mode = if name == "index" {
+                FindMode::Index
+            } else {
+                FindMode::Count
+            };
+            Ok(Outcome::Native(Native::Find {
+                items: t.to_vec(),
+                target,
+                i: 0,
+                count: 0,
+                mode,
+            }))
+        }
+        _ => call_method(m, recv, name, args, kwargs).map(Outcome::Value),
+    }
+}
 
 const BUILTINS: &[&str] = &[
     "len",
@@ -104,41 +299,6 @@ pub fn call_builtin(
             m.charge_each(items.len(), c.factor_copy);
             m.new_list(items)
         }
-        "min" | "max" => {
-            let key = kwarg(kwargs, "key", &["key"])?;
-            m.charge(c.builtin_minmax);
-            let items: Vec<Value> = match args {
-                [single] if !matches!(single, Value::Num(_) | Value::Bool(_)) => {
-                    m.snapshot(single)?
-                }
-                [] => return Err(Exception::type_error()),
-                many => many.to_vec(),
-            };
-            if items.is_empty() {
-                return Err(Exception::value_error());
-            }
-            m.charge_each(items.len(), c.factor_traverse);
-            let keys = match &key {
-                Some(k) => items
-                    .iter()
-                    .map(|v| call_key(m, k, v))
-                    .collect::<R<Vec<Value>>>()?,
-                None => items.clone(),
-            };
-            let depth = m.limits().depth_nesting as u32;
-            let mut best = 0usize;
-            for i in 1..items.len() {
-                let replace = if name == "min" {
-                    keys[i].lt_value(&keys[best], depth)?
-                } else {
-                    keys[best].lt_value(&keys[i], depth)?
-                };
-                if replace {
-                    best = i;
-                }
-            }
-            items[best].clone()
-        }
         "sum" => {
             no_kw(kwargs)?;
             m.charge(c.builtin_sum);
@@ -159,16 +319,6 @@ pub fn call_builtin(
             no_kw(kwargs)?;
             m.charge(c.builtin_abs);
             Value::Num(one(args)?.expect_num()?.checked_abs()?)
-        }
-        "sorted" => {
-            let key = kwarg(kwargs, "key", &["key", "reverse"])?;
-            let reverse =
-                kwarg(kwargs, "reverse", &["key", "reverse"])?.is_some_and(|v| v.truthy());
-            m.charge(c.builtin_sorted);
-            let items = m.snapshot(one(args)?)?;
-            m.charge_each(items.len(), c.factor_sort);
-            let sorted = sort_values(m, items, key.as_ref(), reverse)?;
-            m.new_list(sorted)
         }
         "enumerate" => {
             no_kw(kwargs)?;
@@ -201,26 +351,6 @@ pub fn call_builtin(
                 out.push(Value::tuple(lists.iter().map(|l| l[i].clone()).collect()));
             }
             m.new_list(out)
-        }
-        "any" | "all" => {
-            no_kw(kwargs)?;
-            m.charge(c.builtin_anyall);
-            let items = m.snapshot(one(args)?)?;
-            let mut examined = 0usize;
-            let mut result = name == "all";
-            for v in &items {
-                examined = examined.wrapping_add(1);
-                if name == "any" && v.truthy() {
-                    result = true;
-                    break;
-                }
-                if name == "all" && !v.truthy() {
-                    result = false;
-                    break;
-                }
-            }
-            m.charge_each(examined, c.factor_traverse);
-            Value::Bool(result)
         }
         "int" => {
             no_kw(kwargs)?;
@@ -349,20 +479,6 @@ fn kwarg(kwargs: &[(String, Value)], name: &str, allowed: &[&str]) -> R<Option<V
         .map(|(_, v)| v.clone()))
 }
 
-/// Apply a `key=` function. Only builtins and bound methods can be called
-/// synchronously here; a `def` needs a frame, which T10's builtins do not
-/// run — so `key=` accepts a builtin or a method, and a `lambda` or `def`
-/// is a `TypeError` until the VM grows re-entrant calls.
-fn call_key(m: &mut Machine, key: &Value, v: &Value) -> R<Value> {
-    match key {
-        Value::Builtin(name) => {
-            call_builtin(m, name, std::slice::from_ref(v), &[])?.ok_or_else(Exception::type_error)
-        }
-        Value::Method(mm) => call_method(m, &mm.receiver, mm.name, std::slice::from_ref(v), &[]),
-        _ => Err(Exception::type_error()),
-    }
-}
-
 fn is_instance(v: &Value, t: &Value) -> R<bool> {
     match t {
         Value::Tuple(ts) => {
@@ -383,7 +499,12 @@ fn is_instance(v: &Value, t: &Value) -> R<bool> {
             "set" => matches!(v, Value::Set(_)),
             _ => false,
         }),
-        Value::ExcClass(class) => Ok(matches!(v, Value::Exc(e) if e.class.is_a(*class))),
+        Value::ExcClass(class) => Ok(match v {
+            Value::Exc(e) => e.class.is_a(*class),
+            Value::Inst(i) => i.class.is_exception(*class),
+            _ => false,
+        }),
+        Value::Class(c) => Ok(matches!(v, Value::Inst(i) if i.class.is_subclass_of(c))),
         _ => Err(Exception::type_error()),
     }
 }
@@ -424,54 +545,6 @@ fn dedup_values(m: &Machine, items: Vec<Value>) -> R<Vec<Value>> {
     }
     m.check_size(out.len())?;
     Ok(out)
-}
-
-/// The one sort (`syntax.md`): a top-down stable merge sort, splitting at
-/// `n // 2`, left sorted first, merging by `right < left` and taking `right`
-/// only when that is true. `reverse` merges by `left < right`, taking `right`
-/// when true.
-fn sort_values(
-    m: &mut Machine,
-    items: Vec<Value>,
-    key: Option<&Value>,
-    reverse: bool,
-) -> R<Vec<Value>> {
-    let keys: Vec<Value> = match key {
-        Some(k) => items.iter().map(|v| call_key(m, k, v)).collect::<R<_>>()?,
-        None => items.clone(),
-    };
-    let depth = m.limits().depth_nesting as u32;
-    let mut idx: Vec<usize> = (0..items.len()).collect();
-    fn merge_sort(idx: Vec<usize>, keys: &[Value], reverse: bool, depth: u32) -> R<Vec<usize>> {
-        if idx.len() <= 1 {
-            return Ok(idx);
-        }
-        let mid = idx.len().wrapping_div(2);
-        let (l, r) = idx.split_at(mid);
-        let left = merge_sort(l.to_vec(), keys, reverse, depth)?;
-        let right = merge_sort(r.to_vec(), keys, reverse, depth)?;
-        let mut out = Vec::with_capacity(idx.len());
-        let (mut i, mut j) = (0usize, 0usize);
-        while i < left.len() && j < right.len() {
-            let take_right = if reverse {
-                keys[left[i]].lt_value(&keys[right[j]], depth)?
-            } else {
-                keys[right[j]].lt_value(&keys[left[i]], depth)?
-            };
-            if take_right {
-                out.push(right[j]);
-                j = j.wrapping_add(1);
-            } else {
-                out.push(left[i]);
-                i = i.wrapping_add(1);
-            }
-        }
-        out.extend_from_slice(&left[i..]);
-        out.extend_from_slice(&right[j..]);
-        Ok(out)
-    }
-    idx = merge_sort(idx, &keys, reverse, depth)?;
-    Ok(idx.into_iter().map(|i| items[i].clone()).collect())
 }
 
 // -------------------------------------------------------------- access ---
@@ -551,6 +624,10 @@ pub fn attribute(obj: &Value, name: &str) -> R<Value> {
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.clone())
             .ok_or_else(|| Exception::attribute_error(name)),
+        Value::Inst(i) => i.get(name).ok_or_else(|| Exception::attribute_error(name)),
+        Value::Class(c) => c
+            .lookup(name)
+            .ok_or_else(|| Exception::attribute_error(name)),
         _ => Err(Exception::attribute_error(name)),
     }
 }
@@ -615,51 +692,6 @@ pub fn call_method(
                     .ok_or_else(|| Exception::new(ExcClass::IndexError, vec![]))?;
                     m.charge_each(items.len().wrapping_sub(at), c.factor_traverse);
                     Ok(items.remove(at))
-                }
-                "remove" | "index" | "count" => {
-                    m.charge(c.method_list_search);
-                    let v = one(args)?;
-                    let items = l.items.borrow().clone();
-                    let mut examined = 0usize;
-                    let mut found = None;
-                    let mut count = 0i128;
-                    for (i, x) in items.iter().enumerate() {
-                        examined = examined.wrapping_add(1);
-                        if x.eq_value(v, depth)? {
-                            if name == "count" {
-                                count = count.wrapping_add(1);
-                            } else {
-                                found = Some(i);
-                                break;
-                            }
-                        }
-                    }
-                    m.charge_each(examined, c.factor_traverse);
-                    match name {
-                        "count" => Ok(Value::int(count)),
-                        "index" => found
-                            .map(|i| Value::int(i as i128))
-                            .ok_or_else(Exception::value_error),
-                        _ => {
-                            let i = found.ok_or_else(Exception::value_error)?;
-                            l.items.borrow_mut().remove(i);
-                            Ok(Value::None)
-                        }
-                    }
-                }
-                "sort" => {
-                    let key = kwarg(kwargs, "key", &["key", "reverse"])?;
-                    let reverse =
-                        kwarg(kwargs, "reverse", &["key", "reverse"])?.is_some_and(|v| v.truthy());
-                    if !args.is_empty() {
-                        return Err(Exception::type_error());
-                    }
-                    m.charge(c.method_list_sort);
-                    let items = l.items.borrow().clone();
-                    m.charge_each(items.len(), c.factor_sort);
-                    let sorted = sort_values(m, items, key.as_ref(), reverse)?;
-                    *l.items.borrow_mut() = sorted;
-                    Ok(Value::None)
                 }
                 "reverse" => {
                     m.charge(c.method_list_reverse);
@@ -947,32 +979,6 @@ pub fn call_method(
                 _ => Err(Exception::attribute_error(name)),
             }
         }
-        Value::Tuple(t) => {
-            m.charge(c.method_list_search);
-            let v = one(args)?;
-            let mut examined = 0usize;
-            let mut found = None;
-            let mut count = 0i128;
-            for (i, x) in t.iter().enumerate() {
-                examined = examined.wrapping_add(1);
-                if x.eq_value(v, depth)? {
-                    if name == "count" {
-                        count = count.wrapping_add(1);
-                    } else {
-                        found = Some(i);
-                        break;
-                    }
-                }
-            }
-            m.charge_each(examined, c.factor_traverse);
-            match name {
-                "count" => Ok(Value::int(count)),
-                "index" => found
-                    .map(|i| Value::int(i as i128))
-                    .ok_or_else(Exception::value_error),
-                _ => Err(Exception::attribute_error(name)),
-            }
-        }
         _ => Err(Exception::attribute_error(name)),
     }
 }
@@ -1156,6 +1162,8 @@ pub fn contains(m: &mut Machine, container: &Value, x: &Value) -> R<bool> {
             m.charge_each(s.chars().count(), c.factor_char);
             Ok(s.contains(&*needle))
         }
+        // Lists and tuples with no instance inside: the plain walk. With
+        // one, `dispatch.rs` walks instead, asking `__eq__`.
         Value::List(l) => {
             let items = l.items.borrow();
             let mut examined = 0usize;

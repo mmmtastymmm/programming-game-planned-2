@@ -3,8 +3,9 @@
 //! carries no prose — its `args` is the offending value where there is one,
 //! and empty otherwise — so two peers can never disagree on a message.
 
-use crate::value::Value;
+use crate::value::{Instance, Value, exception_form};
 use std::fmt;
+use std::rc::Rc;
 
 /// The built-in exception classes, a closed set with single inheritance.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -84,14 +85,32 @@ impl ExcClass {
 }
 
 /// An exception value: its class, its `args`, and where it was raised. The
-/// location is filled in by the VM at the raising operation.
-#[derive(Clone, Debug, PartialEq)]
+/// location is filled in by the VM at the raising operation. A raised
+/// instance of a user class deriving from a built-in exception travels as
+/// `user`, with `class` the built-in ancestor `except` clauses match by.
+#[derive(Clone, Debug)]
 pub struct Exception {
     pub class: ExcClass,
     pub args: Vec<Value>,
     pub file: Option<String>,
     pub line: u32,
     pub tick: u64,
+    pub user: Option<Rc<Instance>>,
+}
+
+impl PartialEq for Exception {
+    fn eq(&self, other: &Exception) -> bool {
+        self.class == other.class
+            && self.args == other.args
+            && self.file == other.file
+            && self.line == other.line
+            && self.tick == other.tick
+            && match (&self.user, &other.user) {
+                (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
+    }
 }
 
 impl Exception {
@@ -102,6 +121,38 @@ impl Exception {
             file: None,
             line: 0,
             tick: 0,
+            user: None,
+        }
+    }
+
+    /// The exception a raised instance of a user class becomes; `None` if
+    /// its class derives from no built-in exception.
+    pub fn from_instance(inst: Rc<Instance>) -> Option<Exception> {
+        let class = inst.class.exc_base?;
+        Some(Exception {
+            class,
+            args: inst.exc_args(),
+            file: None,
+            line: 0,
+            tick: 0,
+            user: Some(inst),
+        })
+    }
+
+    /// The class name a program sees: the user class's, if there is one.
+    pub fn class_name(&self) -> String {
+        match &self.user {
+            Some(i) => i.class.name.clone(),
+            None => self.class.name().to_string(),
+        }
+    }
+
+    /// The value `except … as e` binds: the instance itself for a user
+    /// class, so its attributes are reachable.
+    pub fn as_value(&self) -> Value {
+        match &self.user {
+            Some(i) => Value::Inst(i.clone()),
+            None => Value::Exc(Rc::new(self.clone())),
         }
     }
 
@@ -126,18 +177,20 @@ impl Exception {
             self.file = Some(file.to_string());
             self.line = line;
             self.tick = tick;
+            // A user instance carries its location as attributes, so
+            // `e.line` reads the same way on every exception.
+            if let Some(i) = &self.user {
+                i.set("file", Value::str(file));
+                i.set("line", Value::int(i128::from(line)));
+                i.set("tick", Value::int(i128::from(tick)));
+            }
         }
         self
     }
 
     /// `str(e)`: the class name, then `: ` and the arguments joined by `, `.
     pub fn display(&self) -> String {
-        if self.args.is_empty() {
-            self.class.name().to_string()
-        } else {
-            let args: Vec<String> = self.args.iter().map(|a| a.to_str_value()).collect();
-            format!("{}: {}", self.class.name(), args.join(", "))
-        }
+        exception_form(&self.class_name(), &self.args)
     }
 }
 

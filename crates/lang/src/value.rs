@@ -2,10 +2,14 @@
 //! values and records. Every rule about equality, ordering, truth and
 //! printing in `docs/01-language/syntax.md` lives here.
 //!
-//! Lists, dicts and sets are **objects**: shared by reference, keyed by
-//! identity. Strings and tuples are **values**. Identity is an allocation
-//! counter the VM assigns, so it is deterministic and never observable as a
-//! number.
+//! Lists, dicts, sets, classes and instances are **objects**: shared by
+//! reference, keyed by identity. Strings and tuples are **values**. Identity
+//! is an allocation counter the VM assigns, so it is deterministic and never
+//! observable as a number.
+//!
+//! Everything here is **synchronous**: it never calls user code. The dunder
+//! dispatch `syntax.md`'s Classes section specifies is `dispatch.rs`'s, which
+//! consults these rules for every pair that has no instance in it.
 
 use crate::errors::{ExcClass, Exception};
 use crate::num::Num;
@@ -38,12 +42,167 @@ pub enum Value {
     /// A `for` loop's snapshot, on the VM stack only; never visible to a
     /// program.
     Iter(Rc<IterObj>),
+    /// A user class (`syntax.md`, Classes).
+    Class(Rc<Class>),
+    /// An instance of a user class.
+    Inst(Rc<Instance>),
+    /// A `def` found on an instance's class, bound to the instance:
+    /// `scout.step`.
+    Bound(Rc<Bound>),
 }
 
 #[derive(Debug)]
 pub struct IterObj {
     pub items: Vec<Value>,
     pub pos: std::cell::Cell<usize>,
+    /// A `for` over an instance: `x[0]`, `x[1]`, … up to `len(x)`, the
+    /// length taken once at loop entry and each item fetched as the loop
+    /// reaches it.
+    pub inst: Option<(Rc<Instance>, usize)>,
+}
+
+/// A user class: its name, its one base, and its attributes in insertion
+/// order. `exc_base` is the built-in exception class it ultimately derives
+/// from, if any, which makes its instances raisable.
+#[derive(Debug)]
+pub struct Class {
+    pub id: u64,
+    pub name: String,
+    pub base: Option<Rc<Class>>,
+    pub exc_base: Option<ExcClass>,
+    pub attrs: RefCell<Vec<(String, Value)>>,
+}
+
+impl Class {
+    /// `C.name`: this class, then each base in turn.
+    pub fn lookup(&self, name: &str) -> Option<Value> {
+        let mut c: Option<&Class> = Some(self);
+        while let Some(k) = c {
+            if let Some((_, v)) = k.attrs.borrow().iter().find(|(n, _)| n == name) {
+                return Some(v.clone());
+            }
+            c = k.base.as_deref();
+        }
+        None
+    }
+
+    pub fn set(&self, name: &str, v: Value) {
+        let mut attrs = self.attrs.borrow_mut();
+        match attrs.iter_mut().find(|(n, _)| n == name) {
+            Some(slot) => slot.1 = v,
+            None => attrs.push((name.to_string(), v)),
+        }
+    }
+
+    /// `self` is `target` or derives from it.
+    pub fn is_subclass_of(&self, target: &Class) -> bool {
+        let mut c: Option<&Class> = Some(self);
+        while let Some(k) = c {
+            if k.id == target.id {
+                return true;
+            }
+            c = k.base.as_deref();
+        }
+        false
+    }
+
+    /// `self` derives from the built-in exception class `target`.
+    pub fn is_exception(&self, target: ExcClass) -> bool {
+        self.exc_base.is_some_and(|b| b.is_a(target))
+    }
+}
+
+/// An instance: its class and its own attributes in insertion order.
+#[derive(Debug)]
+pub struct Instance {
+    pub id: u64,
+    pub class: Rc<Class>,
+    pub attrs: RefCell<Vec<(String, Value)>>,
+}
+
+impl Instance {
+    /// `x.name`: the instance, then its class chain. A `def` found on the
+    /// class comes back bound to the instance.
+    pub fn get(self: &Rc<Self>, name: &str) -> Option<Value> {
+        if let Some((_, v)) = self.attrs.borrow().iter().find(|(n, _)| n == name) {
+            return Some(v.clone());
+        }
+        match self.class.lookup(name)? {
+            Value::Func(f) => Some(Value::Bound(Rc::new(Bound {
+                func: f,
+                receiver: Value::Inst(self.clone()),
+            }))),
+            v => Some(v),
+        }
+    }
+
+    pub fn set(&self, name: &str, v: Value) {
+        let mut attrs = self.attrs.borrow_mut();
+        match attrs.iter_mut().find(|(n, _)| n == name) {
+            Some(slot) => slot.1 = v,
+            None => attrs.push((name.to_string(), v)),
+        }
+    }
+
+    /// The `def` a dunder dispatches to, unbound, if the class chain has it.
+    pub fn dunder(&self, name: &str) -> Option<Rc<Func>> {
+        match self.class.lookup(name) {
+            Some(Value::Func(f)) => Some(f),
+            _ => None,
+        }
+    }
+
+    /// `e.args` of an exception instance: the `args` attribute as a tuple,
+    /// or empty.
+    pub fn exc_args(&self) -> Vec<Value> {
+        match self.attrs.borrow().iter().find(|(n, _)| n == "args") {
+            Some((_, Value::Tuple(t))) => t.to_vec(),
+            _ => vec![],
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Bound {
+    pub func: Rc<Func>,
+    pub receiver: Value,
+}
+
+/// Whether an instance sits anywhere in a value: the test that sends an
+/// operation to `dispatch.rs`, since only an instance can run user code.
+pub fn has_instance(v: &Value, depth: u32) -> bool {
+    if depth == 0 {
+        return true;
+    }
+    match v {
+        Value::Inst(_) => true,
+        Value::List(l) => l
+            .items
+            .borrow()
+            .iter()
+            .any(|x| has_instance(x, depth.wrapping_sub(1))),
+        Value::Tuple(t) => t.iter().any(|x| has_instance(x, depth.wrapping_sub(1))),
+        Value::Dict(d) => d.items.borrow().iter().any(|(k, x)| {
+            has_instance(k, depth.wrapping_sub(1)) || has_instance(x, depth.wrapping_sub(1))
+        }),
+        Value::Set(s) => s
+            .items
+            .borrow()
+            .iter()
+            .any(|x| has_instance(x, depth.wrapping_sub(1))),
+        _ => false,
+    }
+}
+
+/// `str(e)`'s exception form: the class name, then `: ` and the arguments
+/// joined by `, ` when there are any.
+pub fn exception_form(name: &str, args: &[Value]) -> String {
+    if args.is_empty() {
+        name.to_string()
+    } else {
+        let args: Vec<String> = args.iter().map(Value::to_str_value).collect();
+        format!("{name}: {}", args.join(", "))
+    }
 }
 
 #[derive(Debug)]
@@ -118,11 +277,14 @@ impl Value {
             Value::Tuple(_) => "tuple",
             Value::Dict(_) => "dict",
             Value::Set(_) => "set",
-            Value::Func(_) | Value::Builtin(_) | Value::Method(_) => "function",
-            Value::ExcClass(_) => "type",
+            Value::Func(_) | Value::Builtin(_) | Value::Method(_) | Value::Bound(_) => "function",
+            Value::ExcClass(_) | Value::Class(_) => "type",
             Value::Exc(_) => "exception",
             Value::Record(_) => "record",
             Value::Iter(_) => "iterator",
+            // A static name is all a `&'static str` allows; the class name
+            // itself is what `to_str_value` prints.
+            Value::Inst(_) => "instance",
         }
     }
 
@@ -153,7 +315,8 @@ impl Value {
         }
     }
 
-    /// Truth: zero, empty and `None` are false.
+    /// Truth: zero, empty and `None` are false. An instance is true here;
+    /// one with `__len__` is `dispatch.rs`'s to ask.
     pub fn truthy(&self) -> bool {
         match self {
             Value::None => false,
@@ -174,6 +337,8 @@ impl Value {
             Value::List(l) => Some(l.id),
             Value::Dict(d) => Some(d.id),
             Value::Set(s) => Some(s.id),
+            Value::Inst(i) => Some(i.id),
+            Value::Class(c) => Some(c.id),
             _ => None,
         }
     }
@@ -182,7 +347,9 @@ impl Value {
     /// identity unless both are the same kind of container, in which case
     /// elementwise; different types are unequal. `depth` is the nesting
     /// depth still allowed (`execution.md`, Limits): a walk that would
-    /// descend past it raises `LimitError`.
+    /// descend past it raises `LimitError`. Instances compare by identity
+    /// here; `__eq__` is `dispatch.rs`'s, which never reaches this with an
+    /// instance on the left.
     pub fn eq_value(&self, other: &Value, depth: u32) -> R<bool> {
         if depth == 0 {
             return Err(Exception::new(ExcClass::LimitError, vec![]));
@@ -236,6 +403,9 @@ impl Value {
             (Value::ExcClass(a), Value::ExcClass(b)) => a == b,
             (Value::Exc(a), Value::Exc(b)) => Rc::ptr_eq(a, b),
             (Value::Record(a), Value::Record(b)) => a == b,
+            (Value::Inst(a), Value::Inst(b)) => Rc::ptr_eq(a, b),
+            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
+            (Value::Bound(a), Value::Bound(b)) => Rc::ptr_eq(a, b),
             _ => false,
         })
     }
@@ -309,6 +479,17 @@ impl Value {
             Value::Exc(e) => e.display(),
             Value::Record(r) => format!("<{}>", r.type_name),
             Value::Iter(_) => "<iterator>".to_string(),
+            Value::Class(c) => format!("<class {}>", c.name),
+            Value::Bound(b) => format!("<function {}>", b.func.code.name),
+            // Without `__str__` (which `dispatch.rs` handles first): the
+            // exception form for a raisable instance, `<Name>` otherwise.
+            Value::Inst(i) => {
+                if i.class.exc_base.is_some() {
+                    exception_form(&i.class.name, &i.exc_args())
+                } else {
+                    format!("<{}>", i.class.name)
+                }
+            }
         }
     }
 }
@@ -387,13 +568,13 @@ fn join_quoted(items: &[Value]) -> String {
 }
 
 /// A bounded check that a key is a legal dict/set key: a number, a string,
-/// a bool, `None`, a tuple of keys, or an object (by identity).
+/// a bool, `None`, a tuple of keys, or an instance (by identity).
 pub fn check_key(v: &Value) -> R<()> {
     match v {
-        Value::None | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
+        Value::None | Value::Bool(_) | Value::Num(_) | Value::Str(_) | Value::Inst(_) => Ok(()),
         Value::Tuple(t) => t.iter().try_for_each(check_key),
-        // Instances are keys by identity (T11); everything else — a list,
-        // dict, set, function, record — is a `TypeError`.
+        // Everything else — a list, dict, set, function, record — is a
+        // `TypeError`.
         _ => Err(Exception::type_error()),
     }
 }

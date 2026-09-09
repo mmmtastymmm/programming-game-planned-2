@@ -46,6 +46,12 @@ pub enum StmtKind {
         params: Params,
         body: Vec<Stmt>,
     },
+    /// `class Name(Base):` — at most one base, named by an expression.
+    Class {
+        name: String,
+        base: Option<Expr>,
+        body: Vec<Stmt>,
+    },
     Return(Option<Expr>),
     Try {
         body: Vec<Stmt>,

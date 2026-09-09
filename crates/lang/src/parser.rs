@@ -12,6 +12,13 @@ pub struct Parser<'a> {
     pos: usize,
     /// Depth of `def` bodies, to refuse a nested `def`.
     def_depth: u32,
+    /// Whether a `def` may open here: at the module's top level and directly
+    /// in a `class` body, not inside any other compound statement.
+    def_allowed: bool,
+    /// Whether a `class` may open here: the module's top level only.
+    top_level: bool,
+    /// Set by `class` for the block it is about to parse.
+    next_block_is_class: bool,
 }
 
 type P<T> = Result<T, LoadError>;
@@ -24,6 +31,9 @@ pub fn parse_file(file: &str, src: &str) -> P<Vec<Stmt>> {
         toks,
         pos: 0,
         def_depth: 0,
+        def_allowed: true,
+        top_level: true,
+        next_block_is_class: false,
     };
     let mut stmts = Vec::new();
     while !p.at(&Tok::Eof) {
@@ -48,6 +58,9 @@ fn parse_expr_src(file: &str, line: u32, src: &str) -> P<Expr> {
         toks,
         pos: 0,
         def_depth: 1,
+        def_allowed: false,
+        top_level: false,
+        next_block_is_class: false,
     };
     let e = p.expr()?;
     if !p.at(&Tok::Eof) {
@@ -156,6 +169,16 @@ impl<'a> Parser<'a> {
     // ------------------------------------------------------ statements ---
 
     fn block(&mut self) -> P<Vec<Stmt>> {
+        let saved = (self.def_allowed, self.top_level);
+        self.def_allowed = self.next_block_is_class;
+        self.next_block_is_class = false;
+        self.top_level = false;
+        let out = self.block_inner();
+        (self.def_allowed, self.top_level) = saved;
+        out
+    }
+
+    fn block_inner(&mut self) -> P<Vec<Stmt>> {
         self.expect_op(":")?;
         if self.at(&Tok::Newline) {
             self.bump();
@@ -234,6 +257,11 @@ impl<'a> Parser<'a> {
                         "functions do not nest: a `def` inside a `def` is not in the language",
                     ));
                 }
+                if !self.def_allowed {
+                    return Err(self.err(
+                        "a `def` belongs at the module's top level or directly in a `class` body, not inside a compound statement",
+                    ));
+                }
                 let name = self.expect_name()?;
                 self.expect_op("(")?;
                 let params = self.params(")")?;
@@ -251,7 +279,46 @@ impl<'a> Parser<'a> {
                 Some(self.try_stmt()?)
             }
             Tok::Keyword("class") => {
-                return Err(self.err("`class` is not in this slice of the language yet (T11)"));
+                self.bump();
+                if !self.top_level {
+                    return Err(self.err("a `class` belongs at the module's top level only"));
+                }
+                let name = self.expect_name()?;
+                let base = if self.eat_op("(") {
+                    if self.eat_op(")") {
+                        None
+                    } else {
+                        let b = self.expr()?;
+                        if self.eat_op(",") {
+                            return Err(self.err(
+                                "multiple inheritance is not in the language: a class has one base or none",
+                            ));
+                        }
+                        self.expect_op(")")?;
+                        Some(b)
+                    }
+                } else {
+                    None
+                };
+                self.next_block_is_class = true;
+                let body = self.block()?;
+                for st in &body {
+                    match &st.kind {
+                        StmtKind::Def { .. }
+                        | StmtKind::Assign { .. }
+                        | StmtKind::AugAssign { .. }
+                        | StmtKind::Pass
+                        | StmtKind::Expr(_) => {}
+                        _ => {
+                            return Err(LoadError {
+                                file: self.file.to_string(),
+                                line: st.line,
+                                message: "a `class` body holds `def`s, assignments, `pass` and expression statements only".into(),
+                            });
+                        }
+                    }
+                }
+                Some(StmtKind::Class { name, base, body })
             }
             Tok::Keyword("match") => {
                 return Err(self.err("`match` is not in this slice of the language yet (T12)"));
@@ -1178,7 +1245,10 @@ mod tests {
         assert!(fails("x = (y for y in z)"));
         assert!(fails("a is b"));
         assert!(fails("del x"));
-        assert!(fails("class A:\n    pass\n"));
+        assert!(fails("class A(B, C):\n    pass\n"));
+        assert!(fails("if x:\n    class A:\n        pass\n"));
+        assert!(fails("if x:\n    def f():\n        pass\n"));
+        assert!(fails("class A:\n    if x:\n        pass\n"));
         assert!(fails("import m"));
         assert!(fails("def f(a=1, b):\n    pass\n"));
         assert!(fails("return 1"));
