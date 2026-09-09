@@ -1,0 +1,13 @@
+[package]
+name = "lang"
+version.workspace = true
+edition.workspace = true
+description = "The unit language: a Python-shaped interpreter, deterministic by construction (docs/01-language.md)"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only for reading the two data tables at load. Nothing that touches a value a
+# program sees comes from a dependency (docs/01-language.md, invariant 1).
+toml = "0.9"
