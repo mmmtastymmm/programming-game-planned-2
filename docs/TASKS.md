@@ -73,6 +73,17 @@ a 256-bit intermediate: a
 hand-written wide-arithmetic routine, bit-identical on every target, which T14
 pins with a fixture at its boundary cases.
 
+*Progress (2026-09-09):* `crates/lang` exists — lexer, parser, compiler to a
+resumable bytecode, the metered evaluator, `num` with its wide routine, the
+language builtins and methods, the cost and limit tables with the row↔key
+check in both directions, and a program-level test suite plus a cross-process
+trace check. Game builtins resolve by their `[game]` row and go to a `Host`
+trait the sim will implement (T7). **Still open under this task:** the
+live-values limit (nothing measures it yet), the source nesting-depth parse
+error, and `key=` on `sorted`, `min`, `max` and `list.sort` accepting only a
+builtin or bound method until the evaluator can re-enter a `def` from a
+builtin. Hook budgets and the interrupt kinds beyond `fault` are T7's.
+
 **T11 — `class` with single inheritance and a closed dunder set** ⚠HASH
 
 **T12 — `match`/`case`** ⚠HASH
