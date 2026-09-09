@@ -22,8 +22,8 @@
 //! - [`data`] — the cost and limit tables, loaded from `data/language/`.
 //!
 //! T10 built the lexer, the procedural core, metering, costs and limits;
-//! T11 added `class`. `match` and `import` are T12 and T13; the interrupt
-//! kinds beyond `fault` land with the sim that raises them (T7).
+//! T11 added `class` and T12 `match`. `import` is T13; the interrupt kinds
+//! beyond `fault` land with the sim that raises them (T7).
 
 pub mod ast;
 pub mod builtins;

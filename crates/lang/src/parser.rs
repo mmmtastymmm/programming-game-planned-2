@@ -321,7 +321,8 @@ impl<'a> Parser<'a> {
                 Some(StmtKind::Class { name, base, body })
             }
             Tok::Keyword("match") => {
-                return Err(self.err("`match` is not in this slice of the language yet (T12)"));
+                self.bump();
+                Some(self.match_stmt()?)
             }
             Tok::Keyword("import") | Tok::Keyword("from") => {
                 return Err(self.err("`import` is not in this slice of the language yet (T13)"));
@@ -453,6 +454,274 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(params)
+    }
+
+    // --------------------------------------------------------- match ---
+
+    fn match_stmt(&mut self) -> P<StmtKind> {
+        if self.at(&Tok::Op("=")) || self.at(&Tok::Op(".")) || self.at(&Tok::Op("(")) {
+            return Err(self.err("`match` is a reserved word"));
+        }
+        let subject = self.expr()?;
+        self.expect_op(":")?;
+        if !self.at(&Tok::Newline) {
+            return Err(self.err("`match` takes a block of `case` arms"));
+        }
+        self.bump();
+        if !self.at(&Tok::Indent) {
+            return Err(self.err("expected an indented block of `case` arms"));
+        }
+        self.bump();
+        let mut arms = Vec::new();
+        while self.eat_kw("case") {
+            let line = self.line();
+            let pattern = self.pattern()?;
+            let mut names = Vec::new();
+            pattern.bound_names(&mut names);
+            let mut seen: Vec<&String> = Vec::new();
+            for n in &names {
+                if seen.contains(&n) {
+                    return Err(self.err(format!("a pattern binds `{n}` twice")));
+                }
+                seen.push(n);
+            }
+            let guard = if self.eat_kw("if") {
+                Some(self.expr()?)
+            } else {
+                None
+            };
+            let body = self.block()?;
+            arms.push(Arm {
+                pattern,
+                guard,
+                body,
+                line,
+            });
+        }
+        if arms.is_empty() {
+            return Err(self.err("a `match` needs at least one `case`"));
+        }
+        if !self.at(&Tok::Dedent) {
+            return Err(self.err("a `match` block holds `case` arms only"));
+        }
+        self.bump();
+        Ok(StmtKind::Match { subject, arms })
+    }
+
+    /// An or-pattern, then an optional `as name`.
+    fn pattern(&mut self) -> P<Pattern> {
+        let mut alts = vec![self.closed_pattern()?];
+        while self.eat_op("|") {
+            alts.push(self.closed_pattern()?);
+        }
+        let mut p = if alts.len() == 1 {
+            alts.pop().unwrap_or(Pattern::Wildcard)
+        } else {
+            // Alternatives must bind the same names (`syntax.md`).
+            let mut first = Vec::new();
+            alts[0].bound_names(&mut first);
+            first.sort();
+            for alt in &alts[1..] {
+                let mut names = Vec::new();
+                alt.bound_names(&mut names);
+                names.sort();
+                if names != first {
+                    return Err(
+                        self.err("the alternatives of a `|` pattern must bind the same names")
+                    );
+                }
+            }
+            Pattern::Or(alts)
+        };
+        if self.eat_kw("as") {
+            let n = self.expect_name()?;
+            if n == "_" {
+                return Err(self.err("`as _` binds nothing; drop the `as`"));
+            }
+            p = Pattern::As(Box::new(p), n);
+        }
+        Ok(p)
+    }
+
+    fn literal_pattern(&mut self) -> P<Option<Expr>> {
+        let line = self.line();
+        let kind = match self.peek().clone() {
+            Tok::Num(n) => {
+                self.bump();
+                ExprKind::Num(n)
+            }
+            Tok::Op("-") => {
+                if let Tok::Num(n) = self.peek_at(1).clone() {
+                    self.bump();
+                    self.bump();
+                    ExprKind::Num(n.checked_neg().map_err(|_| self.err("literal"))?)
+                } else {
+                    return Err(self.err("`-` in a pattern precedes a number"));
+                }
+            }
+            Tok::Str(s) => {
+                self.bump();
+                let mut s = s;
+                while let Tok::Str(next) = self.peek().clone() {
+                    self.bump();
+                    s.push_str(&next);
+                }
+                ExprKind::Str(s)
+            }
+            Tok::Keyword("True") => {
+                self.bump();
+                ExprKind::Bool(true)
+            }
+            Tok::Keyword("False") => {
+                self.bump();
+                ExprKind::Bool(false)
+            }
+            Tok::Keyword("None") => {
+                self.bump();
+                ExprKind::None
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(Expr { kind, line }))
+    }
+
+    fn closed_pattern(&mut self) -> P<Pattern> {
+        if let Some(lit) = self.literal_pattern()? {
+            return Ok(Pattern::Literal(lit));
+        }
+        let line = self.line();
+        match self.peek().clone() {
+            Tok::Name(n) if n == "_" => {
+                self.bump();
+                Ok(Pattern::Wildcard)
+            }
+            Tok::Name(n) => {
+                self.bump();
+                if self.eat_op("(") {
+                    let mut kwargs = Vec::new();
+                    while !self.at(&Tok::Op(")")) {
+                        let Tok::Name(k) = self.peek().clone() else {
+                            return Err(self.err(
+                                "a class pattern takes keyword sub-patterns only: positional ones need `__match_args__`, which does not exist",
+                            ));
+                        };
+                        if !matches!(self.peek_at(1), Tok::Op("=")) {
+                            return Err(self.err(
+                                "a class pattern takes keyword sub-patterns only: positional ones need `__match_args__`, which does not exist",
+                            ));
+                        }
+                        self.bump();
+                        self.bump();
+                        if kwargs.iter().any(|(name, _)| *name == k) {
+                            return Err(self.err(format!("`{k}` appears twice in a class pattern")));
+                        }
+                        kwargs.push((k, self.pattern()?));
+                        if !self.eat_op(",") {
+                            break;
+                        }
+                    }
+                    self.expect_op(")")?;
+                    return Ok(Pattern::Class {
+                        class: Expr {
+                            kind: ExprKind::Name(n),
+                            line,
+                        },
+                        kwargs,
+                    });
+                }
+                if self.at(&Tok::Op(".")) {
+                    return Err(self
+                        .err("a dotted value pattern is not in the language; compare in a guard"));
+                }
+                Ok(Pattern::Capture(n))
+            }
+            Tok::Op("*") => {
+                self.bump();
+                let n = self.expect_name()?;
+                Ok(Pattern::Star(if n == "_" { None } else { Some(n) }))
+            }
+            Tok::Op("[") => {
+                self.bump();
+                let items = self.sequence_items("]")?;
+                self.checked_sequence(items)
+            }
+            Tok::Op("(") => {
+                self.bump();
+                if self.eat_op(")") {
+                    return Ok(Pattern::Sequence(vec![]));
+                }
+                let first = self.pattern_or_star()?;
+                if self.eat_op(",") {
+                    let mut items = vec![first];
+                    items.extend(self.sequence_items(")")?);
+                    return self.checked_sequence(items);
+                }
+                self.expect_op(")")?;
+                if matches!(first, Pattern::Star(_)) {
+                    return Err(self.err("a `*` pattern belongs inside a sequence pattern"));
+                }
+                Ok(first)
+            }
+            Tok::Op("{") => {
+                self.bump();
+                let mut pairs = Vec::new();
+                let mut rest = None;
+                while !self.at(&Tok::Op("}")) {
+                    if self.eat_op("**") {
+                        let n = self.expect_name()?;
+                        if rest.is_some() {
+                            return Err(self.err("one `**rest` per mapping pattern"));
+                        }
+                        rest = Some(n);
+                    } else {
+                        let Some(key) = self.literal_pattern()? else {
+                            return Err(self.err("a mapping pattern's keys are literals"));
+                        };
+                        self.expect_op(":")?;
+                        pairs.push((key, self.pattern()?));
+                    }
+                    if !self.eat_op(",") {
+                        break;
+                    }
+                }
+                self.expect_op("}")?;
+                Ok(Pattern::Mapping { pairs, rest })
+            }
+            Tok::Keyword(k) => Err(self.err(format!("`{k}` cannot start a pattern"))),
+            _ => Err(self.err("expected a pattern")),
+        }
+    }
+
+    fn pattern_or_star(&mut self) -> P<Pattern> {
+        if self.at(&Tok::Op("*")) {
+            self.closed_pattern()
+        } else {
+            self.pattern()
+        }
+    }
+
+    /// Comma-separated patterns up to `close`, which is consumed.
+    fn sequence_items(&mut self, close: &'static str) -> P<Vec<Pattern>> {
+        let mut items = Vec::new();
+        while !self.at(&Tok::Op(close)) {
+            items.push(self.pattern_or_star()?);
+            if !self.eat_op(",") {
+                break;
+            }
+        }
+        self.expect_op(close)?;
+        Ok(items)
+    }
+
+    fn checked_sequence(&self, items: Vec<Pattern>) -> P<Pattern> {
+        let stars = items
+            .iter()
+            .filter(|p| matches!(p, Pattern::Star(_)))
+            .count();
+        if stars > 1 {
+            return Err(self.err("one `*` per sequence pattern"));
+        }
+        Ok(Pattern::Sequence(items))
     }
 
     fn simple_statement(&mut self) -> P<Stmt> {
