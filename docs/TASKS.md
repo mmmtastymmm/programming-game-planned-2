@@ -84,8 +84,6 @@ parse error. Hook budgets and the interrupt kinds beyond `fault` are T7's.
 (`key=` taking only a builtin was a gap here until T11's dispatcher let a
 builtin re-enter a `def`.)
 
-**T12 — `match`/`case`** ⚠HASH
-
 **T13 — `import` over a closed module set** ⚠HASH
 
 Program identity and circular imports follow **determinism rule 7** (CLAUDE.md),
