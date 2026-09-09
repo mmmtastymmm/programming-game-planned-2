@@ -10,14 +10,16 @@
 //! (T7) and land there.
 
 use crate::ast::{BinOp, CmpOp, UnaryOp};
-use crate::builtins;
+use crate::builtins::{self, Outcome};
 use crate::compile::{Code, Instr, compile_module};
 use crate::data::{Costs, Limits};
+use crate::dispatch::{Native, Need, Then};
 use crate::errors::{ExcClass, Exception, LoadError};
 use crate::num::Num;
 use crate::parser::parse_file;
 use crate::value::{
-    DictObj, Func, IterObj, ListObj, Method, R, SetObj, Value, check_key, dict_find, set_find,
+    Class, DictObj, Func, IterObj, ListObj, Method, R, SetObj, Value, check_key, dict_find,
+    has_instance, set_find,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -163,6 +165,26 @@ struct Frame {
     handling: Vec<Rc<Exception>>,
     /// An exception a `finally` will re-raise when it ends.
     pending: Option<Exception>,
+    /// Operations of this frame that are waiting on user code
+    /// (`dispatch.rs`), innermost last. While one is here the frame runs no
+    /// instruction of its own: every frame above it was pushed by the
+    /// native.
+    natives: Vec<Native>,
+    /// What the frame does with the outermost native's answer, when it is
+    /// not simply pushed: a conditional jump whose condition ran `__len__`.
+    after: Option<After>,
+    /// For a `class` body: the base class, so `ReturnClass` can build it.
+    class_base: Option<Value>,
+}
+
+/// A jump deferred until its condition's truth is known.
+struct After {
+    target: usize,
+    jump_if: bool,
+    /// The operand to keep on the stack when the jump is not taken
+    /// (`and`/`or`), or for the `Keep` forms when it is.
+    keep: Option<Value>,
+    pop: bool,
 }
 
 impl Frame {
@@ -176,6 +198,9 @@ impl Frame {
             blocks: Vec::new(),
             handling: Vec::new(),
             pending: None,
+            natives: Vec::new(),
+            after: None,
+            class_base: None,
         }
     }
 }
@@ -196,6 +221,10 @@ pub struct Machine {
     next_object_id: u64,
     /// Set while a host call is waiting; `resume` pushes its result.
     waiting: bool,
+    /// The waiting host call was a native's (`log` of an instance): its
+    /// result goes to the native, not the frame's stack.
+    native_waiting: bool,
+    native_input: Option<Value>,
     /// The last fault, as `execution.md` defines the record.
     pub fault_record: Option<Exception>,
     pub tick: u64,
@@ -214,6 +243,8 @@ impl Machine {
             restarted_this_tick: false,
             next_object_id: 1,
             waiting: false,
+            native_waiting: false,
+            native_input: None,
             fault_record: None,
             tick: 0,
         };
@@ -227,6 +258,8 @@ impl Machine {
         self.frames.clear();
         self.frames.push(Frame::new(self.program.clone()));
         self.waiting = false;
+        self.native_waiting = false;
+        self.native_input = None;
     }
 
     /// Replace the program (a `redeploy`'s swap) and start it from the top.
@@ -235,7 +268,7 @@ impl Machine {
         self.start_main();
     }
 
-    fn alloc_id(&mut self) -> u64 {
+    pub(crate) fn alloc_id(&mut self) -> u64 {
         let id = self.next_object_id;
         self.next_object_id = self.next_object_id.wrapping_add(1);
         id
@@ -289,11 +322,199 @@ impl Machine {
         }
     }
 
+    /// Put an instruction's operands back — `below`, then `mid`, then
+    /// `above` — and step back to run it again, now that `mid` is a plain
+    /// list where an instance was.
+    pub(crate) fn restore_and_rewind(&mut self, below: Vec<Value>, mid: Value, above: Vec<Value>) {
+        let f = self.frame();
+        f.stack.extend(below);
+        f.stack.push(mid);
+        f.stack.extend(above);
+        f.pc = f.pc.saturating_sub(1);
+    }
+
+    /// Start a native on the current frame and run it as far as it goes
+    /// without user code.
+    fn start_native(&mut self, host: &mut dyn Host, n: Native) -> R<Step> {
+        self.frame().natives.push(n);
+        self.drive(host, None)
+    }
+
+    /// Step the frame's innermost native with `input`, then whatever it
+    /// unblocks, until one needs a call (pushed here) or all are done.
+    fn drive(&mut self, host: &mut dyn Host, mut input: Option<Value>) -> R<Step> {
+        loop {
+            let Some(mut nat) = self.frame().natives.pop() else {
+                return Ok(Step::Continue);
+            };
+            match nat.step(self, input.take())? {
+                Need::Done(v) => {
+                    if !self.frame().natives.is_empty() {
+                        input = v;
+                        continue;
+                    }
+                    let after = self.frame().after.take();
+                    match (after, v) {
+                        (Some(a), Some(truth)) => {
+                            let t = matches!(truth, Value::Bool(true));
+                            let f = self.frame();
+                            if t == a.jump_if {
+                                if !a.pop
+                                    && let Some(k) = a.keep
+                                {
+                                    f.stack.push(k);
+                                }
+                                f.pc = a.target;
+                            } else if !a.pop
+                                && let Some(k) = a.keep
+                            {
+                                f.stack.push(k);
+                            }
+                        }
+                        (_, Some(v)) => self.push(v),
+                        (_, None) => {}
+                    }
+                    return Ok(Step::Continue);
+                }
+                Need::Sub(sub) => {
+                    let f = self.frame();
+                    f.natives.push(nat);
+                    f.natives.push(sub);
+                }
+                Need::Host { name, args, kwargs } => {
+                    self.frame().natives.push(nat);
+                    match self.costs.game_cost(&name) {
+                        Some(cost) => self.charge(cost),
+                        None => return Err(Exception::name_error(&name)),
+                    }
+                    match host.call(&name, args, kwargs)? {
+                        HostCall::Value(v) => input = Some(v),
+                        HostCall::Wait => {
+                            self.native_waiting = true;
+                            return Ok(Step::Wait);
+                        }
+                        HostCall::Unknown => return Err(Exception::name_error(&name)),
+                    }
+                }
+                Need::Call {
+                    func,
+                    args,
+                    kwargs,
+                    self_uncharged,
+                } => {
+                    self.frame().natives.push(nat);
+                    match func {
+                        // A `key=` may be a builtin, a method of a built-in
+                        // type, or a class; those answer here, without a
+                        // frame. A game builtin cannot be a key: it needs
+                        // the host, which no native holds.
+                        Value::Builtin(name) => {
+                            match builtins::builtin_entry(self, &name, &args, &kwargs)? {
+                                Outcome::Value(v) => input = Some(v),
+                                Outcome::Native(n) => self.frame().natives.push(n),
+                                Outcome::NotOurs => return Err(Exception::type_error()),
+                            }
+                        }
+                        Value::Method(m) => {
+                            match builtins::method_entry(self, &m.receiver, m.name, &args, &kwargs)?
+                            {
+                                Outcome::Value(v) => input = Some(v),
+                                Outcome::Native(n) => self.frame().natives.push(n),
+                                Outcome::NotOurs => return Err(Exception::type_error()),
+                            }
+                        }
+                        Value::Class(class) => {
+                            let c = self.costs.clone();
+                            self.charge(c.op_construct);
+                            self.frame().natives.push(Native::Construct {
+                                class,
+                                args,
+                                kwargs,
+                                inst: None,
+                                then_raise: false,
+                            });
+                        }
+                        Value::ExcClass(class) => {
+                            let c = self.costs.clone();
+                            self.charge(c.op_construct);
+                            if !kwargs.is_empty() {
+                                return Err(Exception::type_error());
+                            }
+                            input = Some(Value::Exc(Rc::new(Exception::new(class, args))));
+                        }
+                        other => return self.call_user(other, args, kwargs, self_uncharged),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Push a frame for a `def` (or a method bound to its receiver).
+    fn call_user(
+        &mut self,
+        func: Value,
+        mut args: Vec<Value>,
+        kwargs: Vec<(String, Value)>,
+        self_uncharged: bool,
+    ) -> R<Step> {
+        let f = match func {
+            Value::Func(f) => f,
+            Value::Bound(b) => {
+                args.insert(0, b.receiver.clone());
+                b.func.clone()
+            }
+            _ => return Err(Exception::type_error()),
+        };
+        let c = self.costs.clone();
+        self.charge(c.op_call);
+        let charged = args.len().saturating_sub(usize::from(self_uncharged));
+        self.charge_each(charged.saturating_add(kwargs.len()), c.op_argument);
+        if self.frames.len() as u64 >= self.limits.depth_call {
+            return Err(Exception::new(ExcClass::RecursionError, vec![]));
+        }
+        let frame = bind_arguments(&f, args, kwargs, self)?;
+        self.frames.push(frame);
+        Ok(Step::Continue)
+    }
+
+    /// A conditional jump whose condition may run `__len__`.
+    fn jump_on_truth(
+        &mut self,
+        host: &mut dyn Host,
+        v: Value,
+        target: usize,
+        jump_if: bool,
+        pop: bool,
+    ) -> R<Step> {
+        let needs_call = matches!(&v, Value::Inst(i) if i.dunder("__len__").is_some());
+        if !needs_call {
+            let t = v.truthy();
+            let f = self.frame();
+            if !pop {
+                f.stack.push(v);
+            }
+            if t == jump_if {
+                f.pc = target;
+            }
+            return Ok(Step::Continue);
+        }
+        self.frame().after = Some(After {
+            target,
+            jump_if,
+            keep: Some(v.clone()),
+            pop,
+        });
+        self.start_native(host, Native::JumpTruth { v, stage: 0 })
+    }
+
     /// Resume a waiting host call with its result.
     pub fn resume(&mut self, value: Value) {
         if self.waiting {
             self.waiting = false;
-            if let Some(f) = self.frames.last_mut() {
+            if self.native_waiting {
+                self.native_waiting = false;
+                self.native_input = Some(value);
+            } else if let Some(f) = self.frames.last_mut() {
                 f.stack.push(value);
             }
         }
@@ -323,7 +544,11 @@ impl Machine {
             if self.spent >= budget {
                 return Slice::Yield;
             }
-            match self.step(host) {
+            let stepped = match self.native_input.take() {
+                Some(v) => self.drive(host, Some(v)),
+                None => self.step(host),
+            };
+            match stepped {
                 Ok(Step::Continue) => {}
                 Ok(Step::Wait) => {
                     self.waiting = true;
@@ -373,13 +598,16 @@ impl Machine {
             let Some(frame) = self.frames.last_mut() else {
                 return Some(exc);
             };
+            // An operation waiting on user code is abandoned with it.
+            frame.natives.clear();
+            frame.after = None;
             if let Some(block) = frame.blocks.pop() {
                 frame.stack.truncate(block.stack_len);
                 frame.handling.truncate(block.handling_len);
                 match block.kind {
                     BlockKind::Except(handler) => {
                         frame.handling.push(Rc::new(exc.clone()));
-                        frame.stack.push(Value::Exc(Rc::new(exc)));
+                        frame.stack.push(exc.as_value());
                         frame.pc = handler;
                     }
                     BlockKind::Finally(target) => {
@@ -509,12 +737,39 @@ impl Machine {
             Instr::BinOp(op) => {
                 let r = self.pop()?;
                 let l = self.pop()?;
+                if let Value::Inst(a) = &l {
+                    // `+ - *` with the instance on the left; no reflected
+                    // form, so an instance on the right alone is the
+                    // `TypeError` `binop` raises.
+                    self.charge(c.op_operator);
+                    return self.start_native(
+                        host,
+                        Native::BinOp {
+                            op,
+                            a: a.clone(),
+                            b: r,
+                        },
+                    );
+                }
                 let v = self.binop(op, l, r)?;
                 self.push(v);
             }
             Instr::UnaryOp(op) => {
                 self.charge(c.op_operator);
                 let v = self.pop()?;
+                if let Value::Inst(a) = &v {
+                    return match op {
+                        UnaryOp::Not => self.start_native(
+                            host,
+                            Native::Not {
+                                v: v.clone(),
+                                stage: 0,
+                            },
+                        ),
+                        UnaryOp::Neg => self.start_native(host, Native::Neg { a: a.clone() }),
+                        UnaryOp::Pos => Err(Exception::type_error()),
+                    };
+                }
                 let out = match op {
                     UnaryOp::Not => Value::Bool(!v.truthy()),
                     UnaryOp::Neg => Value::Num(v.expect_num()?.checked_neg()?),
@@ -525,31 +780,38 @@ impl Machine {
             Instr::Compare(op) => {
                 let r = self.pop()?;
                 let l = self.pop()?;
+                let depth = self.limits.depth_nesting as u32;
+                if has_instance(&l, depth) || has_instance(&r, depth) {
+                    self.charge(c.op_operator);
+                    return self.start_native(
+                        host,
+                        Native::Cmp {
+                            op,
+                            a: l,
+                            b: r,
+                            stage: 0,
+                        },
+                    );
+                }
                 let v = self.compare(op, &l, &r)?;
                 self.push(Value::Bool(v));
             }
             Instr::Jump(t) => self.frame().pc = t,
             Instr::JumpIfFalsePop(t) => {
-                if !self.pop()?.truthy() {
-                    self.frame().pc = t;
-                }
+                let v = self.pop()?;
+                return self.jump_on_truth(host, v, t, false, true);
             }
             Instr::JumpIfTruePop(t) => {
-                if self.pop()?.truthy() {
-                    self.frame().pc = t;
-                }
+                let v = self.pop()?;
+                return self.jump_on_truth(host, v, t, true, true);
             }
             Instr::JumpIfFalseKeep(t) => {
-                let keep = !self.frame().stack.last().is_some_and(Value::truthy);
-                if keep {
-                    self.frame().pc = t;
-                }
+                let v = self.pop()?;
+                return self.jump_on_truth(host, v, t, false, false);
             }
             Instr::JumpIfTrueKeep(t) => {
-                let keep = self.frame().stack.last().is_some_and(Value::truthy);
-                if keep {
-                    self.frame().pc = t;
-                }
+                let v = self.pop()?;
+                return self.jump_on_truth(host, v, t, true, false);
             }
             Instr::BuildList(n) => {
                 self.charge(c.op_display);
@@ -647,6 +909,13 @@ impl Machine {
             }
             Instr::ListExtend => {
                 let iterable = self.pop()?;
+                if let Value::Inst(inst) = &iterable {
+                    let then = Then::Restore {
+                        below: vec![],
+                        above: vec![],
+                    };
+                    return self.start_native(host, Native::materialise(inst.clone(), then));
+                }
                 let items = self.snapshot(&iterable)?;
                 if let Some(Value::List(l)) = self.frame().stack.last().cloned() {
                     let mut dst = l.items.borrow_mut();
@@ -659,6 +928,15 @@ impl Machine {
                 self.charge(c.op_subscript);
                 let idx = self.pop()?;
                 let obj = self.pop()?;
+                if let Value::Inst(i) = &obj {
+                    return self.start_native(
+                        host,
+                        Native::GetItem {
+                            obj: i.clone(),
+                            idx,
+                        },
+                    );
+                }
                 let v = builtins::subscript(self, &obj, &idx)?;
                 self.push(v);
             }
@@ -667,6 +945,17 @@ impl Machine {
                 let idx = self.pop()?;
                 let obj = self.pop()?;
                 let v = self.pop()?;
+                if let Value::Inst(i) = &obj {
+                    return self.start_native(
+                        host,
+                        Native::SetItem {
+                            obj: i.clone(),
+                            idx,
+                            v,
+                            stage: 0,
+                        },
+                    );
+                }
                 builtins::store_subscript(self, &obj, idx, v)?;
             }
             Instr::BuildSlice => {
@@ -685,8 +974,16 @@ impl Machine {
                 let v = builtins::attribute(&obj, &name)?;
                 self.push(v);
             }
-            Instr::StoreAttr(_) => {
-                return Err(Exception::type_error());
+            Instr::StoreAttr(i) => {
+                self.charge(c.op_attribute);
+                let obj = self.pop()?;
+                let v = self.pop()?;
+                let name = code.names.get(i).cloned().unwrap_or_default();
+                match &obj {
+                    Value::Inst(inst) => inst.set(&name, v),
+                    Value::Class(class) => class.set(&name, v),
+                    _ => return Err(Exception::type_error()),
+                }
             }
             Instr::Call {
                 argc,
@@ -707,6 +1004,16 @@ impl Machine {
                 let star_v = if star { Some(self.pop()?) } else { None };
                 let mut args = self.pop_n(argc)?;
                 let func = self.pop()?;
+                if let Some(Value::Inst(inst)) = &star_v {
+                    // `f(*x)` with an instance: gather `x`'s items, then run
+                    // the call again with a list in its place.
+                    let mut below = vec![func];
+                    below.extend(args);
+                    let mut above = kwvals;
+                    above.extend(dstar_v);
+                    let then = Then::Restore { below, above };
+                    return self.start_native(host, Native::materialise(inst.clone(), then));
+                }
                 if let Some(s) = star_v {
                     let extra = self.snapshot(&s)?;
                     self.charge(c.op_operator);
@@ -743,16 +1050,68 @@ impl Machine {
                     .ok_or_else(Exception::type_error)?;
                 self.push(Value::Func(Rc::new(Func { code, defaults })));
             }
+            Instr::BuildClass { child, has_base } => {
+                self.charge(c.op_literal);
+                let base = if has_base { Some(self.pop()?) } else { None };
+                if let Some(b) = &base
+                    && !matches!(b, Value::Class(_) | Value::ExcClass(_))
+                {
+                    return Err(Exception::type_error());
+                }
+                let body = code
+                    .children
+                    .get(child)
+                    .cloned()
+                    .ok_or_else(Exception::type_error)?;
+                if self.frames.len() as u64 >= self.limits.depth_call {
+                    return Err(Exception::new(ExcClass::RecursionError, vec![]));
+                }
+                let mut frame = Frame::new(body);
+                frame.class_base = base;
+                self.frames.push(frame);
+            }
+            Instr::ReturnClass => {
+                let Some(frame) = self.frames.pop() else {
+                    return Err(Exception::type_error());
+                };
+                let attrs: Vec<(String, Value)> = frame
+                    .code
+                    .local_names
+                    .iter()
+                    .zip(frame.locals.iter())
+                    .filter_map(|(n, v)| v.clone().map(|v| (n.clone(), v)))
+                    .collect();
+                let (base, exc_base) = match frame.class_base {
+                    Some(Value::Class(b)) => (Some(b.clone()), b.exc_base),
+                    Some(Value::ExcClass(e)) => (None, Some(e)),
+                    _ => (None, None),
+                };
+                let class = Rc::new(Class {
+                    id: self.alloc_id(),
+                    name: frame.code.name.clone(),
+                    base,
+                    exc_base,
+                    attrs: RefCell::new(attrs),
+                });
+                self.push(Value::Class(class));
+            }
             Instr::Return => {
                 let v = self.pop()?;
                 let done = self.frames.pop().is_some_and(|f| f.code.is_module);
                 if done || self.frames.is_empty() {
                     return Ok(Step::MainEnded);
                 }
+                if !self.frame().natives.is_empty() {
+                    // The call was a native's: hand the result back to it.
+                    return self.drive(host, Some(v));
+                }
                 self.push(v);
             }
             Instr::GetIter => {
                 let v = self.pop()?;
+                if let Value::Inst(i) = &v {
+                    return self.start_native(host, Native::IterStart { obj: i.clone() });
+                }
                 let items = self.snapshot(&v)?;
                 if matches!(v, Value::List(_) | Value::Dict(_) | Value::Set(_)) {
                     self.charge_each(items.len(), c.factor_copy);
@@ -760,6 +1119,7 @@ impl Machine {
                 self.push(Value::Iter(Rc::new(IterObj {
                     items,
                     pos: Cell::new(0),
+                    inst: None,
                 })));
             }
             Instr::ForIter(exit) => {
@@ -767,6 +1127,22 @@ impl Machine {
                     return Err(Exception::type_error());
                 };
                 let pos = it.pos.get();
+                if let Some((obj, n)) = &it.inst {
+                    if pos < *n {
+                        self.charge(c.op_iteration);
+                        it.pos.set(pos.wrapping_add(1));
+                        return self.start_native(
+                            host,
+                            Native::GetItem {
+                                obj: obj.clone(),
+                                idx: Value::int(pos as i128),
+                            },
+                        );
+                    }
+                    self.pop()?;
+                    self.frame().pc = exit;
+                    return Ok(Step::Continue);
+                }
                 match it.items.get(pos) {
                     Some(v) => {
                         self.charge(c.op_iteration);
@@ -783,6 +1159,13 @@ impl Machine {
             Instr::Unpack { n, star } => {
                 self.charge(c.op_operator);
                 let v = self.pop()?;
+                if let Value::Inst(inst) = &v {
+                    let then = Then::Restore {
+                        below: vec![],
+                        above: vec![],
+                    };
+                    return self.start_native(host, Native::materialise(inst.clone(), then));
+                }
                 let items = self.snapshot(&v)?;
                 self.charge_each(items.len(), c.factor_copy);
                 let pieces: Vec<Value> = match star {
@@ -846,6 +1229,23 @@ impl Machine {
                     let exc = match v {
                         Value::Exc(e) => (*e).clone(),
                         Value::ExcClass(class) => Exception::new(class, vec![]),
+                        Value::Inst(i) => {
+                            Exception::from_instance(i).ok_or_else(Exception::type_error)?
+                        }
+                        // `raise C`: construct, `__init__` and all, then raise.
+                        Value::Class(class) => {
+                            self.charge(c.op_construct);
+                            return self.start_native(
+                                host,
+                                Native::Construct {
+                                    class,
+                                    args: vec![],
+                                    kwargs: vec![],
+                                    inst: None,
+                                    then_raise: true,
+                                },
+                            );
+                        }
                         _ => return Err(Exception::type_error()),
                     };
                     return Err(exc);
@@ -859,10 +1259,7 @@ impl Machine {
                 self.charge(c.op_pattern);
                 let types = self.pop()?;
                 let exc = self.pop()?;
-                let Value::Exc(e) = &exc else {
-                    return Err(Exception::type_error());
-                };
-                let matched = exc_matches(e.class, &types)?;
+                let matched = exc_matches(&exc, &types)?;
                 self.push(Value::Bool(matched));
             }
             Instr::FormatValue(spec) => {
@@ -872,6 +1269,9 @@ impl Machine {
                 } else {
                     code.consts.get(spec).map(Value::to_str_value)
                 };
+                if has_instance(&v, self.limits.depth_nesting as u32) {
+                    return self.start_native(host, Native::Format { v, spec, stage: 0 });
+                }
                 let s = builtins::format_value(&v, spec.as_deref())?;
                 self.charge_each(s.chars().count(), c.factor_char);
                 self.push(Value::str(&s));
@@ -1002,21 +1402,48 @@ impl Machine {
         kwargs: Vec<(String, Value)>,
     ) -> R<Step> {
         match func {
-            Value::Func(f) => {
+            f @ Value::Func(_) => self.call_user(f, args, kwargs, false),
+            // A bound method: `self` is the receiver, uncharged as an
+            // argument, since the program wrote none.
+            b @ Value::Bound(_) => self.call_user(b, args, kwargs, true),
+            Value::Class(class) => {
                 let c = self.costs.clone();
-                self.charge(c.op_call);
-                self.charge_each(args.len().saturating_add(kwargs.len()), c.op_argument);
-                if self.frames.len() as u64 >= self.limits.depth_call {
-                    return Err(Exception::new(ExcClass::RecursionError, vec![]));
-                }
-                let frame = bind_arguments(&f, args, kwargs, self)?;
-                self.frames.push(frame);
-                Ok(Step::Continue)
+                self.charge(c.op_construct);
+                self.start_native(
+                    host,
+                    Native::Construct {
+                        class,
+                        args,
+                        kwargs,
+                        inst: None,
+                        then_raise: false,
+                    },
+                )
             }
             Value::Builtin(name) => {
-                if let Some(v) = builtins::call_builtin(self, &name, &args, &kwargs)? {
-                    self.push(v);
-                    return Ok(Step::Continue);
+                match builtins::builtin_entry(self, &name, &args, &kwargs)? {
+                    Outcome::Value(v) => {
+                        self.push(v);
+                        return Ok(Step::Continue);
+                    }
+                    Outcome::Native(n) => return self.start_native(host, n),
+                    Outcome::NotOurs => {}
+                }
+                // `log(*values)` appends `str` of each value (`docs/02`), and
+                // `str` of an instance is its `__str__`: the language renders
+                // them before the host sees them.
+                let depth = self.limits.depth_nesting as u32;
+                if &*name == "log" && args.iter().any(|a| has_instance(a, depth)) {
+                    return self.start_native(
+                        host,
+                        Native::LogArgs {
+                            name: name.to_string(),
+                            args,
+                            kwargs,
+                            i: 0,
+                            out: vec![],
+                        },
+                    );
                 }
                 match self.costs.game_cost(&name) {
                     Some(cost) => self.charge(cost),
@@ -1032,9 +1459,14 @@ impl Machine {
                 }
             }
             Value::Method(m) => {
-                let v = builtins::call_method(self, &m.receiver, m.name, &args, &kwargs)?;
-                self.push(v);
-                Ok(Step::Continue)
+                match builtins::method_entry(self, &m.receiver, m.name, &args, &kwargs)? {
+                    Outcome::Value(v) => {
+                        self.push(v);
+                        Ok(Step::Continue)
+                    }
+                    Outcome::Native(n) => self.start_native(host, n),
+                    Outcome::NotOurs => Err(Exception::type_error()),
+                }
             }
             Value::ExcClass(class) => {
                 let c = self.costs.clone();
@@ -1056,12 +1488,22 @@ enum Step {
     MainEnded,
 }
 
-fn exc_matches(class: ExcClass, types: &Value) -> R<bool> {
+/// Whether a caught exception value — a built-in exception or a raisable
+/// instance — matches an `except` clause's class or tuple of classes.
+fn exc_matches(exc: &Value, types: &Value) -> R<bool> {
     match types {
-        Value::ExcClass(t) => Ok(class.is_a(*t)),
+        Value::ExcClass(t) => Ok(match exc {
+            Value::Exc(e) => e.class.is_a(*t),
+            Value::Inst(i) => i.class.is_exception(*t),
+            _ => false,
+        }),
+        Value::Class(t) => Ok(match exc {
+            Value::Inst(i) => i.class.is_subclass_of(t),
+            _ => false,
+        }),
         Value::Tuple(ts) => {
             for t in ts.iter() {
-                if exc_matches(class, t)? {
+                if exc_matches(exc, t)? {
                     return Ok(true);
                 }
             }

@@ -79,10 +79,10 @@ language builtins and methods, the cost and limit tables with the row↔key
 check in both directions, and a program-level test suite plus a cross-process
 trace check. Game builtins resolve by their `[game]` row and go to a `Host`
 trait the sim will implement (T7). **Still open under this task:** the
-live-values limit (nothing measures it yet), the source nesting-depth parse
-error, and `key=` on `sorted`, `min`, `max` and `list.sort` accepting only a
-builtin or bound method until the evaluator can re-enter a `def` from a
-builtin. Hook budgets and the interrupt kinds beyond `fault` are T7's.
+live-values limit (nothing measures it yet) and the source nesting-depth
+parse error. Hook budgets and the interrupt kinds beyond `fault` are T7's.
+(`key=` taking only a builtin was a gap here until T11's dispatcher let a
+builtin re-enter a `def`.)
 
 **T11 — `class` with single inheritance and a closed dunder set** ⚠HASH
 

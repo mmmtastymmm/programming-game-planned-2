@@ -484,9 +484,6 @@ try:
 except Exception as e:
     log("caught", e, str(ValueError("bad")), str(KeyError(1, 2)))
 try:
-    def g():
-        x = 1
-        def_local = x
     raise UnboundLocalError("v")
 except NameError as e:
     log("UnboundLocalError is a NameError", e.args)
@@ -538,7 +535,10 @@ fn raising_a_non_exception_is_a_type_error() {
 #[test]
 fn what_is_not_in_the_language_is_refused_at_load() {
     for (src, word) in [
-        ("class A:\n    pass\n", "class"),
+        ("class A(B, C):\n    pass\n", "inheritance"),
+        ("if x:\n    class A:\n        pass\n", "top level"),
+        ("if x:\n    def f():\n        pass\n", "compound"),
+        ("class A:\n    if x:\n        pass\n", "body"),
         ("import x\n", "import"),
         ("match x:\n    case 1:\n        pass\n", "match"),
         ("x = 1\ndel x\n", "del"),

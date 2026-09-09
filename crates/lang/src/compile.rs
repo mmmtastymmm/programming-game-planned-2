@@ -64,6 +64,15 @@ pub enum Instr {
         star: bool,
         dstar: bool,
     },
+    /// Run a class body (a child code object) as a frame whose locals become
+    /// the class's attributes; the base, if `has_base`, is on the stack.
+    BuildClass {
+        child: usize,
+        has_base: bool,
+    },
+    /// The last instruction of a class body: pack the frame's locals into a
+    /// class and hand it to the caller.
+    ReturnClass,
     MakeFunction {
         child: usize,
         ndefaults: usize,
@@ -440,6 +449,31 @@ impl<'a> Ctx<'a> {
             StmtKind::Pass => {}
             StmtKind::Def { name, params, body } => {
                 self.compile_function(name, params, body)?;
+                self.store_name(name)?;
+            }
+            StmtKind::Class { name, base, body } => {
+                if let Some(b) = base {
+                    self.expr(b)?;
+                }
+                // The body is its own scope for the names it assigns
+                // (`syntax.md`, Names and scope); everything else it reads
+                // is a global. Methods are ordinary `def`s compiled inside
+                // it, which see globals, never the body's names.
+                let mut child = Ctx::new(self.file, name, false);
+                child.line = self.line;
+                child.globals_hint = self.globals_hint.clone();
+                for n in assigned_names(body) {
+                    child.local_set.insert(n);
+                }
+                child.compile_body(body)?;
+                child.emit(Instr::ReturnClass);
+                let code = child.finish(0, None, None);
+                self.children.push(Rc::new(code));
+                let idx = self.children.len().wrapping_sub(1);
+                self.emit(Instr::BuildClass {
+                    child: idx,
+                    has_base: base.is_some(),
+                });
                 self.store_name(name)?;
             }
             StmtKind::Return(value) => {
@@ -1048,7 +1082,7 @@ fn assigned_names(stmts: &[Stmt]) -> BTreeSet<String> {
                     walk(body, out);
                     walk(orelse, out);
                 }
-                StmtKind::Def { name, .. } => {
+                StmtKind::Def { name, .. } | StmtKind::Class { name, .. } => {
                     out.insert(name.clone());
                 }
                 StmtKind::Try {
