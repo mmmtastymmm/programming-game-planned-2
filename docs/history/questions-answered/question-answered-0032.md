@@ -25,7 +25,7 @@ total budget so a handler holds off a lower-priority interrupt by at most
 that budget, and `docs/02` then made an action a wait that costs nothing
 while it lasts — so `wait(10**9)` in `on_dying`, with health frozen, was an
 immortal machine holding a tile and a cap slot forever. Now: every tick a
-hook spends waiting on an action debits `wait_per_tick` (the hook budget's, in `data/language/limits.toml`) from the hook
+hook spends waiting on an action debits `wait_per_tick` from the hook
 budget, so a hook that waits is a hook that runs out, and the bound Q17
 promised holds again. Main flow's waits stay free.
 
@@ -38,10 +38,10 @@ promised holds again. Main flow's waits stay free.
    waiting. If a set is missing it stalls as Q12 says. Every peer sees the
    same log, so every peer runs the same ticks.
 2. **A hook's wait is metered.** While a hook's action is in progress, each
-   tick debits `wait_per_tick` (the hook budget's, in `data/language/limits.toml`) cost units from that hook's budget, at
+   tick debits `wait_per_tick` cost units from that hook's budget, at
    the boundary the wait occupies; exhaustion escalates as Q17 rules,
    cancelling the action. Main flow's waits debit nothing.
-3. **Both numbers are tuning**: `wait_per_tick` (the hook budget's, in `data/language/limits.toml`) in
+3. **Both numbers are tuning**: `wait_per_tick`, under the hook budget in
    `data/language/limits.toml`, and the driver's `delay` and
    `stall_report_ticks`, which `docs/06` had named without a home, in
    `data/net.toml`.
