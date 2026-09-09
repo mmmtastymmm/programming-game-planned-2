@@ -1,6 +1,11 @@
-# The Fool's red bots: find a deposit, carry ore to the nearest site the
-# team has planned, and build depots where the plans say. Printers cannot
-# be built (Q31). Shipped source (design-invariant DI8).
+# The Fool's red bots: carry ore from the nearest deposit to the nearest
+# place that takes it — a planned site first, a depot otherwise — and build
+# where the plans say. Printers cannot be built (Q31). Shipped source
+# (design-invariant DI8): every name here is docs/01's or docs/02's.
+
+CAPACITY = 10
+FAR = 1000
+
 
 def nearest(points):
     here = me().pos
@@ -11,36 +16,63 @@ def nearest(points):
             best = (d, p)
     return None if best is None else best[1]
 
-def step_toward(x, y):
+
+def adjacent(p):
+    here = me().pos
+    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1
+
+
+def step_toward(p):
     try:
-        move_to(x, y)
+        move_to(p[0], p[1])
     except ValueError:
         wait(1)
 
+
+def drop_targets():
+    targets = [(p[0], p[1]) for p in plans("building")]
+    for m in see():
+        if m.team == me().team and m.kind == "building" and m.model != "printer":
+            targets.append(m.pos)
+    return targets
+
+
+def deposits():
+    found = []
+    for t in tiles(-FAR, -FAR, FAR, FAR):
+        if t.deposit is not None and t.deposit["ore"] > 0:
+            found.append((t.x, t.y))
+    return found
+
+
 while True:
-    plan = nearest(plans("building"))
-    if plan is not None and me().load["ore"] > 0:
-        step_toward(plan[0], plan[1])
-        try:
-            drop("ore")
-        except ValueError:
-            pass
+    if me().load["ore"] >= CAPACITY:
+        target = nearest(drop_targets())
+        if target is None:
+            wait(5)
+            continue
+        if adjacent(target):
+            for p in plans("building"):
+                if (p[0], p[1]) == target:
+                    try:
+                        build(p[2], p[0], p[1])
+                    except ValueError:
+                        pass
+            try:
+                drop("ore")
+            except ValueError:
+                wait(1)
+        else:
+            step_toward(target)
         continue
-    deposits = [t for t in tiles(-12, -8, 11, 7) if t.deposit is not None]
-    target = nearest([(t.x, t.y) for t in deposits])
+    target = nearest(deposits())
     if target is None:
         wait(5)
         continue
-    if me().load["ore"] < 10:
-        step_toward(target[0], target[1])
+    if adjacent(target):
         try:
             pick("ore")
         except ValueError:
-            pass
+            wait(1)
     else:
-        if plan is not None:
-            try:
-                build(plan[2], plan[0], plan[1])
-            except ValueError:
-                pass
-        wait(1)
+        step_toward(target)

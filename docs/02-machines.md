@@ -41,8 +41,8 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   program calls `print` with the deployment the new bot runs, and a bot's
   program calls `build` with a building kind and a tile. All bots are one
   kind; what differs is the deployment. A print takes time and, as Q23
-  amended, costs nothing else; a build takes time and costs resources, and
-  one the machine cannot afford is a `ValueError` fault. A printed bot
+  amended, costs nothing else; a build takes time and costs resources,
+  hauled to its site by bots (Q22). A printed bot
   appears on a tile adjacent to the printer on the tick the print completes,
   running its deployment's current bundle from the top; printing a
   deployment with no bundle is a fault. The opening program set is the
@@ -256,7 +256,7 @@ writable except through an action.
 | `deployment` | `str` or `None` | the color or model name whose bundle it runs; `None` for a site |
 | `pos` | `(num, num)` | the tile it occupies, as `(x, y)`, integral |
 | `health` | `num` | current health; the model's maximum is in data |
-| `busy` | `str` or `None` | the action in progress — `"move"`, `"pick"`, `"drop"`, `"print"`, `"build"`, `"wait"` — or `None` |
+| `busy` | `str` or `None` | the name of the action in progress — any of the action builtins below, `"move"` for both move forms — or `None` |
 | `load` | `dict` of kind to `num` | a bot's carried resources, every kind present; absent on a building |
 | `store` | `dict` of kind to `num` | a building's held resources, every kind present; absent on a bot |
 | `progress` | `num` | ticks remaining on `busy`, or on a site's construction; `0` when idle |
@@ -285,7 +285,7 @@ their `[game]` row plus `factor.traverse` per element returned
 | `see()` | a list of **sightings**: every machine any of the team's machines sees now, each once, sorted by squared distance from the calling machine then by `id`. A sighting is a machine's attribute record. The team's own machines are always included. |
 | `hear()` | a list of **sounds** emitted during the previous tick that any of the team's machines hears, each once, sorted by squared distance from the calling machine, then by position, then by cause. A sound is a record `cause`, `pos`, `loudness`, `tick`. |
 | `tile(x, y)` | the tile's record for the team — `x` and `y`; `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `deposit`, a `dict` of resource kind to amount or `None` (`03`); `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
-| `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle that is not unknown, sorted by row then column. |
+| `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle, clipped to the map, that is not unknown, sorted by row then column. |
 | `me()` | the calling machine's own attribute record. |
 | `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"` or `"building"` (Q27) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label or a model, or `None` for a plan to clear. |
 | `painted(color)` | every tile the team sees or remembers whose paint is `color` — paint is the tile's, not a team's (Q28) — as `(x, y)` tuples, sorted by row then column. |
@@ -321,11 +321,17 @@ emitter.
 A machine acts by calling an **action builtin**. An action is a **waiting
 operation**: the builtin checks its preconditions, begins the action, and
 the machine then yields at the boundary after it until the action completes
-— `progress` counting down one per tick — after which main flow continues
+— `progress` counting down one per tick, so an action of `n` ticks begun in
+tick `T`'s slice completes in step 3 of tick `T + n - 1` (`06`) — after
+which main flow continues
 with the builtin's return value. Interrupts are delivered at the boundaries
 inside the wait as at any other, and a `fault` or `redeploy` epilogue
 **cancels** the action in progress: the machine is idle when its program
 restarts, and a cancelled pick, drop or build has transferred nothing.
+
+Inside a hook, every tick an action spends waiting debits
+`wait_per_tick` from the hook's budget (Q32), so a hook that waits is a
+hook that runs out; main flow's waits cost nothing.
 
 A machine does one action at a time. Calling an action builtin while `busy`
 is not `None` is a `ValueError`. A precondition that fails is a `ValueError`
@@ -346,7 +352,7 @@ sound.
 | `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store lost, and its team's cap and deployments updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `attack(id)` | bot | `id` a machine the team can currently see — a sighting's `id` — within `attack_range` by squared distance and in the attacker's line of sight (`03`); any team, the bot's own included; anything with health: a bot, a building, a site. On completion, if the target still exists and is still in range and sight, `attack_damage` is subtracted from its health in the tick's damage step (`06`), where hits on one target are summed before `dying` or `death` is raised (Q25); otherwise nothing | `attack_ticks` | yes |
-| `convert(id)` | bot | `id` an adjacent printer of another team; on completion, if it still stands and the bot is still adjacent, its `team` becomes the bot's and its `deployment` the new team's `printer`, keeping its store, health, name and any print in progress; the two teams' caps and colors follow (Q24); a printer converted twice on one tick goes to the lower entity id's team (Q30) | `convert_ticks` | yes |
+| `convert(id)` | bot | `id` an adjacent printer of another team; on completion, if it still stands, is still of another team, and the bot is still adjacent, its `team` becomes the bot's and its `deployment` the new team's `printer`, keeping its store, health, name and any print in progress; the two teams' caps and colors follow (Q24); a printer converted twice on one tick goes to the lower entity id's team (Q30) | `convert_ticks` | yes |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
 | `rename(name)` | any | sets `name`; a `str` longer than `name_max` is a `ValueError` | `0` | no |
@@ -382,7 +388,8 @@ before the rules below run. **A printer defends itself** (Q30): in the same
 step, every printer deals its model's `defence_damage` to every bot of
 another team on an adjacent tile, every tick it stands — the one thing in
 the design that acts without a program, because a building does not decide.
-`defence_damage` is per model and zero for every model but the printer.
+`defence_damage` is per model in data and zero for every model but the
+printer.
 Nothing else deals damage, and nothing repairs; each is a new question
 number if wanted.
 
@@ -403,7 +410,9 @@ The closed module set (Q13) is the bundle's own files plus the game's
 modules. **There are no game modules yet**; every builtin above is a global
 name, and a bundle file named `game.py` or the like collides with nothing.
 There are no root or trigonometric builtins; a program that needs one writes
-it.
+it, and `01`'s mention of a root as a possible game builtin is exactly that,
+a possibility. Python's `print` does not exist (`01`); the game's `print` is
+the printer action above, a different function under the same name.
 
 ## Costs
 

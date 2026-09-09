@@ -36,7 +36,7 @@ Two conventions carried over from the predecessor project:
 **T7 — Replace the placeholder sim in `crates/sim` with the real world model, and split out `lang`, `net` and `replay`**
 
 ⚠HASH — this regenerates the golden fixture by definition. The world model
-has its rulings — Q7, Q9, Q21, Q22, Q23 and Q24 — in `docs/02` and its
+has its rulings — Q7, Q9, Q21 through Q25, Q30 and Q31 — in `docs/02` and its
 world in `docs/03`, so it is buildable, and `docs/06` fixes the tick's seven steps,
 the command's fields, the snapshot's parts and the state hash's coverage and
 order. The crate split `06` draws — `lang`, `sim`, `net`, `replay` — is this

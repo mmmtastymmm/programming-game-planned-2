@@ -26,9 +26,9 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-08.** Every question this file has issued, Q1 through Q31,
-is answered — Q17 through Q20, Q23, Q24, Q26 through Q28, Q30 and Q31 were
-each opened and answered in one commit, as the amendments that the history rules require
+**Status 2026-09-09.** Every question this file has issued, Q1 through Q32,
+is answered — Q17 through Q20, Q23, Q24, Q26 through Q28 and Q30 through Q32
+were each opened and answered in one commit, as the amendments that the history rules require
 to be new numbers. The rulings of Q7, Q9, Q21, Q22, Q23, Q24 and Q25 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and Q22
 from there, and the rulings of Q6, Q10, Q12, Q15 and Q26 through Q28 are

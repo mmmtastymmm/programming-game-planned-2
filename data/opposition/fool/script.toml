@@ -1,7 +1,7 @@
-# The first opposition, the Fool: a team that hauls and builds and never attacks. A
-# script is a command log written in advance — (tick, command) pairs, applied
-# by the driver as if a peer had sent them (docs/04). This file and the bundles
-# beside it are part of a replay's inputs and are hashed into its identity.
+# The first opposition, the Fool: a team that hauls and builds and never
+# attacks. A script is a command log written in advance — (tick, command)
+# pairs, applied by the driver as if a peer had sent them (docs/04); it is
+# part of the command log, so it is in the replay already.
 
 name = "fool"
 
@@ -23,3 +23,20 @@ tick = 0
 kind = "Deploy"
 deployment = "depot"
 bundle = "depot"
+
+# Two depot plans beside the team's starting tile, relative to it: the map
+# resolves `at` against the team's first starting tile at load, so the
+# script fits any map (docs/04).
+[[command]]
+tick = 0
+kind = "Mark"
+at = [1, 0]
+plan = "building"
+value = "depot"
+
+[[command]]
+tick = 0
+kind = "Mark"
+at = [0, -1]
+plan = "building"
+value = "depot"

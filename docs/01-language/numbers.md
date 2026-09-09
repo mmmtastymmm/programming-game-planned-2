@@ -149,10 +149,10 @@ errors.
 `round` is the one place a number rounds to nearest rather than down: it is a
 named operation a player reaches for deliberately, and it keeps Python's rule.
 
-Roots, trigonometry and any other function the game needs are **game
-builtins** (`docs/02`), each with a specified integer algorithm, a specified
-result and a specified cost — never an operator, never inherited from a host
-library.
+A root, a trigonometric function or any other function the game ever needs
+would be a **game builtin** (`docs/02`) with a specified integer algorithm,
+result and cost — never an operator, never inherited from a host library.
+Today there is none; a program that needs one writes it.
 
 ## The faults arithmetic can raise
 

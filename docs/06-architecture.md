@@ -38,6 +38,11 @@ Rulings this doc owns, moved here from the overview when it was written.
   Single-player is lockstep with one peer and feels the same delay. Within a
   tick, commands apply by sender then submission order. Rate-limiting is
   deferred with PvP; the sender stamp is its hook.
+- **A paused driver still reaches a command, and a hook's wait spends its
+  budget (Q32).** At speed `0` the driver runs, without the clock, exactly
+  the ticks up to the next one that carries any command, so a `SetSpeed`
+  above zero lands and resumes; `delay` and `stall_report_ticks` live in
+  `data/net.toml`. The hook half is [01-language](01-language/execution.md)'s.
 - **Bevy renders, in its own crate, in the sim's process, reading only
   completed-tick snapshots and writing only to the command log (Q15).** A
   `render` crate depends on `sim` and Bevy; `sim` depends on neither. The
@@ -88,9 +93,14 @@ contract:
 
 ```text
 loop:
-    if speed == 0: wait for a command; continue
-    wait until (real time since last tick) ≥ 1 / speed
-    if not net.have_all_sets(tick + 1): stall; continue
+    if speed == 0:
+        T = net.next_tick_with_a_command(tick)   # lowest T > tick whose sets are not all empty
+        if T is None: wait for a command; continue
+        if not net.have_all_sets(tick + 1 ..= T): stall; continue
+        # run the ticks up to T without consulting the clock (Q32)
+    else:
+        wait until (real time since last tick) ≥ 1 / speed
+        if not net.have_all_sets(tick + 1): stall; continue
     commands = net.sets_for(tick + 1)            # every peer's, ordered
     sim.step(commands)                           # exactly one tick
     snapshot = sim.snapshot()                    # published, never shared
@@ -102,11 +112,15 @@ loop:
   takes the tick's full command set. There is no other mutating call on the
   sim; the snapshot and the hash are reads.
 - **Speed lives in the driver**, set by the `SetSpeed` command when
-  `sim.step` reports it applied. The sim carries no rate (Q6).
+  `sim.step` reports it applied. The sim carries no rate (Q6). **A paused
+  driver still reaches a command** (Q32): at speed `0` it runs, without the
+  clock, exactly the ticks up to the next one that carries any command —
+  which is how a `SetSpeed` above zero lands on its agreed tick and resumes.
 - **The stall** (Q12) is the driver refusing to call `sim.step` until every
   peer's set for the next tick is in hand. The renderer keeps drawing the
-  last snapshot. After `stall_report_ticks` of real time at the current
-  speed, the driver reports the absent peer to the player; what the player
+  last snapshot. After `stall_report_ticks` (`data/net.toml`, beside
+  `delay`) of real time at the current speed, the driver reports the absent
+  peer to the player; what the player
   may do then — wait, or resign — is `render`'s UI and not a sim rule.
 - **Single-player** is the same loop with one peer, whose sets are its own
   and always in hand, so the delay is felt and the stall never fires.
@@ -118,8 +132,8 @@ loop:
 1. **Apply the tick's commands**, by sender then submission order (Q12):
    `Deploy` writes a bundle into a deployment slot (or waits, if locked);
    `Mark` and `Unmark` set and clear plans (`03`); `SetSpeed` is recorded for
-   the driver; `Resign` removes the sender's team, its machines and its
-   plans.
+   the driver; `Resign` marks the sender's team **out**, which step 5
+   applies.
 2. **Every machine's slice**, in ascending entity id: its main flow or
    handler runs until its tick budget is spent or it yields at a restart
    (`01`, Metering), with interrupts delivered at its boundaries. Actions
@@ -132,10 +146,14 @@ loop:
    — attacks that completed, and every printer's defence against adjacent
    enemy bots (Q30) — `dying` and `death` are raised where Q24 says, and
    `death` epilogues remove machines. A machine removed here is absent from everything below.
-5. **Regrowth**: every deposit grows (`03`).
-6. **The vision pass**: each team's visible tiles are computed and their
+5. **Out teams**: every team that is out — it resigned this tick, or step 4
+   left it with no printer (`04`) — has its machines removed, its plans
+   cleared and its log closed, in team order. A printer converted away from
+   it this tick is not its and stays.
+6. **Regrowth**: every deposit grows (`03`).
+7. **The vision pass**: each team's visible tiles are computed and their
    snapshots refreshed (Q21).
-7. **The state hash** over everything below.
+8. **The state hash** over everything below.
 
 Nothing else happens in a tick. A rule that needs another step is a change
 to this list and a new question number.
@@ -156,15 +174,18 @@ A **command** is:
   `tick`, in `seq` order; an empty set is sent explicitly, so absence is
   never ambiguous.
 - **Validation at submission** refuses what can never apply — a tile off
-  the map, a step not in the list, a bundle that fails to load (`01`) — so
+  the map, a step not in the list, a building plan naming `printer` (Q31), a
+  bundle that fails to load (`01`) — so
   the log holds only commands every peer would accept. A command that
   cannot apply *on its tick* — a `Mark` on a tile the sender has since lost
   the right to, a `Resign` from a team already out — is dropped in
   `sim.step` and recorded nowhere; a `Deploy` to a locked deployment waits
   in the slot (`02`).
 - **The log is append-only and complete**: every command every peer ever
-  applied, in order. `(map, command log)` is a replay, and the log's bytes
-  are hashed into the replay's identity as the map's are.
+  applied, in order — a scripted team's commands (`04`) among them, since
+  they enter the log like any peer's. `(map, command log)` is a replay, and
+  the log's bytes are hashed into the replay's identity as the map's are,
+  each length-prefixed as rule 7 hashes a bundle.
 - **Encoding** on the wire and on disk is one canonical byte layout per
   kind, length-prefixed like the bundle hash (`01`), so that the log hashes
   identically everywhere. `net` owns the layout; it is spec once written and
@@ -180,7 +201,7 @@ value with no reference into the sim:
 
 | Part | Holds |
 |---|---|
-| `tick` | the tick just completed, and the speed in force |
+| `tick` | the tick just completed, and the speed in force — the driver's number, carried for the renderer, not the sim's |
 | `machines` | every machine's attribute record (`02`), plus its diagnostic log entries from this tick |
 | `tiles`, per team | every tile's record as that team sees it: state, terrain, deposit, paint, overlay, building, plans, `seen_at` (`03`) |
 | `sounds` | every sound emitted this tick, with its cause, position, loudness and tick |
@@ -196,14 +217,16 @@ snapshot and **not** of the state hash.
 ## The state hash
 
 The hash is FNV-1a 64-bit over a canonical encoding of the world after step
-6, in this order: the tick; every team in order — its deployments, the
+7, in this order: the tick; every team in order — its deployments, the
 version of each bundle, its cap, its plans by tile in row-then-column order,
 its memory table by tile; every tile in row-then-column order — terrain,
 deposit, paint, overlay; every machine in ascending entity id — every
 attribute, its load or store, its health, its action in progress and
 `progress`, its fault record, and its **execution state**: the program
 counter, every frame's locals, every global, the deficit, the pending
-interrupt set, and whether it is in main flow or a handler. Every `num` is
+interrupt set, whether it is in main flow or a handler and which kind, the
+hook budget spent so far in that handler, and the set of modules already
+run in this run (`01`). Every `num` is
 its i128; every `str` its UTF-8 bytes length-prefixed; every collection its
 elements in iteration order.
 
@@ -237,5 +260,3 @@ its test is that it builds with `sim` unchanged.
   (`03`); a question when wanted.
 - **Persistence** — saving a match to resume it — which is a snapshot plus
   the log to that tick, and a question when wanted.
-- **Q25**, combat, which adds causes to step 4 and nothing to this doc's
-  structure.

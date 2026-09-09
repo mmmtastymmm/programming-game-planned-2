@@ -133,7 +133,7 @@ deposit's cap and regrowth, and the starting positions. The format is
 [data/maps/](../data/maps/)'s, one TOML file per map, and the first map is
 `data/maps/first.toml`. A map is part of the replay's inputs: `(map,
 command log)` reproduces a match, and the map's bytes are hashed into the
-replay's identity as the bundle's are (rule 7).
+replay's identity, length-prefixed as rule 7 hashes a bundle.
 
 A map fixes:
 
@@ -172,9 +172,6 @@ passes cost no program anything.
 
 ## What this doc leaves open
 
-- **Q25** decides whether anything in the world deals damage — terrain that
-  hurts, an opposition that fires — and, if so, gains a column in the
-  terrain table.
 - **Map generation.** The first maps are hand-written. Generating one from
   a seed is a `docs/06` question when it is wanted: the seed is the sim's
   (rule 4), and generation is a deterministic function of it.
