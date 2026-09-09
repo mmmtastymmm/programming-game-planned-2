@@ -53,6 +53,11 @@ pub enum StmtKind {
         body: Vec<Stmt>,
     },
     Return(Option<Expr>),
+    /// `match subject:` with its `case` arms, tried top to bottom.
+    Match {
+        subject: Expr,
+        arms: Vec<Arm>,
+    },
     Try {
         body: Vec<Stmt>,
         handlers: Vec<Handler>,
@@ -60,6 +65,66 @@ pub enum StmtKind {
         finalbody: Vec<Stmt>,
     },
     Raise(Option<Expr>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Arm {
+    pub pattern: Pattern,
+    pub guard: Option<Expr>,
+    pub body: Vec<Stmt>,
+    pub line: u32,
+}
+
+/// The pattern forms of `syntax.md`'s `match` table.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Pattern {
+    /// A number, string, `True`, `False` or `None`, as an expression.
+    Literal(Expr),
+    Capture(String),
+    Wildcard,
+    /// `*name` or `*_`, inside a sequence only.
+    Star(Option<String>),
+    Sequence(Vec<Pattern>),
+    /// Literal keys to sub-patterns, and `**rest`.
+    Mapping {
+        pairs: Vec<(Expr, Pattern)>,
+        rest: Option<String>,
+    },
+    /// `Name(k=p, …)`: keyword sub-patterns only.
+    Class {
+        class: Expr,
+        kwargs: Vec<(String, Pattern)>,
+    },
+    Or(Vec<Pattern>),
+    As(Box<Pattern>, String),
+}
+
+impl Pattern {
+    /// Every name the pattern binds, in order, duplicates included.
+    pub fn bound_names(&self, out: &mut Vec<String>) {
+        match self {
+            Pattern::Literal(_) | Pattern::Wildcard | Pattern::Star(None) => {}
+            Pattern::Capture(n) | Pattern::Star(Some(n)) => out.push(n.clone()),
+            Pattern::Sequence(items) => items.iter().for_each(|p| p.bound_names(out)),
+            Pattern::Mapping { pairs, rest } => {
+                pairs.iter().for_each(|(_, p)| p.bound_names(out));
+                if let Some(r) = rest {
+                    out.push(r.clone());
+                }
+            }
+            Pattern::Class { kwargs, .. } => kwargs.iter().for_each(|(_, p)| p.bound_names(out)),
+            // Alternatives bind the same names, so the first one's suffice.
+            Pattern::Or(alts) => {
+                if let Some(a) = alts.first() {
+                    a.bound_names(out);
+                }
+            }
+            Pattern::As(p, n) => {
+                p.bound_names(out);
+                out.push(n.clone());
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

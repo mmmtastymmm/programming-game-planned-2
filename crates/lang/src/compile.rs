@@ -73,6 +73,31 @@ pub enum Instr {
     /// The last instruction of a class body: pack the frame's locals into a
     /// class and hand it to the caller.
     ReturnClass,
+    /// One pattern node tried: charges `op.pattern`.
+    PatternNode,
+    /// Pop a value; push whether it is the singleton: 0 `None`, 1 `True`,
+    /// 2 `False`.
+    MatchSingleton(u8),
+    /// Pop a value. A list or tuple of `n` items (at least `n - 1` with a
+    /// star, which takes the middle as a list) pushes each item then
+    /// `True`; anything else pushes `False`.
+    MatchSeq {
+        n: usize,
+        star: Option<usize>,
+    },
+    /// Pop a value and `n` keys beneath it. A dict holding every key pushes
+    /// each value in key order, then the remaining pairs as a dict if
+    /// `rest`, then `True`; anything else pushes `False`.
+    MatchMap {
+        n: usize,
+        rest: bool,
+    },
+    /// Pop a tuple of attribute names, a value and a class beneath. An
+    /// instance of the class that has every attribute pushes each, then
+    /// `True`; anything else pushes `False`.
+    MatchClass {
+        n: usize,
+    },
     MakeFunction {
         child: usize,
         ndefaults: usize,
@@ -451,6 +476,31 @@ impl<'a> Ctx<'a> {
                 self.compile_function(name, params, body)?;
                 self.store_name(name)?;
             }
+            StmtKind::Match { subject, arms } => {
+                self.expr(subject)?;
+                let subj = self.hidden_slot("match");
+                self.emit(Instr::StoreLocal(subj));
+                let mut ends = Vec::new();
+                for arm in arms {
+                    self.line = arm.line;
+                    let mut fails = Vec::new();
+                    self.compile_pattern(&arm.pattern, subj, &mut fails)?;
+                    if let Some(g) = &arm.guard {
+                        self.expr(g)?;
+                        fails.push(self.emit(Instr::JumpIfFalsePop(0)));
+                    }
+                    self.compile_body(&arm.body)?;
+                    ends.push(self.emit(Instr::Jump(0)));
+                    let next = self.here();
+                    for f in fails {
+                        self.patch(f, next);
+                    }
+                }
+                let end = self.here();
+                for e in ends {
+                    self.patch(e, end);
+                }
+            }
             StmtKind::Class { name, base, body } => {
                 if let Some(b) = base {
                     self.expr(b)?;
@@ -661,6 +711,131 @@ impl<'a> Ctx<'a> {
             ndefaults,
         });
         Ok(())
+    }
+
+    /// Test `p` against the value in `slot`, binding as it goes; every
+    /// jump that means "this arm fails" is pushed on `fails`. The stack is
+    /// level at every such jump.
+    fn compile_pattern(&mut self, p: &Pattern, slot: usize, fails: &mut Vec<usize>) -> C<()> {
+        self.emit(Instr::PatternNode);
+        match p {
+            Pattern::Wildcard => {}
+            Pattern::Capture(n) => {
+                self.emit(Instr::LoadLocal(slot));
+                self.store_name(n)?;
+            }
+            Pattern::Star(_) => {
+                return Err(self.err("a `*` pattern belongs inside a sequence pattern"));
+            }
+            Pattern::Literal(e) => {
+                self.emit(Instr::LoadLocal(slot));
+                match e.kind {
+                    ExprKind::None => {
+                        self.emit(Instr::MatchSingleton(0));
+                    }
+                    ExprKind::Bool(b) => {
+                        self.emit(Instr::MatchSingleton(if b { 1 } else { 2 }));
+                    }
+                    _ => {
+                        self.expr(e)?;
+                        self.emit(Instr::Compare(CmpOp::Eq));
+                    }
+                }
+                fails.push(self.emit(Instr::JumpIfFalsePop(0)));
+            }
+            Pattern::Sequence(items) => {
+                let star = items.iter().position(|i| matches!(i, Pattern::Star(_)));
+                self.emit(Instr::LoadLocal(slot));
+                self.emit(Instr::MatchSeq {
+                    n: items.len(),
+                    star,
+                });
+                fails.push(self.emit(Instr::JumpIfFalsePop(0)));
+                let slots: Vec<usize> = items.iter().map(|_| self.hidden_slot("seq")).collect();
+                for s in slots.iter().rev() {
+                    self.emit(Instr::StoreLocal(*s));
+                }
+                for (item, s) in items.iter().zip(&slots) {
+                    match item {
+                        Pattern::Star(Some(n)) => {
+                            self.emit(Instr::PatternNode);
+                            self.emit(Instr::LoadLocal(*s));
+                            self.store_name(n)?;
+                        }
+                        Pattern::Star(None) => self.emit_charge(),
+                        other => self.compile_pattern(other, *s, fails)?,
+                    }
+                }
+            }
+            Pattern::Mapping { pairs, rest } => {
+                for (k, _) in pairs {
+                    self.expr(k)?;
+                }
+                self.emit(Instr::LoadLocal(slot));
+                self.emit(Instr::MatchMap {
+                    n: pairs.len(),
+                    rest: rest.is_some(),
+                });
+                fails.push(self.emit(Instr::JumpIfFalsePop(0)));
+                if let Some(r) = rest {
+                    self.store_name(r)?;
+                }
+                let slots: Vec<usize> = pairs.iter().map(|_| self.hidden_slot("map")).collect();
+                for s in slots.iter().rev() {
+                    self.emit(Instr::StoreLocal(*s));
+                }
+                for ((_, sub), s) in pairs.iter().zip(&slots) {
+                    self.compile_pattern(sub, *s, fails)?;
+                }
+            }
+            Pattern::Class { class, kwargs } => {
+                self.expr(class)?;
+                self.emit(Instr::LoadLocal(slot));
+                let names: Vec<Value> = kwargs.iter().map(|(k, _)| Value::str(k)).collect();
+                let k = self.const_index(Value::tuple(names));
+                self.emit(Instr::Const(k));
+                self.emit(Instr::MatchClass { n: kwargs.len() });
+                fails.push(self.emit(Instr::JumpIfFalsePop(0)));
+                let slots: Vec<usize> = kwargs.iter().map(|_| self.hidden_slot("attr")).collect();
+                for s in slots.iter().rev() {
+                    self.emit(Instr::StoreLocal(*s));
+                }
+                for ((_, sub), s) in kwargs.iter().zip(&slots) {
+                    self.compile_pattern(sub, *s, fails)?;
+                }
+            }
+            Pattern::Or(alts) => {
+                let mut oks = Vec::new();
+                let last = alts.len().wrapping_sub(1);
+                for (i, alt) in alts.iter().enumerate() {
+                    if i == last {
+                        self.compile_pattern(alt, slot, fails)?;
+                    } else {
+                        let mut alt_fails = Vec::new();
+                        self.compile_pattern(alt, slot, &mut alt_fails)?;
+                        oks.push(self.emit(Instr::Jump(0)));
+                        let next = self.here();
+                        for f in alt_fails {
+                            self.patch(f, next);
+                        }
+                    }
+                }
+                let end = self.here();
+                for ok in oks {
+                    self.patch(ok, end);
+                }
+            }
+            Pattern::As(inner, n) => {
+                self.compile_pattern(inner, slot, fails)?;
+                self.emit(Instr::LoadLocal(slot));
+                self.store_name(n)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_charge(&mut self) {
+        self.emit(Instr::PatternNode);
     }
 
     fn store_target(&mut self, t: &Target) -> C<()> {
@@ -1081,6 +1256,14 @@ fn assigned_names(stmts: &[Stmt]) -> BTreeSet<String> {
                 StmtKind::If { body, orelse, .. } | StmtKind::While { body, orelse, .. } => {
                     walk(body, out);
                     walk(orelse, out);
+                }
+                StmtKind::Match { arms, .. } => {
+                    for arm in arms {
+                        let mut names = Vec::new();
+                        arm.pattern.bound_names(&mut names);
+                        out.extend(names);
+                        walk(&arm.body, out);
+                    }
                 }
                 StmtKind::Def { name, .. } | StmtKind::Class { name, .. } => {
                     out.insert(name.clone());

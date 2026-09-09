@@ -1070,6 +1070,135 @@ impl Machine {
                 frame.class_base = base;
                 self.frames.push(frame);
             }
+            Instr::PatternNode => self.charge(c.op_pattern),
+            Instr::MatchSingleton(k) => {
+                let v = self.pop()?;
+                let hit = match k {
+                    0 => matches!(v, Value::None),
+                    1 => matches!(v, Value::Bool(true)),
+                    _ => matches!(v, Value::Bool(false)),
+                };
+                self.push(Value::Bool(hit));
+            }
+            Instr::MatchSeq { n, star } => {
+                let v = self.pop()?;
+                let items: Vec<Value> = match &v {
+                    Value::List(l) => l.items.borrow().clone(),
+                    Value::Tuple(t) => t.to_vec(),
+                    _ => {
+                        self.push(Value::Bool(false));
+                        return Ok(Step::Continue);
+                    }
+                };
+                let fixed = match star {
+                    Some(_) => n.wrapping_sub(1),
+                    None => n,
+                };
+                let shape_ok = match star {
+                    Some(_) => items.len() >= fixed,
+                    None => items.len() == n,
+                };
+                if !shape_ok {
+                    self.push(Value::Bool(false));
+                    return Ok(Step::Continue);
+                }
+                self.charge_each(n, c.factor_traverse);
+                match star {
+                    None => {
+                        for it in items {
+                            self.push(it);
+                        }
+                    }
+                    Some(s) => {
+                        let after = fixed.wrapping_sub(s);
+                        let mid_end = items.len().wrapping_sub(after);
+                        for it in &items[..s] {
+                            self.push(it.clone());
+                        }
+                        let middle = self.new_list(items[s..mid_end].to_vec());
+                        self.push(middle);
+                        for it in &items[mid_end..] {
+                            self.push(it.clone());
+                        }
+                    }
+                }
+                self.push(Value::Bool(true));
+            }
+            Instr::MatchMap { n, rest } => {
+                let v = self.pop()?;
+                let keys = self.pop_n(n)?;
+                let Value::Dict(d) = &v else {
+                    self.push(Value::Bool(false));
+                    return Ok(Step::Continue);
+                };
+                let depth = self.limits.depth_nesting as u32;
+                let items = d.items.borrow().clone();
+                self.charge_each(n, c.factor_traverse);
+                let mut found = Vec::with_capacity(n);
+                for k in &keys {
+                    match dict_find(&items, k, depth)? {
+                        Some(i) => found.push(i),
+                        None => {
+                            self.push(Value::Bool(false));
+                            return Ok(Step::Continue);
+                        }
+                    }
+                }
+                for i in &found {
+                    self.push(items[*i].1.clone());
+                }
+                if rest {
+                    let remaining: Vec<(Value, Value)> = items
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| !found.contains(i))
+                        .map(|(_, kv)| kv.clone())
+                        .collect();
+                    self.charge_each(remaining.len(), c.factor_copy);
+                    let r = self.new_dict(remaining);
+                    self.push(r);
+                }
+                self.push(Value::Bool(true));
+            }
+            Instr::MatchClass { n } => {
+                let names = self.pop()?;
+                let v = self.pop()?;
+                let class = self.pop()?;
+                if !matches!(
+                    class,
+                    Value::Class(_) | Value::ExcClass(_) | Value::Builtin(_)
+                ) {
+                    return Err(Exception::type_error());
+                }
+                if !builtins::is_instance(&v, &class)? {
+                    self.push(Value::Bool(false));
+                    return Ok(Step::Continue);
+                }
+                let Value::Tuple(names) = names else {
+                    return Err(Exception::type_error());
+                };
+                let mut attrs = Vec::with_capacity(n);
+                for name in names.iter() {
+                    let name = name.to_str_value();
+                    let got = match &v {
+                        Value::Inst(i) => i.get(&name),
+                        Value::Exc(_) => builtins::attribute(&v, &name).ok(),
+                        _ => None,
+                    };
+                    match got {
+                        Some(a) => attrs.push(a),
+                        None => {
+                            self.push(Value::Bool(false));
+                            return Ok(Step::Continue);
+                        }
+                    }
+                }
+                self.charge_each(n, c.op_attribute);
+                for a in attrs {
+                    self.push(a);
+                }
+                self.push(Value::Bool(true));
+            }
             Instr::ReturnClass => {
                 let Some(frame) = self.frames.pop() else {
                     return Err(Exception::type_error());

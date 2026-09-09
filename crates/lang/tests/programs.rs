@@ -540,7 +540,6 @@ fn what_is_not_in_the_language_is_refused_at_load() {
         ("if x:\n    def f():\n        pass\n", "compound"),
         ("class A:\n    if x:\n        pass\n", "body"),
         ("import x\n", "import"),
-        ("match x:\n    case 1:\n        pass\n", "match"),
         ("x = 1\ndel x\n", "del"),
         ("def f():\n    def g():\n        pass\n", "nest"),
         ("x = (i for i in range(3))\n", "generator"),

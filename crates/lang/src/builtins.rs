@@ -479,7 +479,7 @@ fn kwarg(kwargs: &[(String, Value)], name: &str, allowed: &[&str]) -> R<Option<V
         .map(|(_, v)| v.clone()))
 }
 
-fn is_instance(v: &Value, t: &Value) -> R<bool> {
+pub fn is_instance(v: &Value, t: &Value) -> R<bool> {
     match t {
         Value::Tuple(ts) => {
             for t in ts.iter() {
