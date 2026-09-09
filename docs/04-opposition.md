@@ -9,6 +9,7 @@ reading it must agree on the tick a match ends (design-invariant DI7).
 
 ## Decided
 
+- **The roster and its ladder are Q29's**, elaborated in the PvE section.
 - **PvE ships before PvP (Q4).** Lockstep is built now regardless, since it
   is not retrofittable, so deferring PvP costs nothing architecturally and
   buys slack on balance while the sim changes fastest.
@@ -43,9 +44,10 @@ makes PvP a second player and not a second design.
 ### Scripted teams
 
 A scripted team's commands come from a **script**: a file in
-[data/opposition/](../data/opposition/), part of a replay's inputs and
-hashed into its identity like the map, that says which bundles to deploy to
-which deployments on which ticks, which marks to place, and nothing else. A
+[data/opposition/](../data/opposition/) that says which bundles to deploy to
+which deployments on which ticks, which marks to place, and nothing else;
+its commands enter the command log like any peer's, so a replay already
+holds them and nothing else need be hashed. A
 script is a command log written in advance. It may not do anything a player
 could not: its bundles are ordinary bundles in the language, its marks are
 ordinary marks, and its machines obey every rule.
@@ -54,6 +56,9 @@ ordinary marks, and its machines obey every rule.
   `(tick, command)` pairs, applied by the driver as if a peer had sent them,
   with the same delay (Q12) as a player's. A scripted team never stalls the
   match, since its sets are always in hand.
+- **A script's tiles are relative to its team's first starting tile**,
+  resolved at load, so one script fits any map; nothing else in a script
+  depends on the map.
 - **A script may not read the world.** It reacts to nothing; its programs
   do the reacting, exactly as a player's do. A script that wanted to respond
   to the match would be a player, and the game's response lives in the
@@ -74,9 +79,9 @@ printer's `death` epilogue runs, it is deconstructed (Q28), or it is
 **converted** to another team (Q30), with no other printer standing. There
 is no site that could become one, since printers are never built (Q31). A
 converted printer is not removed with the team that lost it; it is no
-longer theirs. An out team's machines are removed at the end of that tick's
-damage step (`06`, step 4), its plans are cleared, and its command log is
-closed: further commands from it are dropped at submission. `Resign` (Q10)
+longer theirs. An out team's machines are removed, its plans cleared and its
+command log closed in the tick's out-teams step (`06`, step 5), after damage
+and before regrowth, whatever put it out: further commands from it are dropped at submission. `Resign` (Q10)
 puts a team out at once on its agreed tick.
 
 **A match ends** on the first tick at which at most one team is not out.

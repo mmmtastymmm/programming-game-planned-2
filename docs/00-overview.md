@@ -67,7 +67,8 @@ pass.
   agreed for a future tick so every peer applies it on the same tick. Updates
   are to programs, which by Q2 address a deployment. What else enters the
   sim mid-match — marks on the map, the speed, a resignation — is Q10's
-  bullet below; this ruling forbids machine orders and nothing else. So
+  ruling, in [06-architecture](06-architecture.md); this ruling forbids
+  machine orders and nothing else. So
   `Command` is a real ordered log whose principal variant is a program deploy, a
   replay is `(map, timed command log)` — the map being a data file, `docs/03`
   — and determinism rule 7 is load-bearing:
@@ -77,15 +78,18 @@ pass.
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9, Q23, Q24 and Q25 (production, health, the cap and combat), and Q22 (the economy,
+  (sensing and memory), Q9, Q23, Q24, Q25, Q30 and Q31 (production, health,
+  the cap, combat and the printer), and Q22 (the economy,
   which `docs/03` will cite) are its Decided entries, and they are not
   repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
-  Q12 (scheduling) and Q15 (the renderer) are its Decided entries, and they
-  are not repeated here.
+  Q12 (scheduling), Q15 (the renderer) and Q32 (the paused driver) are its
+  Decided entries, and they are not repeated here; Q32's other half is
+  [01-language](01-language.md)'s.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
-  Q4 (PvE before PvP) is its Decided entry — and **progression's in
+  Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
+  **progression's in
   [05-progression](05-progression.md)** — Q30 (printers change hands); neither
   is repeated here.
 

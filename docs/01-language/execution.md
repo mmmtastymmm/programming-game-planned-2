@@ -33,7 +33,8 @@ bound all of it. Every rule here is hash-affecting.
   are which is `docs/02`'s list. Every hook — a handler's player code — has a
   total budget per invocation in cost units, a tuning constant; exhausting it
   escalates exactly as a fault in that hook would. So a handler holds off a
-  lower-priority interrupt by at most its budget.
+  lower-priority interrupt by at most its budget — which Q32 keeps true by
+  debiting a hook's budget for every tick an action spends waiting.
 - **A redeploy is an interrupt (Q11)** — the lowest kind, `redeploy`, below
   `fault`, with no player hook, like `death`. The deployment's program slot changes on
   the tick Q12 agrees; each machine takes the interrupt at its own next operation
@@ -64,6 +65,11 @@ bound all of it. Every rule here is hash-affecting.
   event, a timer, a message — is a new question number. The list a program
   reads is live: what the colony senses now, and nothing it sensed before,
   which Q21 ruled: tiles are remembered, machines are not.
+- **A hook's wait spends its budget (Q32).** Every tick a hook spends waiting
+  on an action (`docs/02`) debits `wait_per_tick` from the hook budget,
+  so `wait` inside `on_dying` cannot hold a machine in the world forever;
+  main flow's waits cost nothing. The other half of Q32, the paused driver,
+  is `docs/06`'s.
 - **The fault record is written by every failure and survives a redeploy
   (Q20).** An exception escaping main flow or a hook, a hook's budget running
   out, and an exception whose unwinding an interrupt cuts off each write it —
@@ -213,10 +219,10 @@ and a machine's lifecycle state never depends on how far its program has run.
 ```python
 def on_fault(e):
     # e: the exception; str(e), e.file, e.line, e.tick, e.args
-    report(f"{e.file}:{e.line}: {e}")     # report() is a game builtin
+    log(f"{e.file}:{e.line}: {e}", level="error")   # log is a game builtin (docs/02)
 
 def on_dying():
-    drop_cargo()                          # whatever docs/02 lets a dying machine do
+    drop("ore")                           # one of the actions docs/02 lets a dying machine take
 ```
 
 - `on_fault(e)` receives the exception object exactly as an `except` clause

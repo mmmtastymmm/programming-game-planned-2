@@ -12,6 +12,8 @@ tick = 200
 [budget.hook]
 fault = 2000
 dying = 2000
+# cost units a hook's budget loses for every tick an action spends waiting (Q32)
+wait_per_tick = 1
 
 [depth]
 # nested calls, including recursion and __init__; exceeding it is RecursionError

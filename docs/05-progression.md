@@ -10,17 +10,19 @@ nothing persists when the match ends.
 - **Progression is inside a match, and it is printers changing hands
   (Q30, as amended by Q31, which made printers unbuildable).** A bot may convert an adjacent printer of another team, after which
   the printer is its team's: it prints for them, and by Q24's rules its new
-  team's cap rises by ten and its next color unlocks while the old team's cap
-  falls and its last color locks. A printer defends itself, dealing one
-  damage each tick to every adjacent bot of another team, so a conversion is
+  team's cap rises by `bots_per_printer` and its next color unlocks while
+  the old team's cap falls and its last color locks. A printer defends
+  itself, dealing `defence_damage` each tick to every adjacent bot of another
+  team, so a conversion is
   a fight. There is no progression between matches and none is planned; the
   ladder of opponents (Q29) is the only thing that carries from one match to
   the next, and it carries nothing but the player's own programs.
 
 ## Inside a match
 
-A team's reach is measured in printers. Each one it holds is ten more bots
-it may print and one more deployment it may write for (Q24). None is ever
+A team's reach is measured in printers. Each one it holds is
+`bots_per_printer` more bots it may print and one more deployment it may
+write for (Q24). None is ever
 built (Q31): the map placed every printer there will be, so there are two
 ways to hold more, and the second is the only way up:
 
@@ -37,13 +39,16 @@ fewer printer in the world for everyone; a program chooses.
 
 **The arithmetic the numbers are set for.** With `convert_ticks` and bot
 health both at ten and `defence_damage` at one, one full-health bot converts
-a printer with nothing to spare; two bots do it comfortably; a bot already
-hurt dies trying. A team that wants a rival's printer brings more than one
+a printer with one health to spare — an action of `n` ticks begun in tick
+`T`'s slice completes in step 3 of tick `T + n - 1` (`02`), so the printer's
+defence lands `n - 1` times before the conversion does; two bots do it
+comfortably; a bot already hurt dies trying. A team that wants a rival's printer brings more than one
 bot, which is a program's decision, which is the point.
 
 **What conversion does not change.** The printer keeps its store, its
 health, its name and a print in progress; it takes the new team's printer
-bundle at its next boundary (Q11), and the bot it was printing is the new
+bundle at its next boundary by the swap rule (Q11), as if redeployed, and
+the bot it was printing is the new
 team's. Its old team is out (`04`) if it was the last one.
 
 ## Between matches
@@ -63,5 +68,5 @@ profile is the first thing that would not live in the sim.
 ## What this doc leaves open
 
 - **Between-match progression**, under a new number when wanted.
-- **Q29**, the ladder itself, which is `04`'s content and this doc's only
-  external structure.
+- **The next card** of the ladder (Q29), which is `04`'s content and this
+  doc's only external structure.

@@ -179,7 +179,7 @@ in [execution](execution.md#the-cost-model).
 | `isinstance(x, T)` | the type query above |
 | `round(x[, n])` | [numbers](numbers.md#the-numeric-builtins) |
 
-There is no `print`, `input`, `open`, `id`, `hash`, `eval`, `exec`, `getattr`,
+There is no Python `print` (the game's `print` is a printer's action, `docs/02`), `input`, `open`, `id`, `hash`, `eval`, `exec`, `getattr`,
 `setattr`, `hasattr`, `vars`, `globals`, `locals`, `super`, `iter`, `next`,
 `map`, `filter`, `reversed`, `repr`, `format`, `chr`, `ord`, `divmod`, `pow`.
 Diagnostic output to the player is a game builtin (`docs/02`). What a player

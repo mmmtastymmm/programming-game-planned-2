@@ -15,9 +15,8 @@ bots_per_printer = 10
 # scalars a name may hold (docs/02, A machine)
 name_max = 32
 
-[damage]
 # health a fault costs, charged by the fault prologue (Q24)
-fault = 1
+fault_damage = 1
 
 [model.bot]
 vision = 6
@@ -29,12 +28,14 @@ move_ticks = 2
 pick_ticks = 3
 pick_rate = { ore = 5 }
 drop_ticks = 1
-# attack (Q25): squared range in tiles, damage per hit, ticks per attack
+# attack (Q25): range in tiles (squared before comparison), damage per hit,
+# ticks per attack
 attack_range = 1
 attack_damage = 1
 attack_ticks = 3
 # converting an adjacent enemy printer (Q30)
 convert_ticks = 10
+defence_damage = 0
 # how far build_nearest looks, in tiles by squared distance
 build_reach = 3
 # realising a paint or overlay plan (Q27), and emptying the slot first (Q28)
@@ -64,6 +65,7 @@ store = { ore = 500 }
 cost = { ore = 40 }
 build_ticks = 20
 deconstruct_ticks = 10
+defence_damage = 0
 
 [model.site]
 # a site's store capacity is the cost of what it becomes; its ranges and
@@ -73,6 +75,7 @@ hearing = 2
 health = 10
 death_threshold = -5
 deconstruct_ticks = 5
+defence_damage = 0
 
 [loudness]
 # per sound cause (docs/02, Sounds); added to the hearer's range

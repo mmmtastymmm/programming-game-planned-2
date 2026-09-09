@@ -1,0 +1,9 @@
+# The command log's timing — the values behind docs/06-architecture.md's
+# driver. This file is the one place these are numbers; the doc owns what
+# each means. Both are in ticks (Q6) and fixed for a match at load (Q12).
+
+# a command entered at tick t is agreed for t + delay
+delay = 3
+# a stall longer than this, in ticks of real time at the current speed, is
+# reported to the player
+stall_report_ticks = 30
