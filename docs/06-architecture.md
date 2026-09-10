@@ -248,7 +248,7 @@ on a run that did not run (CLAUDE.md):
 | golden replays | `(map, command log) → hash stream` against a checked-in stream; a changed hash must be explained in the PR | `replay`, T7 |
 | language fixtures | program → transcript hash, cross-process | `lang`, T14 |
 | the source scan | no floats, no hash-order iteration, no wall clock, in `lang`, `sim`, `net` | `sim/tests/no_floats.rs`, widened to the workspace |
-| cross-architecture | the golden stream on a second architecture in CI | T15 |
+| cross-architecture | `scripts/determinism-battery.sh` on an x86-64 and an arm64 runner, each against the checked-in fixtures, and the two final-hash files diffed | `.github/workflows/ci.yml`, the `determinism` and `cross-architecture` jobs |
 | the check on the checks | each gate seeded with a defect it must catch | `scripts/check-checks.mjs`, extended to the Rust gates |
 
 `render` has no determinism gate, because it has no determinism to keep;
