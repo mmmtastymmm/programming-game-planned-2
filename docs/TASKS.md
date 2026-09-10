@@ -65,15 +65,6 @@ task:** the peer exchange itself, which lives with the renderer's driver
 (T16) since headless has one peer; and `docs/06`'s check-on-the-checks
 extended to the Rust gates.
 
-## M3 — Determinism assurance
-
-**T15 — Cross-architecture determinism check in CI**
-
-The language spike ran every process on one arm64 host, which is not the
-property lockstep needs. Owning the interpreter (Q5) does not grant it; it only
-means the bug would be ours to fix. The workflow already exists to hang this on:
-run the battery on `ubuntu-latest` and compare against a checked-in hash.
-
 ## M4 — Renderer
 
 **T16 — The `render` crate: Bevy, the driver, the snapshot, the mark tools**
