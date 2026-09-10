@@ -628,6 +628,13 @@ pub fn attribute(obj: &Value, name: &str) -> R<Value> {
         Value::Class(c) => c
             .lookup(name)
             .ok_or_else(|| Exception::attribute_error(name)),
+        // A module's attributes are its globals (`syntax.md`, `import`).
+        Value::Module(m) => m
+            .globals
+            .borrow()
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Exception::attribute_error(name)),
         _ => Err(Exception::attribute_error(name)),
     }
 }

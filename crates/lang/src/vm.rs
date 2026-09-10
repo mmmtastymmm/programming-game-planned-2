@@ -11,24 +11,27 @@
 
 use crate::ast::{BinOp, CmpOp, UnaryOp};
 use crate::builtins::{self, Outcome};
-use crate::compile::{Code, Instr, compile_module};
+use crate::compile::{Code, Instr, compile_module, imported_modules};
 use crate::data::{Costs, Limits};
 use crate::dispatch::{Native, Need, Then};
 use crate::errors::{ExcClass, Exception, LoadError};
 use crate::num::Num;
 use crate::parser::parse_file;
 use crate::value::{
-    Class, DictObj, Func, IterObj, ListObj, Method, R, SetObj, Value, check_key, dict_find,
-    has_instance, set_find,
+    Class, DictObj, Func, Globals, IterObj, ListObj, Method, Module, R, SetObj, Value, check_key,
+    dict_find, has_instance, set_find,
 };
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-/// A loaded bundle: today `main.py` alone (T13 brings `import`).
-#[derive(Debug)]
+/// A loaded bundle: `main.py` and the modules it may import, each compiled,
+/// with the import graph checked for cycles.
+#[derive(Debug, Clone)]
 pub struct Program {
     pub main: Rc<Code>,
+    /// Every file of the bundle by module name, `main` included.
+    pub modules: BTreeMap<String, Rc<Code>>,
     /// The bundle's version: FNV-1a over each file's length-prefixed name and
     /// bytes in sorted name order (`syntax.md`, The bundle).
     pub version: u64,
@@ -50,7 +53,8 @@ impl Program {
         let mut sorted: Vec<(&str, &str)> = files.to_vec();
         sorted.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
         let mut version = Fnv(0xcbf29ce484222325);
-        let mut main = None;
+        let mut modules: BTreeMap<String, Rc<Code>> = BTreeMap::new();
+        let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (name, src) in &sorted {
             if !valid_file_name(name) {
                 return Err(bad(name, "a file name is `[a-z_][a-z0-9_]*.py`".into()));
@@ -58,24 +62,94 @@ impl Program {
             if src.len() as u64 > limits.bundle_file_bytes {
                 return Err(bad(name, "the file is over the size limit".into()));
             }
+            let stem = name.trim_end_matches(".py");
+            if modules.contains_key(stem) {
+                return Err(bad(name, "file names are unique within the bundle".into()));
+            }
+            if GAME_MODULES.contains(&stem) {
+                return Err(bad(
+                    name,
+                    format!("`{stem}` is a game module; a bundle file cannot take its name"),
+                ));
+            }
             version.write_len_prefixed(name.as_bytes());
             version.write_len_prefixed(src.as_bytes());
-            if *name == "main.py" {
-                main = Some(*src);
-            } else {
-                return Err(bad(name, "`import` is not in this slice of the language yet (T13); a bundle is `main.py` alone".into()));
-            }
+            let stmts = parse_file(name, src)?;
+            edges.insert(stem.to_string(), imported_modules(&stmts));
+            modules.insert(stem.to_string(), compile_module(name, &stmts)?);
         }
-        let Some(src) = main else {
+        let Some(main) = modules.get("main").cloned() else {
             return Err(bad("<bundle>", "a bundle must contain `main.py`".into()));
         };
-        let stmts = parse_file("main.py", src)?;
-        let main = compile_module("main.py", &stmts)?;
+        // The module set is closed and known at load: every import names a
+        // bundle file or a game module, and the graph has no cycle.
+        for (from, imports) in &edges {
+            for m in imports {
+                if !modules.contains_key(m) && !GAME_MODULES.contains(&m.as_str()) {
+                    return Err(bad(
+                        &format!("{from}.py"),
+                        format!("`{m}` is not a file of the bundle nor a game module"),
+                    ));
+                }
+            }
+        }
+        if let Some(cycle) = find_cycle(&edges) {
+            return Err(bad(
+                &format!("{}.py", cycle[0]),
+                format!("circular import: {}", cycle.join(" -> ")),
+            ));
+        }
         Ok(Program {
             main,
+            modules,
             version: version.0,
         })
     }
+}
+
+/// The game's modules (`docs/02`, Game modules and builtins): none yet.
+const GAME_MODULES: &[&str] = &[];
+
+/// A cycle in the import graph, as the path that closes it, if any.
+fn find_cycle(edges: &BTreeMap<String, BTreeSet<String>>) -> Option<Vec<String>> {
+    // 0 unseen, 1 on the current path, 2 finished.
+    let mut state: BTreeMap<&str, u8> = BTreeMap::new();
+    fn visit<'a>(
+        node: &'a str,
+        edges: &'a BTreeMap<String, BTreeSet<String>>,
+        state: &mut BTreeMap<&'a str, u8>,
+        path: &mut Vec<&'a str>,
+    ) -> Option<Vec<String>> {
+        match state.get(node) {
+            Some(1) => {
+                let start = path.iter().position(|n| *n == node).unwrap_or(0);
+                let mut cycle: Vec<String> = path[start..].iter().map(|n| n.to_string()).collect();
+                cycle.push(node.to_string());
+                return Some(cycle);
+            }
+            Some(2) => return None,
+            _ => {}
+        }
+        state.insert(node, 1);
+        path.push(node);
+        if let Some(next) = edges.get(node) {
+            for n in next {
+                if let Some(c) = visit(n, edges, state, path) {
+                    return Some(c);
+                }
+            }
+        }
+        path.pop();
+        state.insert(node, 2);
+        None
+    }
+    for node in edges.keys() {
+        let mut path = Vec::new();
+        if let Some(c) = visit(node, edges, &mut state, &mut path) {
+            return Some(c);
+        }
+    }
+    None
 }
 
 fn valid_file_name(name: &str) -> bool {
@@ -175,6 +249,11 @@ struct Frame {
     after: Option<After>,
     /// For a `class` body: the base class, so `ReturnClass` can build it.
     class_base: Option<Value>,
+    /// The globals this frame's `LoadGlobal`/`StoreGlobal` use: `main.py`'s,
+    /// or the module's for a module body and the functions it defines.
+    globals: Globals,
+    /// For a module body run by `import`: the module to hand back.
+    import_of: Option<Rc<Module>>,
 }
 
 /// A jump deferred until its condition's truth is known.
@@ -188,7 +267,7 @@ struct After {
 }
 
 impl Frame {
-    fn new(code: Rc<Code>) -> Frame {
+    fn new(code: Rc<Code>, globals: Globals) -> Frame {
         let n = code.local_names.len();
         Frame {
             code,
@@ -201,17 +280,22 @@ impl Frame {
             natives: Vec::new(),
             after: None,
             class_base: None,
+            globals,
+            import_of: None,
         }
     }
 }
 
 /// One machine's interpreter: the whole execution state of one program.
 pub struct Machine {
-    program: Rc<Code>,
+    program: Program,
     costs: Rc<Costs>,
     limits: Rc<Limits>,
     frames: Vec<Frame>,
-    globals: BTreeMap<String, Value>,
+    /// `main.py`'s globals.
+    globals: Globals,
+    /// The modules already run this main-flow run, by name.
+    modules_run: BTreeMap<String, Rc<Module>>,
     /// Cost units spent this tick.
     spent: u64,
     /// Cost units the next tick starts in the red by.
@@ -233,11 +317,12 @@ pub struct Machine {
 impl Machine {
     pub fn new(program: &Program, costs: Rc<Costs>, limits: Rc<Limits>) -> Machine {
         let mut m = Machine {
-            program: program.main.clone(),
+            program: program.clone(),
             costs,
             limits,
             frames: Vec::new(),
-            globals: BTreeMap::new(),
+            globals: Rc::new(RefCell::new(BTreeMap::new())),
+            modules_run: BTreeMap::new(),
             spent: 0,
             deficit: 0,
             restarted_this_tick: false,
@@ -252,11 +337,16 @@ impl Machine {
         m
     }
 
-    /// Every global cleared, `main.py` at its first statement.
+    /// Every global of every module cleared, the set of modules run
+    /// emptied, `main.py` at its first statement (`execution.md`, Starting
+    /// main flow).
     fn start_main(&mut self) {
-        self.globals.clear();
+        self.globals.borrow_mut().clear();
+        self.modules_run.clear();
         self.frames.clear();
-        self.frames.push(Frame::new(self.program.clone()));
+        let globals = self.globals.clone();
+        self.frames
+            .push(Frame::new(self.program.main.clone(), globals));
         self.waiting = false;
         self.native_waiting = false;
         self.native_input = None;
@@ -264,7 +354,7 @@ impl Machine {
 
     /// Replace the program (a `redeploy`'s swap) and start it from the top.
     pub fn swap_program(&mut self, program: &Program) {
-        self.program = program.main.clone();
+        self.program = program.clone();
         self.start_main();
     }
 
@@ -520,9 +610,9 @@ impl Machine {
         }
     }
 
-    /// The value of a global, for tests and the snapshot.
-    pub fn global(&self, name: &str) -> Option<&Value> {
-        self.globals.get(name)
+    /// The value of one of `main.py`'s globals, for tests and the snapshot.
+    pub fn global(&self, name: &str) -> Option<Value> {
+        self.globals.borrow().get(name).cloned()
     }
 
     /// Run one tick's slice: until the budget is spent, a host call waits,
@@ -687,8 +777,9 @@ impl Machine {
                 // last known by its row in the cost table (`costs.md`), so
                 // a host that lacks one the table names is the host's bug,
                 // not a `NameError` a program can catch.
-                let v = match self.globals.get(&name) {
-                    Some(v) => v.clone(),
+                let found = self.frame().globals.borrow().get(&name).cloned();
+                let v = match found {
+                    Some(v) => v,
                     None => match builtins::lookup(&name) {
                         Some(v) => v,
                         None if self.costs.game_cost(&name).is_some() => {
@@ -702,7 +793,7 @@ impl Machine {
             Instr::StoreGlobal(i) => {
                 let v = self.pop()?;
                 let name = code.names.get(i).cloned().unwrap_or_default();
-                self.globals.insert(name, v);
+                self.frame().globals.borrow_mut().insert(name, v);
             }
             Instr::Pop => {
                 self.pop()?;
@@ -1048,7 +1139,12 @@ impl Machine {
                     .get(child)
                     .cloned()
                     .ok_or_else(Exception::type_error)?;
-                self.push(Value::Func(Rc::new(Func { code, defaults })));
+                let globals = self.frame().globals.clone();
+                self.push(Value::Func(Rc::new(Func {
+                    code,
+                    defaults,
+                    globals,
+                })));
             }
             Instr::BuildClass { child, has_base } => {
                 self.charge(c.op_literal);
@@ -1066,7 +1162,8 @@ impl Machine {
                 if self.frames.len() as u64 >= self.limits.depth_call {
                     return Err(Exception::new(ExcClass::RecursionError, vec![]));
                 }
-                let mut frame = Frame::new(body);
+                let globals = self.frame().globals.clone();
+                let mut frame = Frame::new(body, globals);
                 frame.class_base = base;
                 self.frames.push(frame);
             }
@@ -1224,10 +1321,38 @@ impl Machine {
                 });
                 self.push(Value::Class(class));
             }
+            Instr::Import(i) => {
+                let name = code.names.get(i).cloned().unwrap_or_default();
+                if let Some(m) = self.modules_run.get(&name) {
+                    // A second import returns the same module.
+                    self.push(Value::Module(m.clone()));
+                    return Ok(Step::Continue);
+                }
+                let Some(body) = self.program.modules.get(&name).cloned() else {
+                    return Err(Exception::name_error(&name));
+                };
+                self.charge(c.op_import);
+                if self.frames.len() as u64 >= self.limits.depth_call {
+                    return Err(Exception::new(ExcClass::RecursionError, vec![]));
+                }
+                let module = Rc::new(Module {
+                    name: name.clone(),
+                    globals: Rc::new(RefCell::new(BTreeMap::new())),
+                });
+                self.modules_run.insert(name, module.clone());
+                let mut frame = Frame::new(body, module.globals.clone());
+                frame.import_of = Some(module);
+                self.frames.push(frame);
+            }
             Instr::Return => {
-                let v = self.pop()?;
-                let done = self.frames.pop().is_some_and(|f| f.code.is_module);
-                if done || self.frames.is_empty() {
+                let mut v = self.pop()?;
+                let Some(popped) = self.frames.pop() else {
+                    return Ok(Step::MainEnded);
+                };
+                if let Some(module) = popped.import_of {
+                    // A module body's end: the import evaluates to the module.
+                    v = Value::Module(module);
+                } else if popped.code.is_module || self.frames.is_empty() {
                     return Ok(Step::MainEnded);
                 }
                 if !self.frame().natives.is_empty() {
@@ -1650,7 +1775,7 @@ fn bind_arguments(
     m: &mut Machine,
 ) -> R<Frame> {
     let code = f.code.clone();
-    let mut frame = Frame::new(code.clone());
+    let mut frame = Frame::new(code.clone(), f.globals.clone());
     let n = code.nparams;
     let mut extra = Vec::new();
     for (i, a) in args.into_iter().enumerate() {

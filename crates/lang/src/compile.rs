@@ -73,6 +73,9 @@ pub enum Instr {
     /// The last instruction of a class body: pack the frame's locals into a
     /// class and hand it to the caller.
     ReturnClass,
+    /// Push the module named by `names[i]`, running its body first if this
+    /// run has not yet.
+    Import(usize),
     /// One pattern node tried: charges `op.pattern`.
     PatternNode,
     /// Pop a value; push whether it is the singleton: 0 `None`, 1 `True`,
@@ -475,6 +478,22 @@ impl<'a> Ctx<'a> {
             StmtKind::Def { name, params, body } => {
                 self.compile_function(name, params, body)?;
                 self.store_name(name)?;
+            }
+            StmtKind::Import { module, alias } => {
+                let idx = self.name_index(module);
+                self.emit(Instr::Import(idx));
+                self.store_name(alias.as_ref().unwrap_or(module))?;
+            }
+            StmtKind::FromImport { module, names } => {
+                let idx = self.name_index(module);
+                self.emit(Instr::Import(idx));
+                for (n, alias) in names {
+                    self.emit(Instr::Dup);
+                    let a = self.name_index(n);
+                    self.emit(Instr::LoadAttr(a));
+                    self.store_name(alias.as_ref().unwrap_or(n))?;
+                }
+                self.emit(Instr::Pop);
             }
             StmtKind::Match { subject, arms } => {
                 self.expr(subject)?;
@@ -1229,6 +1248,49 @@ fn target_names(t: &Target) -> Vec<String> {
     }
 }
 
+/// Every module a body imports, anywhere in it — the edges of the import
+/// graph the loader walks for cycles.
+pub fn imported_modules(stmts: &[Stmt]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    fn walk(stmts: &[Stmt], out: &mut BTreeSet<String>) {
+        for s in stmts {
+            match &s.kind {
+                StmtKind::Import { module, .. } | StmtKind::FromImport { module, .. } => {
+                    out.insert(module.clone());
+                }
+                StmtKind::For { body, orelse, .. }
+                | StmtKind::If { body, orelse, .. }
+                | StmtKind::While { body, orelse, .. } => {
+                    walk(body, out);
+                    walk(orelse, out);
+                }
+                StmtKind::Def { body, .. } | StmtKind::Class { body, .. } => walk(body, out),
+                StmtKind::Match { arms, .. } => {
+                    for arm in arms {
+                        walk(&arm.body, out);
+                    }
+                }
+                StmtKind::Try {
+                    body,
+                    handlers,
+                    orelse,
+                    finalbody,
+                } => {
+                    walk(body, out);
+                    for h in handlers {
+                        walk(&h.body, out);
+                    }
+                    walk(orelse, out);
+                    walk(finalbody, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(stmts, &mut out);
+    out
+}
+
 /// Every name assigned anywhere in a body: assignment targets, `for`
 /// targets, `def` names, `except … as` names. Comprehension targets are not
 /// included, since they are private to the comprehension.
@@ -1256,6 +1318,14 @@ fn assigned_names(stmts: &[Stmt]) -> BTreeSet<String> {
                 StmtKind::If { body, orelse, .. } | StmtKind::While { body, orelse, .. } => {
                     walk(body, out);
                     walk(orelse, out);
+                }
+                StmtKind::Import { module, alias } => {
+                    out.insert(alias.clone().unwrap_or_else(|| module.clone()));
+                }
+                StmtKind::FromImport { names, .. } => {
+                    for (n, alias) in names {
+                        out.insert(alias.clone().unwrap_or_else(|| n.clone()));
+                    }
                 }
                 StmtKind::Match { arms, .. } => {
                     for arm in arms {

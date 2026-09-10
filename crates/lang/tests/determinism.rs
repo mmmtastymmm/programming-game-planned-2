@@ -14,12 +14,22 @@ use std::rc::Rc;
 /// A program that touches most of what T10 built: wide arithmetic, sorting,
 /// dicts and sets in insertion order, f-strings, exceptions, a fault, and a
 /// waiting host call resumed with a value that depends on the trace so far.
+/// A helper module, so the trace crosses an `import` and a function whose
+/// globals are another module's.
+const UTIL: &str = r#"
+scale = 7
+def cube_over(i):
+    return (i ** 3) / scale
+"#;
+
 const PROGRAM: &str = r#"
+from util import cube_over
+import util
 acc = {}
 seen = set()
 for i in range(40):
     k = f"{(i * 7919) % 23:02d}"
-    acc[k] = acc.get(k, 0) + (i ** 3) / 7
+    acc[k] = acc.get(k, 0) + cube_over(i)
     seen.add((i % 5, k))
 order = sorted(acc.items(), key=len)
 log(order[:3], len(seen), sorted(seen)[:2])
@@ -62,7 +72,8 @@ impl Host for Trace {
 fn trace() -> Vec<String> {
     let costs = Rc::new(Costs::parse(COSTS_TOML).expect("costs"));
     let limits = Rc::new(Limits::parse(LIMITS_TOML).expect("limits"));
-    let program = Program::load(&[("main.py", PROGRAM)], &limits).unwrap_or_else(|e| panic!("{e}"));
+    let program = Program::load(&[("main.py", PROGRAM), ("util.py", UTIL)], &limits)
+        .unwrap_or_else(|e| panic!("{e}"));
     let mut m = Machine::new(&program, costs, limits);
     let mut host = Trace {
         lines: vec![format!("version {:016x}", program.version)],
