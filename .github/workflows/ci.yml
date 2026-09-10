@@ -52,3 +52,41 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: fmt, clippy, test (incl. golden replays)
         run: scripts/ci.sh rust
+
+  # Cross-architecture determinism (docs/06, Testing; T15). The golden
+  # fixtures were generated on one machine, and lockstep needs every peer's
+  # architecture to agree with it: the battery runs on x86-64 and on arm64,
+  # each side checks its streams against the checked-in fixtures, and the
+  # job below diffs the two sides' final hashes line for line.
+  determinism:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: determinism battery (scripts/determinism-battery.sh)
+        run: scripts/determinism-battery.sh hashes-${{ matrix.runner }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hashes-${{ matrix.runner }}
+          path: hashes-${{ matrix.runner }}.txt
+          if-no-files-found: error
+
+  cross-architecture:
+    needs: determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hashes-*
+          merge-multiple: true
+      - name: the two architectures agree on every stream
+        run: |
+          set -euo pipefail
+          ls -l hashes-*.txt
+          test "$(wc -l < hashes-ubuntu-latest.txt)" -ge 3
+          diff hashes-ubuntu-latest.txt hashes-ubuntu-24.04-arm.txt \
+            && echo "x86-64 and arm64 agree:" && cat hashes-ubuntu-latest.txt
