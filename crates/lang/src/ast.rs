@@ -53,6 +53,16 @@ pub enum StmtKind {
         body: Vec<Stmt>,
     },
     Return(Option<Expr>),
+    /// `import module [as alias]`.
+    Import {
+        module: String,
+        alias: Option<String>,
+    },
+    /// `from module import a [as b], …`.
+    FromImport {
+        module: String,
+        names: Vec<(String, Option<String>)>,
+    },
     /// `match subject:` with its `case` arms, tried top to bottom.
     Match {
         subject: Expr,

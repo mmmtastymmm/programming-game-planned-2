@@ -324,8 +324,54 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Some(self.match_stmt()?)
             }
-            Tok::Keyword("import") | Tok::Keyword("from") => {
-                return Err(self.err("`import` is not in this slice of the language yet (T13)"));
+            Tok::Keyword("import") => {
+                self.bump();
+                let module = self.module_name()?;
+                let alias = if self.eat_kw("as") {
+                    Some(self.expect_name()?)
+                } else {
+                    None
+                };
+                if self.at(&Tok::Op(",")) {
+                    return Err(self.err("one module per `import`; the forms are `import name` and `from name import a, b`"));
+                }
+                self.expect_newline()?;
+                return Ok(vec![Stmt {
+                    line,
+                    kind: StmtKind::Import { module, alias },
+                }]);
+            }
+            Tok::Keyword("from") => {
+                self.bump();
+                if self.at(&Tok::Op(".")) {
+                    return Err(self.err("relative imports are not in the language"));
+                }
+                let module = self.module_name()?;
+                if !self.eat_kw("import") {
+                    return Err(self.err("expected `import`"));
+                }
+                if self.eat_op("*") {
+                    return Err(self
+                        .err("`from name import *` is not in the language; name what you import"));
+                }
+                let mut names = Vec::new();
+                loop {
+                    let n = self.expect_name()?;
+                    let alias = if self.eat_kw("as") {
+                        Some(self.expect_name()?)
+                    } else {
+                        None
+                    };
+                    names.push((n, alias));
+                    if !self.eat_op(",") {
+                        break;
+                    }
+                }
+                self.expect_newline()?;
+                return Ok(vec![Stmt {
+                    line,
+                    kind: StmtKind::FromImport { module, names },
+                }]);
             }
             Tok::Keyword(
                 k @ ("del" | "assert" | "with" | "async" | "await" | "yield" | "global"
@@ -454,6 +500,15 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(params)
+    }
+
+    /// A module name: one identifier, never dotted.
+    fn module_name(&mut self) -> P<String> {
+        let n = self.expect_name()?;
+        if self.at(&Tok::Op(".")) {
+            return Err(self.err("dotted module names and packages are not in the language"));
+        }
+        Ok(n)
     }
 
     // --------------------------------------------------------- match ---
@@ -1518,7 +1573,8 @@ mod tests {
         assert!(fails("if x:\n    class A:\n        pass\n"));
         assert!(fails("if x:\n    def f():\n        pass\n"));
         assert!(fails("class A:\n    if x:\n        pass\n"));
-        assert!(fails("import m"));
+        assert!(fails("import m.n"));
+        assert!(fails("from m import *"));
         assert!(fails("def f(a=1, b):\n    pass\n"));
         assert!(fails("return 1"));
         assert!(fails("f(x=1, 2)"));

@@ -49,6 +49,20 @@ pub enum Value {
     /// A `def` found on an instance's class, bound to the instance:
     /// `scout.step`.
     Bound(Rc<Bound>),
+    /// An imported module: its globals, read as attributes.
+    Module(Rc<Module>),
+}
+
+/// The globals of `main.py` or of a module: what `LoadGlobal` and
+/// `StoreGlobal` read and write, shared by every function the module
+/// defines.
+pub type Globals = Rc<RefCell<std::collections::BTreeMap<String, Value>>>;
+
+/// A module that has run this main-flow run (`syntax.md`, `import`).
+#[derive(Debug)]
+pub struct Module {
+    pub name: String,
+    pub globals: Globals,
 }
 
 #[derive(Debug)]
@@ -228,6 +242,9 @@ pub struct SetObj {
 pub struct Func {
     pub code: Rc<crate::compile::Code>,
     pub defaults: Vec<Value>,
+    /// The globals of the module that defined it: a function sees its own
+    /// module's names, not its caller's.
+    pub globals: Globals,
 }
 
 #[derive(Debug)]
@@ -279,6 +296,7 @@ impl Value {
             Value::Set(_) => "set",
             Value::Func(_) | Value::Builtin(_) | Value::Method(_) | Value::Bound(_) => "function",
             Value::ExcClass(_) | Value::Class(_) => "type",
+            Value::Module(_) => "module",
             Value::Exc(_) => "exception",
             Value::Record(_) => "record",
             Value::Iter(_) => "iterator",
@@ -406,6 +424,7 @@ impl Value {
             (Value::Inst(a), Value::Inst(b)) => Rc::ptr_eq(a, b),
             (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
             (Value::Bound(a), Value::Bound(b)) => Rc::ptr_eq(a, b),
+            (Value::Module(a), Value::Module(b)) => Rc::ptr_eq(a, b),
             _ => false,
         })
     }
@@ -480,6 +499,7 @@ impl Value {
             Value::Record(r) => format!("<{}>", r.type_name),
             Value::Iter(_) => "<iterator>".to_string(),
             Value::Class(c) => format!("<class {}>", c.name),
+            Value::Module(m) => format!("<module {}>", m.name),
             Value::Bound(b) => format!("<function {}>", b.func.code.name),
             // Without `__str__` (which `dispatch.rs` handles first): the
             // exception form for a raisable instance, `<Name>` otherwise.
