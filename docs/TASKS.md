@@ -76,3 +76,13 @@ snapshot `docs/06` defines; interpolation in floats, never read back; input
 becoming `Deploy`, `Mark`, `Unmark`, `SetSpeed` and `Resign` commands (Q10)
 that the renderer submits and forgets. The review rule — flag any arrow from
 `render` to `sim` — starts applying with this crate's first commit.
+
+*Progress (2026-09-10):* `crates/render` exists: a Bevy-free driver
+implementing `docs/06`'s loop (the speed, the paused driver reaching a
+command, the peer wait and its report), tested headless; the Bevy app with
+its view built from snapshots — tiles as the player's team sees them,
+machines diffed by id and interpolated between the last two snapshots,
+sounds as fading rings; input as commands (the mark tools, the speed, deploy
+from a programs directory, resign); and egui panels for the tick, the
+teams, the selected machine and the log. `data/starter/` holds the player's
+first programs. The peer exchange is still T7's.

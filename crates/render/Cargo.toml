@@ -1,0 +1,15 @@
+[package]
+name = "render"
+version.workspace = true
+edition.workspace = true
+description = "Bevy: the driver, the view built from snapshots, input as commands (docs/06, Q15)"
+
+[lints]
+workspace = true
+
+[dependencies]
+sim = { path = "../sim" }
+net = { path = "../net" }
+lang = { path = "../lang" }
+bevy = "0.19"
+bevy_egui = "0.41"
