@@ -84,13 +84,6 @@ parse error. Hook budgets and the interrupt kinds beyond `fault` are T7's.
 (`key=` taking only a builtin was a gap here until T11's dispatcher let a
 builtin re-enter a `def`.)
 
-**T13 — `import` over a closed module set** ⚠HASH
-
-Program identity and circular imports follow **determinism rule 7** (CLAUDE.md),
-which Q13 extended when it ruled `import` in; this task is what makes the sim
-honour it. The rule is not restated here — one canonical statement, per
-[design-invariant DI1](../.claude/design-invariants.md).
-
 **T14 — Determinism suite for the language**
 
 Mirroring `crates/sim`'s: golden fixtures for program execution, a cross-process
