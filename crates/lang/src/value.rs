@@ -182,6 +182,23 @@ pub struct Bound {
     pub receiver: Value,
 }
 
+/// What storing this value in one slot adds to the live-values count
+/// (`execution.md`, Limits): one for the slot, plus a tuple's elements,
+/// since a tuple is a value copied into every slot that holds it. An
+/// object's contents are not included: they were counted when it was
+/// built, and count once however many slots reference it.
+pub fn weight(v: &Value) -> usize {
+    let mut total = 0usize;
+    let mut todo: Vec<&Value> = vec![v];
+    while let Some(x) = todo.pop() {
+        total = total.saturating_add(1);
+        if let Value::Tuple(t) = x {
+            todo.extend(t.iter());
+        }
+    }
+    total
+}
+
 /// Whether an instance sits anywhere in a value: the test that sends an
 /// operation to `dispatch.rs`, since only an instance can run user code.
 pub fn has_instance(v: &Value, depth: u32) -> bool {

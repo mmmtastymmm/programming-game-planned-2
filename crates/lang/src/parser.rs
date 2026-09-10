@@ -19,13 +19,23 @@ pub struct Parser<'a> {
     top_level: bool,
     /// Set by `class` for the block it is about to parse.
     next_block_is_class: bool,
+    /// Depth of indented blocks, bounded by `max_depth` (`execution.md`,
+    /// Limits: "brackets and blocks nested in source have the same bound").
+    block_depth: u32,
+    max_depth: u32,
 }
 
 type P<T> = Result<T, LoadError>;
 
-/// Parse a whole file into its statements.
+/// Parse a whole file into its statements, with source nesting unbounded.
 pub fn parse_file(file: &str, src: &str) -> P<Vec<Stmt>> {
-    let toks = Lexer::new(file, src).tokenize()?;
+    parse_file_bounded(file, src, u32::MAX)
+}
+
+/// Parse a whole file, refusing brackets or blocks nested deeper than
+/// `nesting` levels.
+pub fn parse_file_bounded(file: &str, src: &str, nesting: u32) -> P<Vec<Stmt>> {
+    let toks = Lexer::new(file, src).nesting(nesting).tokenize()?;
     let mut p = Parser {
         file,
         toks,
@@ -34,6 +44,8 @@ pub fn parse_file(file: &str, src: &str) -> P<Vec<Stmt>> {
         def_allowed: true,
         top_level: true,
         next_block_is_class: false,
+        block_depth: 0,
+        max_depth: nesting,
     };
     let mut stmts = Vec::new();
     while !p.at(&Tok::Eof) {
@@ -61,6 +73,8 @@ fn parse_expr_src(file: &str, line: u32, src: &str) -> P<Expr> {
         def_allowed: false,
         top_level: false,
         next_block_is_class: false,
+        block_depth: 0,
+        max_depth: u32::MAX,
     };
     let e = p.expr()?;
     if !p.at(&Tok::Eof) {
@@ -173,7 +187,16 @@ impl<'a> Parser<'a> {
         self.def_allowed = self.next_block_is_class;
         self.next_block_is_class = false;
         self.top_level = false;
-        let out = self.block_inner();
+        self.block_depth = self.block_depth.wrapping_add(1);
+        let out = if self.block_depth > self.max_depth {
+            Err(self.err(format!(
+                "blocks nest deeper than {} levels, the nesting-depth limit",
+                self.max_depth
+            )))
+        } else {
+            self.block_inner()
+        };
+        self.block_depth = self.block_depth.wrapping_sub(1);
         (self.def_allowed, self.top_level) = saved;
         out
     }

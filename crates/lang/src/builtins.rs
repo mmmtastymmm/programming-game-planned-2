@@ -7,7 +7,9 @@ use crate::ast::BinOp;
 use crate::dispatch::{FindMode, Native, Then};
 use crate::errors::{ExcClass, Exception};
 use crate::num::{Num, PLACES};
-use crate::value::{R, Record, Value, check_key, dict_find, has_instance, quoted, set_find};
+use crate::value::{
+    R, Record, Value, check_key, dict_find, has_instance, quoted, set_find, weight,
+};
 use crate::vm::{Machine, method};
 use std::rc::Rc;
 
@@ -662,6 +664,7 @@ pub fn call_method(
                 "append" => {
                     m.charge(c.method_list_append);
                     let v = one(args)?.clone();
+                    m.note_value(&v);
                     let mut items = l.items.borrow_mut();
                     m.check_size(items.len().wrapping_add(1))?;
                     items.push(v);
@@ -671,6 +674,7 @@ pub fn call_method(
                     m.charge(c.method_list_extend);
                     let add = m.snapshot(one(args)?)?;
                     m.charge_each(add.len(), c.factor_copy);
+                    m.note_values(&add);
                     let mut items = l.items.borrow_mut();
                     m.check_size(items.len().saturating_add(add.len()))?;
                     items.extend(add);
@@ -681,6 +685,7 @@ pub fn call_method(
                     let [i, v] = args else {
                         return Err(Exception::type_error());
                     };
+                    m.note_value(v);
                     let mut items = l.items.borrow_mut();
                     m.check_size(items.len().wrapping_add(1))?;
                     let at = clamp_index(integral_index(i)?, items.len());
@@ -746,6 +751,8 @@ pub fn call_method(
                             check_key(k)?;
                             let v = default.unwrap_or(Value::None);
                             m.check_size(items.len().wrapping_add(1))?;
+                            m.note_value(k);
+                            m.note_value(&v);
                             items.push((k.clone(), v.clone()));
                             Ok(v)
                         }
@@ -785,6 +792,8 @@ pub fn call_method(
                             Some(i) => items[i].1 = v,
                             None => {
                                 m.check_size(items.len().wrapping_add(1))?;
+                                m.note_value(&k);
+                                m.note_value(&v);
                                 items.push((k, v));
                             }
                         }
@@ -819,6 +828,7 @@ pub fn call_method(
                         ("add", None) => {
                             check_key(v)?;
                             m.check_size(items.len().wrapping_add(1))?;
+                            m.note_value(v);
                             items.push(v.clone());
                         }
                         ("add", Some(_)) => {}
@@ -1150,6 +1160,8 @@ pub fn store_subscript(m: &mut Machine, obj: &Value, idx: Value, v: Value) -> R<
                 Some(i) => items[i].1 = v,
                 None => {
                     m.check_size(items.len().wrapping_add(1))?;
+                    m.note_value(&idx);
+                    m.note_value(&v);
                     items.push((idx, v));
                 }
             }
@@ -1223,6 +1235,7 @@ pub fn binop_collections(m: &mut Machine, op: BinOp, l: Value, r: Value) -> R<Va
         (BinOp::Add, Value::Tuple(a), Value::Tuple(b)) => {
             let mut items = a.to_vec();
             items.extend(b.iter().cloned());
+            m.note_values(&items);
             m.charge_each(items.len(), c.factor_copy);
             m.check_size(items.len())?;
             Ok(Value::tuple(items))
@@ -1261,6 +1274,12 @@ pub fn binop_collections(m: &mut Machine, op: BinOp, l: Value, r: Value) -> R<Va
                 Value::Tuple(t) => {
                     let total = t.len().saturating_mul(n);
                     m.check_size(total)?;
+                    m.note_alloc(
+                        t.iter()
+                            .map(weight)
+                            .fold(0usize, usize::saturating_add)
+                            .saturating_mul(n),
+                    );
                     m.charge_each(total, c.factor_copy);
                     Ok(Value::tuple(
                         (0..n).flat_map(|_| t.iter().cloned()).collect(),

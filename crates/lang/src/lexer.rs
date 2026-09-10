@@ -51,6 +51,9 @@ pub struct Lexer<'a> {
     line: u32,
     indents: Vec<usize>,
     depth: u32,
+    /// The nesting-depth limit for brackets (`execution.md`, Limits): a
+    /// parse error past it. Unbounded unless `nesting` sets it.
+    max_depth: u32,
     at_line_start: bool,
     out: Vec<Token>,
 }
@@ -64,9 +67,16 @@ impl<'a> Lexer<'a> {
             line: 1,
             indents: vec![0],
             depth: 0,
+            max_depth: u32::MAX,
             at_line_start: true,
             out: Vec::new(),
         }
+    }
+
+    /// Bound bracket nesting at `n` levels.
+    pub fn nesting(mut self, n: u32) -> Lexer<'a> {
+        self.max_depth = n;
+        self
     }
 
     fn err(&self, message: impl Into<String>) -> LoadError {
@@ -408,7 +418,15 @@ impl<'a> Lexer<'a> {
             if slice == *op {
                 self.pos = self.pos.wrapping_add(n);
                 match *op {
-                    "(" | "[" | "{" => self.depth = self.depth.wrapping_add(1),
+                    "(" | "[" | "{" => {
+                        self.depth = self.depth.wrapping_add(1);
+                        if self.depth > self.max_depth {
+                            return Err(self.err(format!(
+                                "brackets nest deeper than {} levels, the nesting-depth limit",
+                                self.max_depth
+                            )));
+                        }
+                    }
                     ")" | "]" | "}" => {
                         if self.depth == 0 {
                             return Err(self.err(format!("`{op}` closes nothing")));

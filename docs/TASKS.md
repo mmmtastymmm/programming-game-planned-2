@@ -78,11 +78,15 @@ resumable bytecode, the metered evaluator, `num` with its wide routine, the
 language builtins and methods, the cost and limit tables with the row↔key
 check in both directions, and a program-level test suite plus a cross-process
 trace check. Game builtins resolve by their `[game]` row and go to a `Host`
-trait the sim will implement (T7). **Still open under this task:** the
-live-values limit (nothing measures it yet) and the source nesting-depth
-parse error. Hook budgets and the interrupt kinds beyond `fault` are T7's.
-(`key=` taking only a builtin was a gap here until T11's dispatcher let a
-builtin re-enter a `def`.)
+trait the sim will implement (T7). Hook budgets and the interrupt kinds
+landed with T14. (`key=` taking only a builtin was a gap here until T11's
+dispatcher let a builtin re-enter a `def`.)
+
+*Progress (2026-09-10):* the two remaining gaps closed — source nesting
+past `depth.nesting` is a parse error at load, for brackets and blocks
+alike, and the live-values limit is measured exactly, walked only when a
+running bound on growth says the limit could have been crossed. Nothing
+remains open under this task.
 
 ## M3 — Determinism assurance
 
