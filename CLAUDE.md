@@ -20,14 +20,14 @@ list of open topics repeated here would drift on every ruling. The corpus
 scaffolding and the determinism gate are ported from the predecessor project
 `../programming_game_planned` and proven in CI.
 
-Crate layout: `crates/sim` (deterministic world — **plain Rust, no ECS**) and
-`crates/lang` (the interpreter, T10 onward), growing into the five crates
-[docs/06-architecture.md](docs/06-architecture.md) draws — `lang`, `sim`,
-`net`, `render`, `replay` — of which only `render` may hold a float or a Bevy
-dependency, and nothing depends on `render`. The language crate is specified
-by [docs/01-language.md](docs/01-language.md) and built by milestone M2 in
-[docs/TASKS.md](docs/TASKS.md); `render` is T16. Neither is needed for the
-determinism gate to be real, which runs headless.
+Crate layout: four of the five crates
+[docs/06-architecture.md](docs/06-architecture.md) draws — `crates/lang` (the
+interpreter), `crates/sim` (the world — **plain Rust, no ECS**), `crates/net`
+(the command log and its bytes) and `crates/replay` (the headless driver and
+the golden fixtures) — with `render` (T16) to come, the only one that may
+hold a float or a Bevy dependency, and the one nothing depends on. The
+language crate is specified by [docs/01-language.md](docs/01-language.md).
+The determinism gate runs headless and needs no renderer.
 
 ## Determinism rules (CRITICAL — lockstep multiplayer)
 

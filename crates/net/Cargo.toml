@@ -1,0 +1,11 @@
+[package]
+name = "net"
+version.workspace = true
+edition.workspace = true
+description = "The command log as a data structure and its canonical bytes (docs/06)"
+
+[lints]
+workspace = true
+
+[dependencies]
+sim = { path = "../sim" }

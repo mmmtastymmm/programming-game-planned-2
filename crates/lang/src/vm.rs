@@ -19,7 +19,7 @@ use crate::num::Num;
 use crate::parser::parse_file_bounded;
 use crate::value::{
     Class, DictObj, Func, Globals, IterObj, ListObj, Method, Module, R, SetObj, Value, check_key,
-    dict_find, has_instance, set_find, weight,
+    dict_find, has_instance, hash_value, set_find, weight,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
@@ -250,6 +250,16 @@ pub trait Host {
     fn current_program(&mut self) -> Option<Program> {
         None
     }
+
+    /// An interrupt's prologue, for what it does to the machine's *body*
+    /// (`docs/02`): a `fault` charges damage and cancels the action, `dying`
+    /// cancels it and freezes health, `redeploy` cancels it. The host may
+    /// answer with an interrupt to raise at once — a `fault` whose damage
+    /// leaves no health raises `dying`, delivered at the handler's first
+    /// boundary, after the record is written.
+    fn on_prologue(&mut self, _kind: Interrupt) -> Option<Interrupt> {
+        None
+    }
 }
 
 /// The interrupt kinds, ascending priority (`execution.md`, Kinds). A
@@ -328,6 +338,9 @@ enum Mode {
 pub enum HostCall {
     /// The builtin returned a value.
     Value(Value),
+    /// The builtin returned a value and charges `extra` cost units beyond
+    /// its base row — a query's `factor.traverse` per element (`docs/02`).
+    Charged { value: Value, extra: u64 },
     /// The builtin began a waiting action; the program yields until the host
     /// resumes it, and the call then returns what the host passes.
     Wait,
@@ -594,6 +607,73 @@ impl Machine {
         self.dead
     }
 
+    /// The execution state, canonically encoded for the world's state hash
+    /// (`docs/06`, The state hash): the program counter, every frame's
+    /// locals, every global, the deficit, the pending interrupt set, the
+    /// mode and the hook budget spent in it, and the modules run this run.
+    pub fn state_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut seen = BTreeSet::new();
+        out.extend_from_slice(&(self.frames.len() as u64).to_le_bytes());
+        for f in &self.frames {
+            write_str(&mut out, &f.code.name);
+            out.extend_from_slice(&(f.pc as u64).to_le_bytes());
+            out.extend_from_slice(&(f.locals.len() as u64).to_le_bytes());
+            for l in &f.locals {
+                match l {
+                    Some(v) => {
+                        out.push(1);
+                        hash_value(v, &mut out, &mut seen);
+                    }
+                    None => out.push(0),
+                }
+            }
+            out.extend_from_slice(&(f.stack.len() as u64).to_le_bytes());
+            for v in &f.stack {
+                hash_value(v, &mut out, &mut seen);
+            }
+        }
+        let globals = self.globals.borrow();
+        out.extend_from_slice(&(globals.len() as u64).to_le_bytes());
+        for (k, v) in globals.iter() {
+            write_str(&mut out, k);
+            hash_value(v, &mut out, &mut seen);
+        }
+        out.extend_from_slice(&self.deficit.to_le_bytes());
+        out.push(self.pending.len() as u8);
+        for p in &self.pending {
+            out.push(*p as u8);
+        }
+        match self.mode {
+            Mode::Main => out.push(0),
+            Mode::Handler {
+                kind,
+                hook_spent,
+                hook_budget,
+                hook_running,
+            } => {
+                out.push(1);
+                out.push(kind as u8);
+                out.extend_from_slice(&hook_spent.to_le_bytes());
+                out.extend_from_slice(&hook_budget.to_le_bytes());
+                out.push(u8::from(hook_running));
+            }
+        }
+        out.push(u8::from(self.waiting));
+        out.push(u8::from(self.dead));
+        out.extend_from_slice(&(self.modules_run.len() as u64).to_le_bytes());
+        for (name, m) in &self.modules_run {
+            write_str(&mut out, name);
+            let g = m.globals.borrow();
+            out.extend_from_slice(&(g.len() as u64).to_le_bytes());
+            for (k, v) in g.iter() {
+                write_str(&mut out, k);
+                hash_value(v, &mut out, &mut seen);
+            }
+        }
+        out
+    }
+
     /// `main` or the running handler's kind, for a transcript.
     pub fn mode_name(&self) -> &'static str {
         match self.mode {
@@ -644,6 +724,9 @@ impl Machine {
                 Some(Slice::Dead)
             }
             Interrupt::Dying => {
+                if let Some(k) = host.on_prologue(Interrupt::Dying) {
+                    self.pending.insert(k);
+                }
                 self.events.push(Event::Dying);
                 self.mode = Mode::Handler {
                     kind: Interrupt::Dying,
@@ -663,6 +746,9 @@ impl Machine {
                 None
             }
             Interrupt::Redeploy => {
+                if let Some(k) = host.on_prologue(Interrupt::Redeploy) {
+                    self.pending.insert(k);
+                }
                 let swapped = match host.current_program() {
                     Some(p) => {
                         self.program = p;
@@ -698,8 +784,11 @@ impl Machine {
 
     /// An exception escaped main flow: the `fault` handler (`execution.md`,
     /// Escalation). `Some` ends the slice.
-    fn fault(&mut self, exc: Exception) -> Option<Slice> {
+    fn fault(&mut self, host: &mut dyn Host, exc: Exception) -> Option<Slice> {
         self.record_exception(&exc);
+        if let Some(k) = host.on_prologue(Interrupt::Fault) {
+            self.pending.insert(k);
+        }
         self.events.push(Event::Fault(exc.clone()));
         self.mode = Mode::Handler {
             kind: Interrupt::Fault,
@@ -713,6 +802,9 @@ impl Machine {
                 self.start_hook(code, vec![exc.as_value()]);
                 None
             }
+            // A hookless handler has a boundary after its prologue, where a
+            // pending higher kind preempts it before the epilogue.
+            None if self.deliverable().is_some() => None,
             None => self.epilogue(),
         }
     }
@@ -994,6 +1086,10 @@ impl Machine {
                     }
                     match host.call(&name, args, kwargs)? {
                         HostCall::Value(v) => input = Some(v),
+                        HostCall::Charged { value, extra } => {
+                            self.charge(extra);
+                            input = Some(value);
+                        }
                         HostCall::Wait => {
                             self.native_waiting = true;
                             return Ok(Step::Wait);
@@ -1215,7 +1311,7 @@ impl Machine {
                         continue;
                     };
                     let ended = match self.mode {
-                        Mode::Main => self.fault(escaped),
+                        Mode::Main => self.fault(host, escaped),
                         Mode::Handler { .. } => self.escalate(Some(escaped)),
                     };
                     if let Some(slice) = ended {
@@ -2272,6 +2368,11 @@ impl Machine {
                         self.push(v);
                         Ok(Step::Continue)
                     }
+                    HostCall::Charged { value, extra } => {
+                        self.charge(extra);
+                        self.push(value);
+                        Ok(Step::Continue)
+                    }
                     HostCall::Wait => Ok(Step::Wait),
                     HostCall::Unknown => Err(Exception::name_error(&name)),
                 }
@@ -2388,6 +2489,11 @@ fn bind_arguments(
         }
     }
     Ok(frame)
+}
+
+fn write_str(out: &mut Vec<u8>, s: &str) {
+    out.extend_from_slice(&(s.len() as u64).to_le_bytes());
+    out.extend_from_slice(s.as_bytes());
 }
 
 /// Helper for tests and the host: an integral `num`.

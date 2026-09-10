@@ -52,6 +52,19 @@ The golden fixture must exercise a mid-match redeploy. Q11 made it an interrupt
 delivered per machine at its next operation boundary, which is the hash-affecting
 path most likely to differ between peers.
 
+*Progress (2026-09-10):* the real world model is in `crates/sim` — the
+tables, the map with its validity rules, tiles and deposits, machines with
+their actions, senses and memory, the eight-step tick, the state hash in
+`docs/06`'s order, the snapshot, and scripted teams — with the game builtins
+as the language's host. `crates/net` holds the command log and its bytes;
+`crates/replay` the headless driver and the golden replay: the first map,
+a player against the Fool, a mid-match redeploy, a speed change and marks.
+The Fool's red bundle gained a step off a tile it stands on, since a bot
+builds and picks beside a tile, never on it. **Still open under this
+task:** the peer exchange itself, which lives with the renderer's driver
+(T16) since headless has one peer; and `docs/06`'s check-on-the-checks
+extended to the Rust gates.
+
 ## M3 — Determinism assurance
 
 **T15 — Cross-architecture determinism check in CI**
