@@ -52,42 +52,6 @@ The golden fixture must exercise a mid-match redeploy. Q11 made it an interrupt
 delivered per machine at its next operation boundary, which is the hash-affecting
 path most likely to differ between peers.
 
-## M2 — Language implementation
-
-Staged deliberately: Q13's boundary is materially larger than the procedural
-core. **Staging does not narrow the spec** — `docs/01` specifies all of it — and
-this note exists so the first shipped subset does not quietly become the
-boundary.
-
-**T10 — Lexer with significant indentation, then the procedural core** ⚠HASH
-
-INDENT/DEDENT, then functions, control flow, `list`/`dict`/`set`, comprehensions,
-f-strings, chained comparisons and `lambda`. The evaluator charges every
-operation by its row in `docs/01-language/costs.md`, loading the values from
-`data/language/costs.toml`, and every limit from `data/language/limits.toml`
-— a row that names a value with no key, or a key with no row, is a load error
-in either file, so
-the docs and the data cannot drift silently. `num` (Q19) is a scaled i128 —
-`docs/01-language/numbers.md` states the scale — so multiply and divide need
-a 256-bit intermediate: a
-hand-written wide-arithmetic routine, bit-identical on every target, which T14
-pins with a fixture at its boundary cases.
-
-*Progress (2026-09-09):* `crates/lang` exists — lexer, parser, compiler to a
-resumable bytecode, the metered evaluator, `num` with its wide routine, the
-language builtins and methods, the cost and limit tables with the row↔key
-check in both directions, and a program-level test suite plus a cross-process
-trace check. Game builtins resolve by their `[game]` row and go to a `Host`
-trait the sim will implement (T7). Hook budgets and the interrupt kinds
-landed with T14. (`key=` taking only a builtin was a gap here until T11's
-dispatcher let a builtin re-enter a `def`.)
-
-*Progress (2026-09-10):* the two remaining gaps closed — source nesting
-past `depth.nesting` is a parse error at load, for brackets and blocks
-alike, and the live-values limit is measured exactly, walked only when a
-running bound on growth says the limit could have been crossed. Nothing
-remains open under this task.
-
 ## M3 — Determinism assurance
 
 **T15 — Cross-architecture determinism check in CI**
