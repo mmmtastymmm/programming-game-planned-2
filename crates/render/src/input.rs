@@ -1,60 +1,37 @@
-//! Input: the camera, the keys, and clicks that become commands (Q10). The
-//! renderer submits a command and forgets it; nothing here changes what a
-//! machine does.
+//! Input: the keys, and clicks that become commands (Q10). The renderer
+//! submits a command and forgets it; nothing here changes what a machine
+//! does. The camera is `camera.rs`.
 
 use crate::app::{DriverResource, Tool, ViewState};
-use crate::view::{self, TILE};
-use bevy::input::mouse::MouseWheel;
+use crate::camera::{LmbGesture, cursor_tile};
+use crate::palette::Frame;
+use crate::view::Entities;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use sim::{CommandKind, PlanKind};
 
-pub fn camera(
-    time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut wheel: MessageReader<MouseWheel>,
-    mut cams: Query<&mut Transform, With<Camera2d>>,
-) {
-    let Ok(mut t) = cams.single_mut() else { return };
-    let dt = time.delta_secs();
-    let speed = 600.0 * t.scale.x;
-    let mut d = Vec2::ZERO;
-    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
-        d.y += 1.0;
-    }
-    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
-        d.y -= 1.0;
-    }
-    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
-        d.x -= 1.0;
-    }
-    if keys.pressed(KeyCode::KeyD) && !keys.pressed(KeyCode::ShiftLeft)
-        || keys.pressed(KeyCode::ArrowRight)
-    {
-        d.x += 1.0;
-    }
-    if d != Vec2::ZERO {
-        t.translation += (d.normalize() * speed * dt).extend(0.0);
-    }
-    for w in wheel.read() {
-        let factor = if w.y > 0.0 { 0.9 } else { 1.1 };
-        let s = (t.scale.x * factor).clamp(0.25, 4.0);
-        t.scale = Vec3::new(s, s, 1.0);
-    }
-}
-
 /// Keys: tools 1–5, speed with `-`/`=`, `Shift+D` deploys, `L` toggles the
 /// log, `Escape` drops the tool, `Shift+R` resigns.
 pub fn keys(
+    mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
+    if contexts
+        .ctx_mut()
+        .is_ok_and(|ctx| ctx.egui_wants_keyboard_input())
+    {
+        return;
+    }
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     if keys.just_pressed(KeyCode::Escape) {
-        state.tool = Tool::Select;
-        state.selected = None;
+        if state.tool != Tool::Select {
+            state.tool = Tool::Select;
+        } else {
+            state.selected = None;
+        }
     }
     if keys.just_pressed(KeyCode::Digit1) {
         state.tool = Tool::Building("depot".into());
@@ -74,26 +51,30 @@ pub fn keys(
     if keys.just_pressed(KeyCode::KeyL) {
         state.show_log = !state.show_log;
     }
-    let steps = sim::Data::load()
-        .map(|d| d.world.speed_steps)
-        .unwrap_or_default();
-    let current = driver.0.speed;
     if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::Equal) {
-        let idx = steps.iter().position(|s| *s == current).unwrap_or(0);
-        let next = if keys.just_pressed(KeyCode::Minus) {
-            idx.saturating_sub(1)
-        } else {
-            (idx + 1).min(steps.len().saturating_sub(1))
-        };
-        if let Some(s) = steps.get(next) {
-            submit(&mut driver.0, &mut state, CommandKind::SetSpeed(*s));
-        }
+        step_speed(&mut driver.0, &mut state, keys.just_pressed(KeyCode::Equal));
     }
     if shift && keys.just_pressed(KeyCode::KeyD) {
         deploy(&mut driver.0, &mut state);
     }
     if shift && keys.just_pressed(KeyCode::KeyR) {
         submit(&mut driver.0, &mut state, CommandKind::Resign);
+    }
+}
+
+/// One step along `data/world.toml`'s speed ladder.
+pub fn step_speed(driver: &mut crate::driver::Driver, state: &mut ViewState, up: bool) {
+    let steps = sim::Data::load()
+        .map(|d| d.world.speed_steps)
+        .unwrap_or_default();
+    let idx = steps.iter().position(|s| *s == driver.speed).unwrap_or(0);
+    let next = if up {
+        (idx + 1).min(steps.len().saturating_sub(1))
+    } else {
+        idx.saturating_sub(1)
+    };
+    if let Some(s) = steps.get(next) {
+        submit(driver, state, CommandKind::SetSpeed(*s));
     }
 }
 
@@ -153,48 +134,48 @@ pub fn submit(
     }
 }
 
-/// A click on a tile with a tool is a `Mark` or `Unmark`; with no tool, it
-/// selects the machine there.
+/// The tile under the cursor every frame; a click (a left press that did
+/// not become a drag) on it with a tool is a `Mark` or `Unmark`, and with
+/// no tool selects the machine there.
 pub fn click(
     mut contexts: EguiContexts,
-    buttons: Res<ButtonInput<MouseButton>>,
+    gesture: Res<LmbGesture>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cams: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    frame: Res<Frame>,
+    ents: Res<Entities>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
     let over_ui = contexts
         .ctx_mut()
-        .map(|c| c.is_pointer_over_egui() || c.egui_wants_pointer_input())
-        .unwrap_or(false);
+        .is_ok_and(|c| c.is_pointer_over_egui() || c.egui_wants_pointer_input());
     let Ok(window) = windows.single() else { return };
     let Ok((camera, cam_tf)) = cams.single() else {
         return;
     };
-    let Some(cursor) = window.cursor_position() else {
-        state.hover = None;
-        return;
+    let tile = if over_ui {
+        None
+    } else {
+        cursor_tile(window, camera, cam_tf, &frame, |p| ents.top(p))
     };
-    let Ok(world) = camera.viewport_to_world_2d(cam_tf, cursor) else {
-        return;
-    };
-    let tile = view::tile_of(world);
-    state.hover = Some(tile);
-    if over_ui || !buttons.just_pressed(MouseButton::Left) {
+    state.hover = tile;
+    let Some(tile) = tile else { return };
+    if !gesture.clicked {
         return;
     }
     let tool = state.tool.clone();
     match tool {
         Tool::Select => {
             let snap = driver.0.snapshot();
-            let hit = snap
+            state.selected = snap
                 .machines
                 .iter()
-                .filter(|m| m.record.pos == tile)
+                .filter(|m| {
+                    m.record.pos == tile && ents.machines.get(&m.record.id).is_some_and(|v| v.shown)
+                })
                 .map(|m| m.record.id)
                 .next();
-            state.selected = hit;
-            let _ = TILE;
         }
         Tool::Building(model) => {
             submit(

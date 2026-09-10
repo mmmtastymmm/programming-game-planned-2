@@ -49,7 +49,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The cache carries the Bevy build between runs: saved even when the
+      # job fails, so one red run does not cost the next its warm target
+      # directory, and keyed by the lockfile as the action does by default.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       # `render` links Bevy, whose Linux build wants ALSA and udev headers
       # (docs/06: `render` is the one crate with a Bevy dependency, and its
       # test is that it builds). The determinism jobs never build it.

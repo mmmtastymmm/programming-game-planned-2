@@ -1,12 +1,14 @@
-//! The panels: the tick and speed, the stall report, the tools, the deploy
-//! and resign buttons, the selected machine's record, and the log view.
+//! The panels, in the predecessor's layout: a time bar across the top, the
+//! tools on the left, the inspector on the right, the log along the bottom.
 //! Every button becomes a command the renderer submits and forgets.
 
 use crate::app::{DriverResource, Tool, ViewState};
-use crate::input::{deploy, submit};
+use crate::input::{deploy, step_speed, submit};
+use crate::palette::team_color32;
 use crate::view;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
+use sim::world::TileState;
 use sim::{CommandKind, PlanKind};
 
 pub fn panels(
@@ -27,21 +29,27 @@ pub fn panels(
     );
     let d = &mut driver.0;
 
-    egui::Panel::top("top").show(&mut root, |ui| {
+    egui::Panel::top("time").show(&mut root, |ui| {
         ui.horizontal(|ui| {
+            ui.strong(&d.map_name);
+            ui.separator();
             ui.label(format!("tick {}", d.tick));
             ui.separator();
-            ui.label(format!("speed {} /s", d.speed));
             if ui.small_button("−").clicked() {
                 step_speed(d, &mut state, false);
             }
+            ui.label(if d.speed == 0 {
+                "paused".to_string()
+            } else {
+                format!("{} ticks/s", d.speed)
+            });
             if ui.small_button("+").clicked() {
                 step_speed(d, &mut state, true);
             }
             ui.separator();
-            ui.label(format!("delay {} ticks", d.delay));
+            ui.label(format!("delay {}", d.delay));
             ui.separator();
-            ui.label(format!("hash {:016x}", d.state_hash()));
+            ui.monospace(format!("{:016x}", d.state_hash()));
             if let Some(r) = &d.stall_report {
                 ui.separator();
                 ui.colored_label(egui::Color32::YELLOW, format!("stalled: {r}"));
@@ -58,23 +66,23 @@ pub fn panels(
             }
         });
         if !state.status.is_empty() {
-            ui.label(&state.status);
+            ui.small(&state.status);
         }
     });
 
     egui::Panel::left("tools")
         .exact_size(240.0)
         .show(&mut root, |ui| {
-            ui.heading("tools");
+            ui.heading("Tools");
             let mut tool = state.tool.clone();
             ui.radio_value(&mut tool, Tool::Select, "select (Esc)");
             ui.radio_value(
                 &mut tool,
                 Tool::Building("depot".into()),
-                "building plan: depot (1)",
+                "plan a depot (1)",
             );
-            ui.radio_value(&mut tool, Tool::Paint("red".into()), "paint plan: red (2)");
-            ui.radio_value(&mut tool, Tool::Overlay("a".into()), "overlay plan: a (3)");
+            ui.radio_value(&mut tool, Tool::Paint("red".into()), "plan red paint (2)");
+            ui.radio_value(&mut tool, Tool::Overlay("a".into()), "plan overlay a (3)");
             ui.radio_value(
                 &mut tool,
                 Tool::Clear(PlanKind::Paint),
@@ -87,60 +95,59 @@ pub fn panels(
             );
             state.tool = tool;
             ui.separator();
-            if ui.button("deploy programs (Shift+D)").clicked() {
+            ui.heading("Programs");
+            if ui.button("deploy changed (Shift+D)").clicked() {
                 deploy(d, &mut state);
             }
             if let Some(p) = &state.programs {
                 ui.small(format!("{}", p.display()));
+            }
+            for (name, b) in &state.deployed {
+                ui.small(format!("{name}: {} file(s)", b.files.len()));
             }
             ui.separator();
             if ui.button("resign (Shift+R)").clicked() {
                 submit(d, &mut state, CommandKind::Resign);
             }
             ui.separator();
-            ui.heading("teams");
-            for t in &d.snapshots.cur.teams {
-                let mine = if t.id == d.player { " (you)" } else { "" };
-                let out = if t.out { " — out" } else { "" };
-                ui.label(format!(
-                    "team {}{mine}: {} bots / cap {}{out}",
-                    t.id.0, t.bots, t.cap
-                ));
-                for (name, v) in &t.deployments {
-                    if let Some(v) = v {
-                        ui.small(format!("  {name}: {v:016x}"));
-                    }
-                }
-            }
-            if let Some(h) = state.hover {
-                ui.separator();
-                ui.label(format!("tile ({}, {})", h.x, h.y));
-            }
+            ui.small("left drag / middle / Shift+right: pan");
+            ui.small("right drag: orbit · wheel: zoom");
+            ui.small("WASD: pan · L: log · -/=: speed");
+        });
+
+    egui::Panel::right("inspector")
+        .exact_size(320.0)
+        .show(&mut root, |ui| {
+            ui.heading("Inspector");
+            let snap = d.snapshots.cur.clone();
             if let Some(id) = state.selected {
-                ui.separator();
-                ui.heading("selected");
-                match view::machine(&d.snapshots.cur, id) {
+                match view::machine(&snap, id) {
                     Some(m) => {
                         let r = &m.record;
-                        ui.label(format!(
-                            "{} #{} — {} of team {}",
-                            r.name,
-                            r.id.0,
-                            r.model.name(),
-                            r.team.0
-                        ));
-                        ui.label(format!(
-                            "pos ({}, {}) health {}",
-                            r.pos.x,
-                            r.pos.y,
-                            r.health.to_decimal()
-                        ));
-                        ui.label(format!("busy {:?} progress {}", r.busy, r.progress));
+                        ui.colored_label(
+                            team_color32(r.team),
+                            format!(
+                                "{} — {} #{} of team {}",
+                                r.name,
+                                r.model.name(),
+                                r.id.0,
+                                r.team.0
+                            ),
+                        );
+                        ui.label(format!("at ({}, {})", r.pos.x, r.pos.y));
+                        ui.label(format!("health {}", r.health.to_decimal()));
+                        match r.busy {
+                            Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
+                            None => ui.label("idle"),
+                        };
+                        if let Some(dep) = &r.deployment {
+                            ui.label(format!("runs {dep}"));
+                        }
                         if let Some(l) = &r.load {
-                            ui.label(format!("load {}", amounts(l)));
+                            ui.label(format!("load: {}", amounts(l)));
                         }
                         if let Some(s) = &r.store {
-                            ui.label(format!("store {}", amounts(s)));
+                            ui.label(format!("store: {}", amounts(s)));
                         }
                         if let Some(f) = &m.fault {
                             let what =
@@ -153,28 +160,86 @@ pub fn panels(
                             ui.colored_label(
                                 egui::Color32::LIGHT_RED,
                                 format!(
-                                    "fault: {what} at {}:{} tick {}",
+                                    "fault: {what}\n  at {}:{} tick {}",
                                     f.file.as_deref().unwrap_or("?"),
                                     f.line,
                                     f.tick
                                 ),
                             );
                         }
+                        if !m.log.is_empty() {
+                            ui.separator();
+                            for l in m.log.iter().rev().take(6) {
+                                ui.small(format!("[{}] {}", l.level, l.text));
+                            }
+                        }
                     }
                     None => {
                         ui.label("gone");
                     }
                 }
+                ui.separator();
+            }
+            match state.hover {
+                Some(p) => {
+                    ui.label(format!("tile ({}, {})", p.x, p.y));
+                    match view::tile(&snap, d.player, p) {
+                        Some(mem) if mem.state != TileState::Unknown => {
+                            let seen = match mem.state {
+                                TileState::Visible => "in sight".to_string(),
+                                _ => format!("remembered from tick {}", mem.seen_at),
+                            };
+                            ui.small(format!("{} — {seen}", mem.terrain.name()));
+                            if let Some(dep) = &mem.deposit {
+                                ui.small(format!("deposit: {}", amounts(dep)));
+                            }
+                            if let Some(paint) = &mem.paint {
+                                ui.small(format!("paint: {paint}"));
+                            }
+                            if let Some(o) = &mem.overlay {
+                                ui.small(format!("overlay: {o}"));
+                            }
+                            if let Some(b) = &mem.building {
+                                ui.small(format!("{} of team {}", b.name, b.team.0));
+                            }
+                            if let Some(plan) = d.snapshot_plan(d.player, p) {
+                                ui.small(format!("your plan: {plan}"));
+                            }
+                        }
+                        _ => {
+                            ui.small("unknown");
+                        }
+                    }
+                }
+                None => {
+                    ui.small("hover a tile");
+                }
             }
             ui.separator();
-            ui.small("WASD/arrows pan · scroll zoom · L toggles the log");
+            ui.heading("Teams");
+            for t in &snap.teams {
+                let mine = if t.id == d.player { " (you)" } else { "" };
+                let out = if t.out { " — out" } else { "" };
+                ui.colored_label(
+                    team_color32(t.id),
+                    format!(
+                        "team {}{mine}: {} bots / cap {}{out}",
+                        t.id.0, t.bots, t.cap
+                    ),
+                );
+                for (name, v) in &t.deployments {
+                    if let Some(v) = v {
+                        ui.small(format!("  {name}: {v:016x}"));
+                    }
+                }
+            }
         });
 
     if state.show_log {
         egui::Panel::bottom("log")
             .exact_size(180.0)
             .show(&mut root, |ui| {
-                ui.heading("log");
+                ui.heading("Log");
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
@@ -199,19 +264,4 @@ fn amounts(m: &std::collections::BTreeMap<String, lang::Num>) -> String {
         .map(|(k, v)| format!("{k} {}", v.to_decimal()))
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-fn step_speed(d: &mut crate::driver::Driver, state: &mut ViewState, up: bool) {
-    let steps = sim::Data::load()
-        .map(|x| x.world.speed_steps)
-        .unwrap_or_default();
-    let idx = steps.iter().position(|s| *s == d.speed).unwrap_or(0);
-    let next = if up {
-        (idx + 1).min(steps.len().saturating_sub(1))
-    } else {
-        idx.saturating_sub(1)
-    };
-    if let Some(s) = steps.get(next) {
-        submit(d, state, CommandKind::SetSpeed(*s));
-    }
 }

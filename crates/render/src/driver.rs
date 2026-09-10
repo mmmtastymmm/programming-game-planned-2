@@ -4,7 +4,7 @@
 
 use net::CommandLog;
 use sim::snapshot::Snapshot;
-use sim::{Command, CommandKind, Data, Map, Sim, StepReport, TeamId};
+use sim::{Command, CommandKind, Data, Map, Sim, StepReport, TeamId, TilePos};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -50,6 +50,8 @@ pub struct Driver {
     /// Commands the player submitted, for the log view.
     pub submitted: Vec<Command>,
     pub map_name: String,
+    /// The map's south-west and north-east corners, for the view's frame.
+    pub bounds: (TilePos, TilePos),
 }
 
 impl Driver {
@@ -82,6 +84,7 @@ impl Driver {
             local_peers.insert(team);
         }
         let map_name = map.name.clone();
+        let bounds = map.bounds();
         let speed = map.speed;
         let sim = Sim::new(map);
         for c in &scripted {
@@ -115,6 +118,7 @@ impl Driver {
             ended: None,
             submitted: Vec::new(),
             map_name,
+            bounds,
         })
     }
 

@@ -1,7 +1,9 @@
 //! The Bevy app: plugins, resources, and the schedule. The driver runs once
 //! per frame in `Update`, before the view reads the snapshot it published.
 
+use crate::camera::{LmbGesture, orbit_camera};
 use crate::driver::Driver;
+use crate::palette::{CLEAR, Frame};
 use crate::{input, ui, view};
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
@@ -30,7 +32,7 @@ pub enum Tool {
 pub struct ViewState {
     pub tool: Tool,
     pub selected: Option<sim::EntityId>,
-    /// The programs directory, re-read on `D`.
+    /// The programs directory, re-read on `Shift+D`.
     pub programs: Option<PathBuf>,
     pub deployed: std::collections::BTreeMap<String, sim::Bundle>,
     /// Lines shown in the log panel, newest last.
@@ -61,6 +63,28 @@ impl Default for ViewState {
 /// touch it runs.
 pub struct DriverResource(pub Driver);
 
+/// `RENDER_SCREENSHOT=path`: save a frame of the window to `path` once the
+/// scene has settled (`RENDER_SCREENSHOT_FRAME`, default 90), then exit —
+/// a look at the view without a person at the window.
+fn screenshot(mut commands: Commands, mut frames: Local<u32>, mut exit: MessageWriter<AppExit>) {
+    let Ok(path) = std::env::var("RENDER_SCREENSHOT") else {
+        return;
+    };
+    let at: u32 = std::env::var("RENDER_SCREENSHOT_FRAME")
+        .ok()
+        .and_then(|f| f.parse().ok())
+        .unwrap_or(90);
+    *frames += 1;
+    if *frames == at {
+        commands
+            .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
+            .observe(bevy::render::view::screenshot::save_to_disk(path));
+    }
+    if *frames == at + 60 {
+        exit.write(AppExit::Success);
+    }
+}
+
 /// Run one frame of the driver with the wall-clock delta (`docs/06`).
 fn drive(time: Res<Time>, mut driver: NonSendMut<DriverResource>, mut state: ResMut<ViewState>) {
     let dt = f64::from(time.delta_secs());
@@ -77,6 +101,10 @@ pub fn run(
     deployed: std::collections::BTreeMap<String, sim::Bundle>,
 ) {
     let title = format!("programming game — {}", driver.map_name);
+    let frame = Frame {
+        min: driver.bounds.0,
+        max: driver.bounds.1,
+    };
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
@@ -87,13 +115,16 @@ pub fn run(
         ..default()
     }))
     .add_plugins(EguiPlugin::default())
-    .insert_resource(ClearColor(Color::srgb(0.06, 0.06, 0.08)))
+    .insert_resource(ClearColor(CLEAR))
     .insert_resource(ViewState {
         programs,
         deployed,
         ..Default::default()
     })
+    .insert_resource(frame)
+    .insert_resource(view::Tuning::load())
     .insert_resource(view::Entities::default())
+    .insert_resource(LmbGesture::default())
     .insert_non_send(DriverResource(driver))
     .add_systems(Startup, view::setup)
     .add_systems(
@@ -103,10 +134,15 @@ pub fn run(
             view::sync_tiles,
             view::sync_machines,
             view::interpolate,
+            view::health_bars,
             view::sounds,
-            input::camera,
+            view::animate,
+            orbit_camera,
             input::keys,
             input::click,
+            view::markers,
+            view::billboard_bars,
+            screenshot,
         )
             .chain(),
     )

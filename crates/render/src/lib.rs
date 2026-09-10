@@ -12,8 +12,10 @@
 //!
 //! [`driver`] is plain Rust with no Bevy type in it, so the loop `docs/06`
 //! specifies — speed, the paused driver still reaching a command (Q32),
-//! the peer wait (Q12) — is tested headless. [`app`], [`view`], [`input`]
-//! and [`ui`] are the Bevy half.
+//! the peer wait (Q12) — is tested headless. [`app`], [`view`], [`input`],
+//! [`camera`] and [`ui`] are the Bevy half; [`palette`] holds the meshes
+//! and materials the view spawns from, wrapped in the textures `build.rs`
+//! bakes from `assets/art`.
 
 // Bevy systems take one parameter per resource they touch, and a filtered
 // query type is complex by construction; neither lint earns its keep here.
@@ -26,8 +28,10 @@
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
 pub mod app;
+pub mod camera;
 pub mod driver;
 pub mod input;
+pub mod palette;
 pub mod programs;
 pub mod ui;
 pub mod view;
