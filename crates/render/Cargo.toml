@@ -1,0 +1,20 @@
+[package]
+name = "render"
+version.workspace = true
+edition.workspace = true
+description = "Bevy: the driver, the view built from snapshots, input as commands (docs/06, Q15)"
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+sim = { path = "../sim" }
+net = { path = "../net" }
+lang = { path = "../lang" }
+bevy = "0.19"
+bevy_egui = "0.41"
+
+# build.rs bakes assets/art/*.svg into assets/textures/*.png
+[build-dependencies]
+resvg = "0.45"

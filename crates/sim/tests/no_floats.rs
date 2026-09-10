@@ -221,10 +221,26 @@ fn workspace_members(root: &Path) -> Vec<String> {
         .collect()
 }
 
+/// The members the scan does NOT cover, each with the ruling that allows
+/// it. `render` is the one crate that may hold a float or a Bevy dependency
+/// (docs/06, Crates; Q15): interpolation is in floats there and never read
+/// back, and nothing depends on it, so a float in it cannot reach the sim.
+const EXEMPT: &[(&str, &str)] = &[(
+    "crates/render",
+    "docs/06 Crates: only `render` may hold a float",
+)];
+
+fn is_exempt(member: &str) -> bool {
+    EXEMPT.iter().any(|(m, _)| *m == member)
+}
+
 fn crate_sources() -> Vec<PathBuf> {
     let root = repo_root();
     let mut out = Vec::new();
-    for member in workspace_members(&root) {
+    for member in workspace_members(&root)
+        .into_iter()
+        .filter(|m| !is_exempt(m))
+    {
         let src = root.join(&member).join("src");
         assert!(
             src.is_dir(),
@@ -472,9 +488,26 @@ fn every_workspace_member_is_scanned() {
     let files = crate_sources();
     for member in &members {
         let src = root.join(member).join("src");
+        if is_exempt(member) {
+            // An exemption for a member that does not exist is a stale
+            // allowlist entry, which would exempt the next crate to take
+            // the name without anyone deciding so.
+            assert!(src.is_dir(), "exempt member `{member}` has no src/");
+            assert!(
+                !files.iter().any(|f| f.starts_with(&src)),
+                "exempt member `{member}` was scanned anyway"
+            );
+            continue;
+        }
         assert!(
             files.iter().any(|f| f.starts_with(&src)),
             "workspace member `{member}` contributed no file to the determinism scan"
+        );
+    }
+    for (m, _) in EXEMPT {
+        assert!(
+            members.iter().any(|x| x == m),
+            "exempt member `{m}` is not a workspace member"
         );
     }
 }

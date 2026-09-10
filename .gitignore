@@ -30,3 +30,8 @@ scripts/node_modules/
 # all. Skipped and ignored have to be the same set.
 .idea/
 .vscode/
+
+# Baked textures: crates/render/build.rs rasterizes assets/art/*.svg here on
+# every build, so the PNGs are derived, and a 3x2 atlas at 256px per face
+# is a binary the size gate would refuse for good reason.
+crates/render/assets/textures/

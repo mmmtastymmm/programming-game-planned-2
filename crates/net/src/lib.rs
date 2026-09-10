@@ -65,6 +65,16 @@ impl CommandLog {
             .all(|p| got.is_some_and(|s| s.contains(p)))
     }
 
+    /// The peers whose set for `tick` has not arrived.
+    pub fn missing_for(&self, tick: u64) -> Vec<TeamId> {
+        let got = self.sets_in.get(&tick);
+        self.peers
+            .iter()
+            .filter(|p| !got.is_some_and(|s| s.contains(p)))
+            .copied()
+            .collect()
+    }
+
     /// The tick's commands, every peer's, ordered by sender then seq.
     pub fn sets_for(&self, tick: u64) -> Vec<Command> {
         self.by_tick.get(&tick).cloned().unwrap_or_default()
