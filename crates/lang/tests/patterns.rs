@@ -2,7 +2,7 @@
 //! `match` table, the binding rules, and the boundary the parser draws.
 
 use lang::data::{COSTS_TOML, LIMITS_TOML};
-use lang::{Costs, ExcClass, Host, HostCall, Limits, Machine, Program, Slice, Value};
+use lang::{Costs, Event, ExcClass, Host, HostCall, Limits, Machine, Program, Slice, Value};
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -39,7 +39,15 @@ fn tables() -> (Rc<Costs>, Rc<Limits>) {
     )
 }
 
-fn run_to_end(src: &str) -> (TestHost, Slice) {
+/// The first `fault` the machine reported since the last call, if any.
+fn first_fault(m: &mut Machine) -> Option<lang::Exception> {
+    m.take_events().into_iter().find_map(|ev| match ev {
+        Event::Fault(e) => Some(e),
+        _ => None,
+    })
+}
+
+fn run_to_end(src: &str) -> (TestHost, Result<Slice, lang::Exception>) {
     let (costs, limits) = tables();
     let program = Program::load(&[("main.py", src)], &limits).unwrap_or_else(|e| panic!("{e}"));
     let mut m = Machine::new(&program, costs, limits);
@@ -49,19 +57,22 @@ fn run_to_end(src: &str) -> (TestHost, Slice) {
         ticks = ticks.wrapping_add(1);
         assert!(ticks < 10_000, "program did not finish in 10000 ticks");
         m.tick = u64::from(ticks);
-        match m.run_slice(&mut host) {
+        let slice = m.run_slice(&mut host);
+        if let Some(e) = first_fault(&mut m) {
+            return (host, Err(e));
+        }
+        match slice {
             Slice::Yield => {}
-            other => return (host, other),
+            other => return (host, Ok(other)),
         }
     }
 }
 
 fn log_of(src: &str) -> Vec<String> {
     let (host, end) = run_to_end(src);
-    assert_eq!(
-        end,
-        Slice::Restarted,
-        "program faulted: {end:?}\nlog: {:?}",
+    assert!(
+        matches!(end, Ok(Slice::Restarted)),
+        "program did not complete: {end:?}\nlog: {:?}",
         host.log
     );
     host.log
@@ -70,8 +81,8 @@ fn log_of(src: &str) -> Vec<String> {
 fn fault(src: &str) -> lang::Exception {
     let (host, end) = run_to_end(src);
     match end {
-        Slice::Fault(e) => e,
-        other => panic!("expected a fault, got {other:?}; log {:?}", host.log),
+        Err(e) => e,
+        Ok(other) => panic!("expected a fault, got {other:?}; log {:?}", host.log),
     }
 }
 

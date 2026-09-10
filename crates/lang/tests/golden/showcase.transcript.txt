@@ -1,0 +1,115 @@
+version 016022a309e36d62
+tick 1: Yield mode=main
+tick 2: Yield mode=main
+tick 3: Yield mode=main
+tick 4: Yield mode=main
+tick 5: Yield mode=main
+  call log([machine:m(3), bot:b2(6), bot:b3(6), bot:b4(6), bot:b0(9), bot:b1(9)], machine:m(3), bot:b1(9), True, True)
+  call log([1, 1, 1, 1, 1], True, True)
+tick 6: Yield mode=main
+tick 7: Yield mode=main
+tick 8: Yield mode=main
+tick 9: Yield mode=main
+tick 10: Yield mode=main
+tick 11: Yield mode=main
+tick 12: Yield mode=main
+tick 13: Yield mode=main
+tick 14: Yield mode=main
+tick 15: Yield mode=main
+tick 16: Yield mode=main
+  call log([('20', 9059.285714285714), ('13', 8320.999999999999), ('06', 7628.142857142857)], 40, [(0, '00'), (0, '01')])
+tick 17: Yield mode=main
+tick 18: Yield mode=main
+  call log([333333333333336, 333333333333335.333333333333, 333333333333334.666666666666, 333333333333334, 333333333333333.333333333333, -333333333333333.666666666667, -333333333333334.333333333334, -333333333333335, -333333333333335.666666666667], 333333333333334.666666666664, 333333333333336.000|-333,333,333,333,335.666666666667|0007|  ab  |)
+  call log(25, (0, 0), 0, <module geometry>)
+tick 19: Yield mode=main
+  call log(small 1)
+  call log(seq 1 [2, 3])
+  call log(map x {'n': 2})
+  call log(bot b1 9)
+tick 20: Yield mode=main
+  call log(machine 3)
+  call log(scalar s)
+  call log(scalar 9.5)
+  call log(other)
+tick 21: Yield mode=main
+  call log(finally, 0)
+  call log(('zd', 82))
+  call log(finally, 1)
+  call log(('blocked', (2, 3), ((2, 3),)))
+  call log(finally, 2)
+  call log(fine)
+  call wait()
+tick 22: Wait mode=main
+  call log(waited, 22)
+tick 23: Yield mode=main
+  call log(['THE', 'QUICK', 'BROWN', 'FOX'], b-c-e-f-h-i-k-n-o-q-r-t-u-w-x, 10, quick, xfnobkiqet)
+  call log(300000000000000000000, 14285714285714285714, 2, -33333333333333333333.333333333334, 2, -2, 0.3333, -2, 12.5)
+  call log(overflow, 103)
+  call log(-94, bot:b2(-94))
+  event Fault(Exception { class: AttributeError, args: [Str("nothing")], file: Some("main.py"), line: 107, tick: 24, user: None })
+tick 24: Restarted mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 25: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 26: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 27: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 28: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 29: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log([machine:m(3), bot:b2(6), bot:b3(6), bot:b4(6), bot:b0(9), bot:b1(9)], machine:m(3), bot:b1(9), True, True)
+  call log([1, 1, 1, 1, 1], True, True)
+tick 30: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 31: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 32: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 33: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 34: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 35: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 36: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 37: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 38: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 39: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 40: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log([('20', 9059.285714285714), ('13', 8320.999999999999), ('06', 7628.142857142857)], 40, [(0, '00'), (0, '01')])
+tick 41: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+tick 42: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log([333333333333336, 333333333333335.333333333333, 333333333333334.666666666666, 333333333333334, 333333333333333.333333333333, -333333333333333.666666666667, -333333333333334.333333333334, -333333333333335, -333333333333335.666666666667], 333333333333334.666666666664, 333333333333336.000|-333,333,333,333,335.666666666667|0007|  ab  |)
+  call log(25, (0, 0), 0, <module geometry>)
+tick 43: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log(small 1)
+  call log(seq 1 [2, 3])
+  call log(map x {'n': 2})
+  call log(bot b1 9)
+tick 44: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log(machine 3)
+  call log(scalar s)
+  call log(scalar 9.5)
+  call log(other)
+tick 45: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log(finally, 0)
+  call log(('zd', 82))
+  call log(finally, 1)
+  call log(('blocked', (2, 3), ((2, 3),)))
+  call log(finally, 2)
+  call log(fine)
+  call wait()
+tick 46: Wait mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log(waited, 46)
+tick 47: Yield mode=main record=AttributeError: nothing@main.py:107 tick 24 v016022a309e36d62
+  call log(['THE', 'QUICK', 'BROWN', 'FOX'], b-c-e-f-h-i-k-n-o-q-r-t-u-w-x, 10, quick, xfnobkiqet)
+  call log(300000000000000000000, 14285714285714285714, 2, -33333333333333333333.333333333334, 2, -2, 0.3333, -2, 12.5)
+  call log(overflow, 103)
+  call log(-94, bot:b2(-94))
+  event Fault(Exception { class: AttributeError, args: [Str("nothing")], file: Some("main.py"), line: 107, tick: 48, user: None })
+tick 48: Restarted mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 49: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 50: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 51: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 52: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 53: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+  call log([machine:m(3), bot:b2(6), bot:b3(6), bot:b4(6), bot:b0(9), bot:b1(9)], machine:m(3), bot:b1(9), True, True)
+  call log([1, 1, 1, 1, 1], True, True)
+tick 54: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 55: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 56: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 57: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 58: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 59: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62
+tick 60: Yield mode=main record=AttributeError: nothing@main.py:107 tick 48 v016022a309e36d62

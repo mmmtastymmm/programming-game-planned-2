@@ -255,10 +255,21 @@ impl Num {
     }
 
     /// `a % b`: the divisor's sign, and `a == (a // b) * b + a % b` exactly.
+    /// Computed on the raw counts, since `a / b == a_raw / b_raw`: the
+    /// remainder is always in range, even when `a // b` is not.
     pub fn checked_rem(self, o: Num) -> R<Num> {
-        let q = self.checked_floordiv(o)?;
-        let qb = q.checked_mul(o)?;
-        self.checked_sub(qb)
+        if o.0 == 0 {
+            return Err(zero_division());
+        }
+        // `MIN % -1` is the one pair `checked_rem` refuses; its remainder is 0.
+        let r = self.0.checked_rem(o.0).unwrap_or(0);
+        let r = if r != 0 && ((r < 0) != (o.0 < 0)) {
+            // |r| < |o|, opposite signs: cannot overflow.
+            r.wrapping_add(o.0)
+        } else {
+            r
+        };
+        Ok(Num(r))
     }
 
     /// `a ** b` by the procedure `numbers.md` pins: square-and-multiply from
@@ -306,18 +317,25 @@ impl Num {
     }
 
     /// Floor to `places` decimal places (`:.Nf` and `round(x, n)`'s input).
-    pub fn floor_to_places(self, places: u32) -> Num {
+    /// Flooring the minimum value past the range is an `OverflowError`, as
+    /// every result outside the range is.
+    pub fn floor_to_places(self, places: u32) -> R<Num> {
         if places >= PLACES {
-            return self;
+            return Ok(self);
         }
         let unit = 10i128.pow(PLACES.wrapping_sub(places));
-        Num(self.0.div_euclid(unit).wrapping_mul(unit))
+        self.0
+            .div_euclid(unit)
+            .checked_mul(unit)
+            .map(Num)
+            .ok_or_else(overflow)
     }
 
-    /// `round(x, n)`: half to even, to `n` places.
-    pub fn round_half_even(self, places: u32) -> Num {
+    /// `round(x, n)`: half to even, to `n` places; `OverflowError` if the
+    /// rounded value leaves the range.
+    pub fn round_half_even(self, places: u32) -> R<Num> {
         if places >= PLACES {
-            return self;
+            return Ok(self);
         }
         let unit = 10i128.pow(PLACES.wrapping_sub(places));
         let q = self.0.div_euclid(unit);
@@ -328,8 +346,12 @@ impl Num {
             Ordering::Less => false,
             Ordering::Equal => q.rem_euclid(2) == 1,
         };
-        let q = if up { q.wrapping_add(1) } else { q };
-        Num(q.wrapping_mul(unit))
+        let q = if up {
+            q.checked_add(1).ok_or_else(overflow)?
+        } else {
+            q
+        };
+        q.checked_mul(unit).map(Num).ok_or_else(overflow)
     }
 
     /// Parse a literal: decimal digits with `_` between digits, an optional
@@ -426,17 +448,17 @@ impl Num {
     }
 
     /// `:.Nf`: floored to `places`, printed with exactly `places` digits.
-    pub fn to_fixed(self, places: u32) -> String {
-        let v = self.floor_to_places(places);
+    pub fn to_fixed(self, places: u32) -> R<String> {
+        let v = self.floor_to_places(places)?;
         let mag = magnitude(v.0);
         let int_part = mag.wrapping_div(SCALE_U);
         let frac = mag.wrapping_rem(SCALE_U);
         let sign = if v.0 < 0 { "-" } else { "" };
         if places == 0 {
-            return format!("{sign}{int_part}");
+            return Ok(format!("{sign}{int_part}"));
         }
         let frac = format!("{frac:0>12}");
-        format!("{sign}{int_part}.{}", &frac[..places as usize])
+        Ok(format!("{sign}{int_part}.{}", &frac[..places as usize]))
     }
 }
 
@@ -574,16 +596,19 @@ mod tests {
             "0.333333333333"
         );
         assert_eq!(n("-0.5").to_decimal(), "-0.5");
-        assert_eq!(n("-2").checked_div(n("3")).unwrap().to_fixed(2), "-0.67");
-        assert_eq!(n("-0.4").to_fixed(0), "-1");
-        assert_eq!(n("3.14159").to_fixed(3), "3.141");
+        assert_eq!(
+            n("-2").checked_div(n("3")).unwrap().to_fixed(2).unwrap(),
+            "-0.67"
+        );
+        assert_eq!(n("-0.4").to_fixed(0).unwrap(), "-1");
+        assert_eq!(n("3.14159").to_fixed(3).unwrap(), "3.141");
     }
 
     #[test]
     fn rounding_and_conversion() {
-        assert_eq!(n("2.5").round_half_even(0), n("2"));
-        assert_eq!(n("3.5").round_half_even(0), n("4"));
-        assert_eq!(n("-2.5").round_half_even(0), n("-2"));
+        assert_eq!(n("2.5").round_half_even(0).unwrap(), n("2"));
+        assert_eq!(n("3.5").round_half_even(0).unwrap(), n("4"));
+        assert_eq!(n("-2.5").round_half_even(0).unwrap(), n("-2"));
         assert_eq!(n("-1.5").trunc(), n("-1"));
         assert_eq!(Num::parse_int_str(" +42 ").unwrap(), n("42"));
         assert!(Num::parse_int_str("1.5").is_err());

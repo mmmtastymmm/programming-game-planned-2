@@ -9,7 +9,7 @@
 //! restarts. Hooks, `dying`, `death` and `redeploy` are raised by the sim
 //! (T7) and land there.
 
-use crate::ast::{BinOp, CmpOp, UnaryOp};
+use crate::ast::{BinOp, CmpOp, Stmt, StmtKind, UnaryOp};
 use crate::builtins::{self, Outcome};
 use crate::compile::{Code, Instr, compile_module, imported_modules};
 use crate::data::{Costs, Limits};
@@ -27,9 +27,19 @@ use std::rc::Rc;
 
 /// A loaded bundle: `main.py` and the modules it may import, each compiled,
 /// with the import graph checked for cycles.
+/// The two hooks, bound at load from `main.py`'s top-level `def`s
+/// (`execution.md`, Hooks): a property of the bundle, not of how far the
+/// program has run.
+#[derive(Debug, Clone, Default)]
+pub struct Hooks {
+    pub on_fault: Option<Rc<Code>>,
+    pub on_dying: Option<Rc<Code>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub main: Rc<Code>,
+    pub hooks: Hooks,
     /// Every file of the bundle by module name, `main` included.
     pub modules: BTreeMap<String, Rc<Code>>,
     /// The bundle's version: FNV-1a over each file's length-prefixed name and
@@ -55,6 +65,7 @@ impl Program {
         let mut version = Fnv(0xcbf29ce484222325);
         let mut modules: BTreeMap<String, Rc<Code>> = BTreeMap::new();
         let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut hooks = Hooks::default();
         for (name, src) in &sorted {
             if !valid_file_name(name) {
                 return Err(bad(name, "a file name is `[a-z_][a-z0-9_]*.py`".into()));
@@ -76,7 +87,11 @@ impl Program {
             version.write_len_prefixed(src.as_bytes());
             let stmts = parse_file(name, src)?;
             edges.insert(stem.to_string(), imported_modules(&stmts));
-            modules.insert(stem.to_string(), compile_module(name, &stmts)?);
+            let code = compile_module(name, &stmts)?;
+            if stem == "main" {
+                hooks = bind_hooks(&stmts, &code)?;
+            }
+            modules.insert(stem.to_string(), code);
         }
         let Some(main) = modules.get("main").cloned() else {
             return Err(bad("<bundle>", "a bundle must contain `main.py`".into()));
@@ -101,10 +116,57 @@ impl Program {
         }
         Ok(Program {
             main,
+            hooks,
             modules,
             version: version.0,
         })
     }
+}
+
+/// Find `on_fault` and `on_dying` among `main.py`'s top-level `def`s and
+/// check their shape: `on_fault` takes exactly one parameter, `on_dying`
+/// none; two top-level `def`s of one hook name are a load error.
+fn bind_hooks(stmts: &[Stmt], main: &Rc<Code>) -> Result<Hooks, LoadError> {
+    let mut hooks = Hooks::default();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for s in stmts {
+        let StmtKind::Def { name, params, .. } = &s.kind else {
+            continue;
+        };
+        let want = match name.as_str() {
+            "on_fault" => 1,
+            "on_dying" => 0,
+            _ => continue,
+        };
+        let err = |message: String| LoadError {
+            file: "main.py".to_string(),
+            line: s.line,
+            message,
+        };
+        if !seen.insert(name.as_str()) {
+            return Err(err(format!(
+                "`{name}` is defined twice at the top level; a hook has one definition"
+            )));
+        }
+        if params.names.len() != want || params.star.is_some() || params.dstar.is_some() {
+            return Err(err(format!(
+                "`{name}` takes exactly {want} parameter{}",
+                if want == 1 { "" } else { "s" }
+            )));
+        }
+        let code = main
+            .children
+            .iter()
+            .find(|c| c.name == *name)
+            .cloned()
+            .ok_or_else(|| err(format!("`{name}` has no code")))?;
+        if name == "on_fault" {
+            hooks.on_fault = Some(code);
+        } else {
+            hooks.on_dying = Some(code);
+        }
+    }
+    Ok(hooks)
 }
 
 /// The game's modules (`docs/02`, Game modules and builtins): none yet.
@@ -182,6 +244,85 @@ impl Fnv {
 /// What the game supplies: its builtins, by name.
 pub trait Host {
     fn call(&mut self, name: &str, args: Vec<Value>, kwargs: Vec<(String, Value)>) -> R<HostCall>;
+
+    /// A `redeploy`'s epilogue asks for the deployment's current bundle;
+    /// `None` keeps the one the machine has (and the epilogue still restarts).
+    fn current_program(&mut self) -> Option<Program> {
+        None
+    }
+}
+
+/// The interrupt kinds, ascending priority (`execution.md`, Kinds). A
+/// `fault` is never pending: it is delivered the instant an exception
+/// escapes; the other three are raised by the world or the command log.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Interrupt {
+    Redeploy,
+    Fault,
+    Dying,
+    Death,
+}
+
+impl Interrupt {
+    pub fn name(self) -> &'static str {
+        match self {
+            Interrupt::Redeploy => "redeploy",
+            Interrupt::Fault => "fault",
+            Interrupt::Dying => "dying",
+            Interrupt::Death => "death",
+        }
+    }
+}
+
+/// What happened to the machine's lifecycle during a slice, in order: the
+/// prologues and epilogues whose *body* effects are the sim's (`docs/02`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Event {
+    /// An exception escaped main flow; the record is written, `on_fault`
+    /// runs if defined, then main flow restarts.
+    Fault(Exception),
+    /// An interrupt cut off an exception's unwinding: the exception is
+    /// recorded as if it had escaped, and no hook runs for it.
+    Abandoned(Exception),
+    /// A hook escaped or exhausted its budget; the record is rewritten and
+    /// the next kind up is delivered, skipping the epilogue.
+    Escalated { from: Interrupt, to: Interrupt },
+    /// The `dying` prologue ran.
+    Dying,
+    /// The `death` epilogue ran: the machine leaves the world.
+    Death,
+    /// The `redeploy` epilogue ran; `swapped` if the host supplied a bundle.
+    Redeploy { swapped: bool },
+}
+
+/// The fault record (`execution.md`, Lifecycle): written by every failure,
+/// cleared by nothing, replaced by the next write.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FaultRecord {
+    /// The exception, or `None` when a hook's budget ran out.
+    pub exception: Option<Exception>,
+    /// The hook whose budget ran out, if that is what this records.
+    pub exhausted: Option<Interrupt>,
+    pub file: Option<String>,
+    pub line: u32,
+    pub tick: u64,
+    /// The bundle version the record belongs to.
+    pub version: u64,
+}
+
+/// Main flow, or one interrupt's handler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    Main,
+    Handler {
+        kind: Interrupt,
+        /// Cost units the hook has debited from its budget.
+        hook_spent: u64,
+        hook_budget: u64,
+        /// The hook's frames are running (rather than the prologue or
+        /// epilogue), so charges debit the hook budget.
+        hook_running: bool,
+    },
 }
 
 pub enum HostCall {
@@ -204,17 +345,18 @@ impl Host for NoHost {
 }
 
 /// How a slice ended.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Slice {
     /// The tick budget is spent; resume next tick.
     Yield,
     /// A game builtin began a waiting action; call `resume` when it is done.
     Wait,
-    /// Main flow reached its end and started again from the top.
+    /// Main flow started again from the top — after its last statement,
+    /// or a `fault`'s epilogue. What happened on the way is in the events.
     Restarted,
-    /// An exception escaped main flow: the record is written and main flow
-    /// restarts. The sim charges the damage and runs `on_fault` (T7).
-    Fault(Exception),
+    /// `death`'s epilogue ran: the machine has left the world and runs
+    /// nothing further.
+    Dead,
 }
 
 #[derive(Clone, Copy)]
@@ -310,8 +452,14 @@ pub struct Machine {
     native_waiting: bool,
     native_input: Option<Value>,
     /// The last fault, as `execution.md` defines the record.
-    pub fault_record: Option<Exception>,
+    pub fault_record: Option<FaultRecord>,
     pub tick: u64,
+    mode: Mode,
+    /// Interrupts raised and not yet delivered: one entry per kind.
+    pending: BTreeSet<Interrupt>,
+    /// Lifecycle events of the current slice, for the sim to act on.
+    events: Vec<Event>,
+    dead: bool,
 }
 
 impl Machine {
@@ -332,6 +480,10 @@ impl Machine {
             native_input: None,
             fault_record: None,
             tick: 0,
+            mode: Mode::Main,
+            pending: BTreeSet::new(),
+            events: Vec::new(),
+            dead: false,
         };
         m.start_main();
         m
@@ -396,6 +548,241 @@ impl Machine {
     /// Spend cost units.
     pub fn charge(&mut self, units: u64) {
         self.spent = self.spent.saturating_add(units);
+        if let Mode::Handler {
+            hook_spent,
+            hook_running: true,
+            ..
+        } = &mut self.mode
+        {
+            *hook_spent = hook_spent.saturating_add(units);
+        }
+    }
+
+    /// Raise a world or command-log interrupt; it is delivered at the
+    /// machine's next boundary, coalescing with one already pending. A
+    /// `fault` cannot be raised: it exists only when an exception escapes.
+    pub fn raise(&mut self, kind: Interrupt) {
+        if kind != Interrupt::Fault && !self.dead {
+            self.pending.insert(kind);
+        }
+    }
+
+    /// The lifecycle events since the last call, in order.
+    pub fn take_events(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.events)
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.dead
+    }
+
+    /// `main` or the running handler's kind, for a transcript.
+    pub fn mode_name(&self) -> &'static str {
+        match self.mode {
+            Mode::Main => "main",
+            Mode::Handler { kind, .. } => kind.name(),
+        }
+    }
+
+    /// The pending interrupt that outranks what is running, if any.
+    fn deliverable(&self) -> Option<Interrupt> {
+        let top = *self.pending.iter().next_back()?;
+        match self.mode {
+            Mode::Main => Some(top),
+            Mode::Handler { kind, .. } => (top > kind).then_some(top),
+        }
+    }
+
+    fn record_exception(&mut self, exc: &Exception) {
+        self.fault_record = Some(FaultRecord {
+            exception: Some(exc.clone()),
+            exhausted: None,
+            file: exc.file.clone(),
+            line: exc.line,
+            tick: exc.tick,
+            version: self.program.version,
+        });
+    }
+
+    /// Abandon whatever runs — main flow or a handler — for `kind`'s
+    /// handler. An exception mid-unwind is recorded as if it had escaped.
+    /// `Some` ends the slice.
+    fn deliver(&mut self, host: &mut dyn Host, kind: Interrupt) -> Option<Slice> {
+        if let Some(unwinding) = self.frames.iter().find_map(|f| f.pending.clone()) {
+            self.record_exception(&unwinding);
+            self.events.push(Event::Abandoned(unwinding));
+        }
+        self.pending.remove(&kind);
+        self.frames.clear();
+        self.waiting = false;
+        self.native_waiting = false;
+        self.native_input = None;
+        match kind {
+            Interrupt::Death => {
+                self.events.push(Event::Death);
+                self.pending.clear();
+                self.dead = true;
+                self.mode = Mode::Main;
+                Some(Slice::Dead)
+            }
+            Interrupt::Dying => {
+                self.events.push(Event::Dying);
+                self.mode = Mode::Handler {
+                    kind: Interrupt::Dying,
+                    hook_spent: 0,
+                    hook_budget: self.limits.budget_hook_dying,
+                    hook_running: false,
+                };
+                match self.program.hooks.on_dying.clone() {
+                    Some(code) => {
+                        self.start_hook(code, vec![]);
+                    }
+                    // No hook: the epilogue raises `death` at once.
+                    None => {
+                        self.pending.insert(Interrupt::Death);
+                    }
+                }
+                None
+            }
+            Interrupt::Redeploy => {
+                let swapped = match host.current_program() {
+                    Some(p) => {
+                        self.program = p;
+                        true
+                    }
+                    None => false,
+                };
+                self.events.push(Event::Redeploy { swapped });
+                self.mode = Mode::Main;
+                // Main flow starts at the top of the new bundle this tick,
+                // if budget remains (`execution.md`, Worked example).
+                self.start_main();
+                None
+            }
+            Interrupt::Fault => None,
+        }
+    }
+
+    /// Push a hook's frame and start debiting its budget.
+    fn start_hook(&mut self, code: Rc<Code>, args: Vec<Value>) {
+        let f = Func {
+            code,
+            defaults: vec![],
+            globals: self.globals.clone(),
+        };
+        if let Ok(frame) = bind_arguments(&f, args, vec![], self) {
+            self.frames.push(frame);
+            if let Mode::Handler { hook_running, .. } = &mut self.mode {
+                *hook_running = true;
+            }
+        }
+    }
+
+    /// An exception escaped main flow: the `fault` handler (`execution.md`,
+    /// Escalation). `Some` ends the slice.
+    fn fault(&mut self, exc: Exception) -> Option<Slice> {
+        self.record_exception(&exc);
+        self.events.push(Event::Fault(exc.clone()));
+        self.mode = Mode::Handler {
+            kind: Interrupt::Fault,
+            hook_spent: 0,
+            hook_budget: self.limits.budget_hook_fault,
+            hook_running: false,
+        };
+        self.frames.clear();
+        match self.program.hooks.on_fault.clone() {
+            Some(code) => {
+                self.start_hook(code, vec![exc.as_value()]);
+                None
+            }
+            None => self.epilogue(),
+        }
+    }
+
+    /// The running handler's hook returned: its epilogue, unless the budget
+    /// check at the hook's last boundary escalates instead.
+    fn hook_returned(&mut self) -> Option<Slice> {
+        if let Mode::Handler {
+            hook_spent,
+            hook_budget,
+            ..
+        } = self.mode
+            && hook_spent > hook_budget
+        {
+            return self.escalate(None);
+        }
+        self.epilogue()
+    }
+
+    /// The running handler's epilogue. `Some` ends the slice.
+    fn epilogue(&mut self) -> Option<Slice> {
+        let Mode::Handler { kind, .. } = self.mode else {
+            return None;
+        };
+        self.mode = Mode::Main;
+        match kind {
+            Interrupt::Fault => {
+                self.start_main();
+                Some(self.restart_slice())
+            }
+            Interrupt::Dying => {
+                self.pending.insert(Interrupt::Death);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// A hook escaped (`Some(exc)`) or exhausted its budget (`None`): the
+    /// record is rewritten and the next kind up is delivered at the next
+    /// boundary, which is now.
+    fn escalate(&mut self, exc: Option<Exception>) -> Option<Slice> {
+        let Mode::Handler { kind, .. } = self.mode else {
+            return None;
+        };
+        let to = match kind {
+            Interrupt::Fault => Interrupt::Dying,
+            _ => Interrupt::Death,
+        };
+        match exc {
+            Some(e) => self.record_exception(&e),
+            None => {
+                // Located at the last operation the hook completed.
+                let (file, line) = match self.frames.last() {
+                    Some(f) => (
+                        Some(f.code.file.clone()),
+                        f.code
+                            .lines
+                            .get(f.pc.saturating_sub(1))
+                            .copied()
+                            .unwrap_or(0),
+                    ),
+                    None => (None, 0),
+                };
+                self.fault_record = Some(FaultRecord {
+                    exception: None,
+                    exhausted: Some(kind),
+                    file,
+                    line,
+                    tick: self.tick,
+                    version: self.program.version,
+                });
+            }
+        }
+        self.events.push(Event::Escalated { from: kind, to });
+        self.frames.clear();
+        self.pending.insert(to);
+        None
+    }
+
+    /// A restart of main flow ends the slice; at most one per tick.
+    fn restart_slice(&mut self) -> Slice {
+        if self.restarted_this_tick {
+            Slice::Yield
+        } else {
+            self.restarted_this_tick = true;
+            Slice::Restarted
+        }
     }
 
     /// Spend a per-element part: `n × factor`.
@@ -618,8 +1005,23 @@ impl Machine {
     /// Run one tick's slice: until the budget is spent, a host call waits,
     /// main flow restarts, or a fault escapes.
     pub fn run_slice(&mut self, host: &mut dyn Host) -> Slice {
+        if self.dead {
+            return Slice::Dead;
+        }
         self.spent = 0;
         self.restarted_this_tick = false;
+        // A hook waiting on an action loses `wait_per_tick` of its budget
+        // for every tick the wait spans (Q32).
+        let per_tick = self.limits.budget_hook_wait_per_tick;
+        if self.waiting
+            && let Mode::Handler {
+                hook_spent,
+                hook_running: true,
+                ..
+            } = &mut self.mode
+        {
+            *hook_spent = hook_spent.saturating_add(per_tick);
+        }
         let budget = self.limits.budget_tick.saturating_sub(self.deficit);
         let result = self.run(host, budget);
         self.deficit = self.spent.saturating_sub(budget);
@@ -628,6 +1030,25 @@ impl Machine {
 
     fn run(&mut self, host: &mut dyn Host, budget: u64) -> Slice {
         loop {
+            // A boundary: interrupts first, then the hook budget, then the
+            // tick budget (`execution.md`, Metering and Delivery).
+            if let Some(kind) = self.deliverable() {
+                if let Some(slice) = self.deliver(host, kind) {
+                    return slice;
+                }
+                continue;
+            }
+            if let Mode::Handler {
+                hook_spent,
+                hook_budget,
+                hook_running: true,
+                ..
+            } = self.mode
+                && hook_spent > hook_budget
+            {
+                self.escalate(None);
+                continue;
+            }
             if self.waiting {
                 return Slice::Wait;
             }
@@ -645,22 +1066,26 @@ impl Machine {
                     return Slice::Wait;
                 }
                 Ok(Step::MainEnded) => {
-                    self.start_main();
-                    if self.restarted_this_tick {
-                        return Slice::Yield;
+                    if matches!(self.mode, Mode::Handler { .. }) {
+                        if let Some(slice) = self.hook_returned() {
+                            return slice;
+                        }
+                        continue;
                     }
-                    self.restarted_this_tick = true;
-                    return Slice::Restarted;
+                    self.start_main();
+                    return self.restart_slice();
                 }
                 Err(exc) => {
                     let exc = self.locate(exc);
-                    match self.unwind(exc) {
-                        None => {}
-                        Some(escaped) => {
-                            self.fault_record = Some(escaped.clone());
-                            self.start_main();
-                            return Slice::Fault(escaped);
-                        }
+                    let Some(escaped) = self.unwind(exc) else {
+                        continue;
+                    };
+                    let ended = match self.mode {
+                        Mode::Main => self.fault(escaped),
+                        Mode::Handler { .. } => self.escalate(Some(escaped)),
+                    };
+                    if let Some(slice) = ended {
+                        return slice;
                     }
                 }
             }

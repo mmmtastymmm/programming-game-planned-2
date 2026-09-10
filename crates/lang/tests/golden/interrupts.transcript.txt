@@ -1,0 +1,59 @@
+version feb8de7e3654d78b
+  call wait()
+tick 1: Wait mode=main
+  call log(main, 1)
+tick 2: Yield mode=main
+  call log(finally, 1)
+tick 3: Restarted mode=main
+  call wait()
+tick 4: Wait mode=main
+tick 5: raise redeploy
+  call wait()
+  event Redeploy { swapped: true }
+tick 5: Wait mode=main
+  call log(main, 5)
+tick 6: Yield mode=main
+  call log(finally, 5)
+  call log(on_fault, IndexError: 5, 10, 6)
+  event Fault(Exception { class: IndexError, args: [Num(num(5))], file: Some("main.py"), line: 10, tick: 6, user: None })
+tick 7: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 8: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 9: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 10: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 11: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 12: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 13: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 14: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 15: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+tick 16: Yield mode=fault record=IndexError: 5@main.py:10 tick 6 vfeb8de7e3654d78b
+  call log(on_dying starts)
+  call wait()
+  event Escalated { from: Fault, to: Dying }
+  event Dying
+tick 17: Wait mode=dying record=exhausted fault@main.py:21 tick 17 vfeb8de7e3654d78b
+  call log(on_dying resumed, 17)
+  event Death
+tick 18: Dead mode=main record=exhausted fault@main.py:21 tick 17 vfeb8de7e3654d78b
+---- scenario B ----
+version feb8de7e3654d78b
+  call wait()
+tick 1: Wait mode=main
+  call log(main, 1)
+tick 2: Yield mode=main
+  call log(finally, 1)
+tick 3: Restarted mode=main
+  call wait()
+tick 4: Wait mode=main
+  call log(main, 4)
+tick 5: Yield mode=main
+tick 6: Yield mode=main
+tick 7: Yield mode=main
+tick 8: raise dying
+  call log(on_dying starts)
+  call wait()
+  event Abandoned(Exception { class: KeyError, args: [Str("unwound")], file: Some("main.py"), line: 9, tick: 5, user: None })
+  event Dying
+tick 8: Wait mode=dying record=KeyError: unwound@main.py:9 tick 5 vfeb8de7e3654d78b
+tick 9: raise death
+  event Death
+tick 9: Dead mode=main record=KeyError: unwound@main.py:9 tick 5 vfeb8de7e3654d78b

@@ -451,13 +451,13 @@ pub fn call_builtin(
             no_kw(kwargs)?;
             m.charge(c.builtin_round);
             match args {
-                [x] => Value::Num(x.expect_num()?.round_half_even(0)),
+                [x] => Value::Num(x.expect_num()?.round_half_even(0)?),
                 [x, n] => {
                     let places = n.expect_integral()?;
                     if !(0..=PLACES as i128).contains(&places) {
                         return Err(Exception::value_error());
                     }
-                    Value::Num(x.expect_num()?.round_half_even(places as u32))
+                    Value::Num(x.expect_num()?.round_half_even(places as u32)?)
                 }
                 _ => return Err(Exception::type_error()),
             }
@@ -1350,7 +1350,7 @@ pub fn format_value(v: &Value, spec: Option<&str>) -> R<String> {
             if p > PLACES {
                 return Err(Exception::value_error());
             }
-            n.to_fixed(p)
+            n.to_fixed(p)?
         } else if rest == "d" {
             if !n.is_integral() {
                 return Err(Exception::type_error());
