@@ -2,7 +2,7 @@
 //! `import` section, end to end. A bundle is several files here.
 
 use lang::data::{COSTS_TOML, LIMITS_TOML};
-use lang::{Costs, ExcClass, Host, HostCall, Limits, Machine, Program, Slice, Value};
+use lang::{Costs, Event, ExcClass, Host, HostCall, Limits, Machine, Program, Slice, Value};
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -44,8 +44,16 @@ fn load(files: &[(&str, &str)]) -> Program {
     Program::load(files, &limits).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// The first `fault` the machine reported since the last call, if any.
+fn first_fault(m: &mut Machine) -> Option<lang::Exception> {
+    m.take_events().into_iter().find_map(|ev| match ev {
+        Event::Fault(e) => Some(e),
+        _ => None,
+    })
+}
+
 /// Run until main flow has restarted `runs` times; return the log.
-fn run_bundle(files: &[(&str, &str)], runs: u32) -> (Vec<String>, Slice) {
+fn run_bundle(files: &[(&str, &str)], runs: u32) -> (Vec<String>, Result<Slice, lang::Exception>) {
     let (costs, limits) = tables();
     let program = load(files);
     let mut m = Machine::new(&program, costs, limits);
@@ -56,25 +64,28 @@ fn run_bundle(files: &[(&str, &str)], runs: u32) -> (Vec<String>, Slice) {
         ticks = ticks.wrapping_add(1);
         assert!(ticks < 10_000, "program did not finish in 10000 ticks");
         m.tick = u64::from(ticks);
-        match m.run_slice(&mut host) {
+        let slice = m.run_slice(&mut host);
+        if let Some(e) = first_fault(&mut m) {
+            return (host.log, Err(e));
+        }
+        match slice {
             Slice::Yield => {}
             Slice::Restarted => {
                 restarts = restarts.wrapping_add(1);
                 if restarts >= runs {
-                    return (host.log, Slice::Restarted);
+                    return (host.log, Ok(Slice::Restarted));
                 }
             }
-            other => return (host.log, other),
+            other => return (host.log, Ok(other)),
         }
     }
 }
 
 fn log_of(files: &[(&str, &str)]) -> Vec<String> {
     let (log, end) = run_bundle(files, 1);
-    assert_eq!(
-        end,
-        Slice::Restarted,
-        "program faulted: {end:?}\nlog: {log:?}"
+    assert!(
+        matches!(end, Ok(Slice::Restarted)),
+        "program did not complete: {end:?}\nlog: {log:?}"
     );
     log
 }
@@ -82,8 +93,8 @@ fn log_of(files: &[(&str, &str)]) -> Vec<String> {
 fn fault(files: &[(&str, &str)]) -> lang::Exception {
     let (log, end) = run_bundle(files, 1);
     match end {
-        Slice::Fault(e) => e,
-        other => panic!("expected a fault, got {other:?}; log {log:?}"),
+        Err(e) => e,
+        Ok(other) => panic!("expected a fault, got {other:?}; log {log:?}"),
     }
 }
 

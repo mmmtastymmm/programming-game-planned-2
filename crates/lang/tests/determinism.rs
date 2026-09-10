@@ -8,7 +8,7 @@
 //! fault records, in order: what the sim would feed into its state hash.
 
 use lang::data::{COSTS_TOML, LIMITS_TOML};
-use lang::{Costs, Host, HostCall, Limits, Machine, Program, Slice, Value};
+use lang::{Costs, Event, Host, HostCall, Limits, Machine, Program, Slice, Value};
 use std::rc::Rc;
 
 /// A program that touches most of what T10 built: wide arithmetic, sorting,
@@ -83,15 +83,17 @@ fn trace() -> Vec<String> {
         m.tick = tick;
         let slice = m.run_slice(&mut host);
         host.lines.push(format!("tick {tick}: {slice:?}"));
-        match slice {
-            Slice::Wait => m.resume(Value::int(i128::from(host.lines.len() as u64))),
-            Slice::Fault(_) => {
+        for ev in m.take_events() {
+            host.lines.push(format!("event {ev:?}"));
+            if matches!(ev, Event::Fault(_)) {
                 faults = faults.wrapping_add(1);
-                if faults == 2 {
-                    break;
-                }
             }
-            _ => {}
+        }
+        if faults >= 2 {
+            break;
+        }
+        if slice == Slice::Wait {
+            m.resume(Value::int(i128::from(host.lines.len() as u64)));
         }
     }
     assert_eq!(

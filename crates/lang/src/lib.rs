@@ -23,8 +23,10 @@
 //!
 //! T10 built the lexer, the procedural core, metering, costs and limits;
 //! T11 added `class`, T12 `match` and T13 `import`, which completes the
-//! boundary `docs/01-language/syntax.md` draws. The interrupt kinds beyond
-//! `fault` land with the sim that raises them (T7).
+//! boundary `docs/01-language/syntax.md` draws. T14 added the interrupt
+//! model of `execution.md` — hooks, hook budgets, delivery, escalation — as
+//! [`Machine`]'s, raised through [`Machine::raise`] by the sim (T7), which
+//! owns what each prologue and epilogue does to a machine's body.
 
 pub mod ast;
 pub mod builtins;
@@ -42,4 +44,4 @@ pub use data::{Costs, DataError, Limits};
 pub use errors::{ExcClass, Exception};
 pub use num::Num;
 pub use value::Value;
-pub use vm::{Host, HostCall, Machine, Program, Slice};
+pub use vm::{Event, FaultRecord, Hooks, Host, HostCall, Interrupt, Machine, Program, Slice};

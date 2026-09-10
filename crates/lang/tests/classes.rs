@@ -5,7 +5,7 @@
 //! whose dunders are slow or raise.
 
 use lang::data::{COSTS_TOML, LIMITS_TOML};
-use lang::{Costs, ExcClass, Host, HostCall, Limits, Machine, Program, Slice, Value};
+use lang::{Costs, Event, ExcClass, Host, HostCall, Limits, Machine, Program, Slice, Value};
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -52,8 +52,16 @@ fn load(src: &str) -> Program {
     Program::load(&[("main.py", src)], &limits).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// The first `fault` the machine reported since the last call, if any.
+fn first_fault(m: &mut Machine) -> Option<lang::Exception> {
+    m.take_events().into_iter().find_map(|ev| match ev {
+        Event::Fault(e) => Some(e),
+        _ => None,
+    })
+}
+
 /// Run to the first restart or fault; waits are resumed with the tick.
-fn run_to_end(src: &str) -> (TestHost, Slice, u32) {
+fn run_to_end(src: &str) -> (TestHost, Result<Slice, lang::Exception>, u32) {
     let (costs, limits) = tables();
     let program = load(src);
     let mut m = Machine::new(&program, costs, limits);
@@ -63,20 +71,23 @@ fn run_to_end(src: &str) -> (TestHost, Slice, u32) {
         ticks = ticks.wrapping_add(1);
         assert!(ticks < 10_000, "program did not finish in 10000 ticks");
         m.tick = u64::from(ticks);
-        match m.run_slice(&mut host) {
+        let slice = m.run_slice(&mut host);
+        if let Some(e) = first_fault(&mut m) {
+            return (host, Err(e), ticks);
+        }
+        match slice {
             Slice::Yield => {}
             Slice::Wait => m.resume(Value::int(i128::from(ticks))),
-            other => return (host, other, ticks),
+            other => return (host, Ok(other), ticks),
         }
     }
 }
 
 fn log_of(src: &str) -> Vec<String> {
     let (host, end, _) = run_to_end(src);
-    assert_eq!(
-        end,
-        Slice::Restarted,
-        "program faulted: {end:?}\nlog: {:?}",
+    assert!(
+        matches!(end, Ok(Slice::Restarted)),
+        "program did not complete: {end:?}\nlog: {:?}",
         host.log
     );
     host.log
@@ -85,8 +96,8 @@ fn log_of(src: &str) -> Vec<String> {
 fn fault(src: &str) -> lang::Exception {
     let (host, end, _) = run_to_end(src);
     match end {
-        Slice::Fault(e) => e,
-        other => panic!("expected a fault, got {other:?}; log {:?}", host.log),
+        Err(e) => e,
+        Ok(other) => panic!("expected a fault, got {other:?}; log {:?}", host.log),
     }
 }
 
@@ -531,7 +542,11 @@ log(xs, min(xs), max(xs))
     loop {
         ticks += 1;
         assert!(ticks < 10_000);
-        match m.run_slice(&mut host) {
+        let slice = m.run_slice(&mut host);
+        if let Some(e) = first_fault(&mut m) {
+            panic!("faulted: {e:?}");
+        }
+        match slice {
             Slice::Yield => {}
             Slice::Restarted => break,
             other => panic!("{other:?}"),
@@ -557,7 +572,7 @@ log(xs, min(xs), max(xs))
     let (host, end, _) = run_to_end(
         "class W:\n    def __str__(self):\n        t = wait()\n        return f'w{t}'\nlog(W(), [W()])\n",
     );
-    assert_eq!(end, Slice::Restarted);
+    assert!(matches!(end, Ok(Slice::Restarted)), "{end:?}");
     assert_eq!(host.waits, 2);
     assert_eq!(host.log.len(), 1);
     assert!(
