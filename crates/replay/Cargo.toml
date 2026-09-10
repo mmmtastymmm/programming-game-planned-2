@@ -1,0 +1,15 @@
+[package]
+name = "replay"
+version.workspace = true
+edition.workspace = true
+description = "The headless driver: (map, command log) to a hash stream; the golden fixtures (docs/06)"
+
+[lints]
+workspace = true
+
+[dependencies]
+sim = { path = "../sim" }
+net = { path = "../net" }
+lang = { path = "../lang" }
+ron = "0.12.2"
+serde = { version = "1.0.228", features = ["derive"] }

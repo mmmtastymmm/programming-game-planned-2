@@ -1,0 +1,167 @@
+(
+    map: "# The first map: two teams, mirrored across the centre. Terrain is one\n# character per tile, one row per line; the first row is the north edge and\n# y runs north, with (0, 0) at the centre (docs/03), so this 24 by 16 map\n# runs from (-12, -8) at the south-west to (11, 7) at the north-east:\n#   .  ground    o  ground with a deposit    #  rock    ~  water\n# Every deposit takes [deposit_default] unless [[deposit]] overrides it.\n# This file is part of a replay\'s inputs and is hashed into its identity.\n\nname = \"first\"\n# starting ticks per real second, one of data/world.toml\'s speed steps\nspeed = 10\nwidth = 24\nheight = 16\n\nterrain = \"\"\"\n........................\n..o.........##..........\n..o.........##......~~..\n............##......~~..\n........................\n....##..................\n....##.......oo.........\n.............oo.........\n.........oo.............\n.........oo.......##....\n..................##....\n........................\n..~~......##............\n..~~......##.........o..\n.....................o..\n........................\n\"\"\"\n\n[deposit_default]\ncap = 500\nregrowth = 1\namount = 500\n\n[[team]]\nstart = [-9, 4]\n\n[[team]]\nstart = [8, -5]\n",
+    commands: [
+        (
+            tick: 0,
+            sender: (0),
+            seq: 0,
+            kind: Deploy(
+                deployment: "printer",
+                bundle: (
+                    files: [
+                        ("main.py", "# The fixture\'s player printer: prints red bots while it can, and logs the\n# team\'s cap so a change in Q24\'s arithmetic moves the transcript.\nwhile True:\n    try:\n        print(\"red\")\n    except ValueError:\n        log(\"cannot print\", len(see()))\n        wait(5)\n"),
+                    ],
+                ),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (0),
+            seq: 1,
+            kind: Deploy(
+                deployment: "red",
+                bundle: (
+                    files: [
+                        ("main.py", "# The fixture\'s first red program: walk east, look around, pick from the\n# first deposit found, and keep a tally that a redeploy will throw away.\nsteps = 0\nwhile True:\n    found = None\n    for t in tiles(-30, -30, 30, 30):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            found = (t.x, t.y)\n            break\n    here = me().pos\n    if found is not None and abs(found[0] - here[0]) + abs(found[1] - here[1]) == 1:\n        try:\n            pick(\"ore\")\n            log(\"picked\", me().load[\"ore\"])\n        except ValueError as e:\n            wait(1)\n        continue\n    try:\n        if found is None:\n            move(\"e\")\n        else:\n            move_to(found[0], found[1])\n        steps += 1\n    except ValueError:\n        wait(2)\n    if steps % 4 == 0:\n        log(\"steps\", steps, \"sees\", len(see()), \"hears\", len(hear()))\n"),
+                    ],
+                ),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (0),
+            seq: 2,
+            kind: Mark(
+                at: (
+                    x: -9,
+                    y: 5,
+                ),
+                plan: Paint,
+                value: Some("red"),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (0),
+            seq: 3,
+            kind: Mark(
+                at: (
+                    x: -8,
+                    y: 4,
+                ),
+                plan: Overlay,
+                value: Some("a"),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (1),
+            seq: 0,
+            kind: Deploy(
+                deployment: "printer",
+                bundle: (
+                    files: [
+                        ("main.py", "# The Fool\'s printer: print red bots while under the cap, and otherwise wait.\n# This is shipped source (design-invariant DI8): it runs under docs/01 exactly\n# as a player\'s program does.\n\nwhile True:\n    try:\n        print(\"red\")\n    except ValueError:\n        wait(10)\n"),
+                    ],
+                ),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (1),
+            seq: 1,
+            kind: Deploy(
+                deployment: "red",
+                bundle: (
+                    files: [
+                        ("main.py", "# The Fool\'s red bots: carry ore from the nearest deposit to the nearest\n# place that takes it — a planned site first, a depot otherwise — and build\n# where the plans say. Printers cannot be built (Q31). Shipped source\n# (design-invariant DI8): every name here is docs/01\'s or docs/02\'s.\n\nCAPACITY = 10\nFAR = 1000\n\n\ndef nearest(points):\n    here = me().pos\n    best = None\n    for p in points:\n        d = (p[0] - here[0]) ** 2 + (p[1] - here[1]) ** 2\n        if best is None or d < best[0]:\n            best = (d, p)\n    return None if best is None else best[1]\n\n\ndef adjacent(p):\n    here = me().pos\n    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1\n\n\ndef step_toward(p):\n    try:\n        move_to(p[0], p[1])\n    except ValueError:\n        wait(1)\n\n\ndef step_off():\n    # Standing on the tile itself: an action wants it adjacent, so leave it.\n    for d in [\"n\", \"e\", \"s\", \"w\"]:\n        try:\n            move(d)\n            return\n        except ValueError:\n            pass\n    wait(1)\n\n\ndef approach(p):\n    # True once adjacent to p; otherwise one step nearer, or off it.\n    here = me().pos\n    if (here[0], here[1]) == (p[0], p[1]):\n        step_off()\n        return False\n    if adjacent(p):\n        return True\n    step_toward(p)\n    return False\n\n\ndef drop_targets():\n    targets = [(p[0], p[1]) for p in plans(\"building\")]\n    for m in see():\n        if m.team == me().team and m.kind == \"building\" and m.model != \"printer\":\n            targets.append(m.pos)\n    return targets\n\n\ndef deposits():\n    found = []\n    for t in tiles(-FAR, -FAR, FAR, FAR):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            found.append((t.x, t.y))\n    return found\n\n\nwhile True:\n    if me().load[\"ore\"] >= CAPACITY:\n        target = nearest(drop_targets())\n        if target is None:\n            wait(5)\n            continue\n        if approach(target):\n            for p in plans(\"building\"):\n                if (p[0], p[1]) == target:\n                    try:\n                        build(p[2], p[0], p[1])\n                    except ValueError:\n                        pass\n            try:\n                drop(\"ore\")\n            except ValueError:\n                wait(1)\n        continue\n    target = nearest(deposits())\n    if target is None:\n        wait(5)\n        continue\n    if approach(target):\n        try:\n            pick(\"ore\")\n        except ValueError:\n            wait(1)\n"),
+                    ],
+                ),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (1),
+            seq: 2,
+            kind: Deploy(
+                deployment: "depot",
+                bundle: (
+                    files: [
+                        ("main.py", "# The Fool\'s depots do nothing but hold. Shipped source (design-invariant DI8).\n\nwhile True:\n    wait(60)\n"),
+                    ],
+                ),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (1),
+            seq: 3,
+            kind: Mark(
+                at: (
+                    x: 9,
+                    y: -5,
+                ),
+                plan: Building,
+                value: Some("depot"),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (1),
+            seq: 4,
+            kind: Mark(
+                at: (
+                    x: 8,
+                    y: -6,
+                ),
+                plan: Building,
+                value: Some("depot"),
+            ),
+        ),
+        (
+            tick: 40,
+            sender: (0),
+            seq: 0,
+            kind: SetSpeed(2),
+        ),
+        (
+            tick: 55,
+            sender: (0),
+            seq: 0,
+            kind: Unmark(
+                at: (
+                    x: -8,
+                    y: 4,
+                ),
+                plan: Overlay,
+            ),
+        ),
+        (
+            tick: 90,
+            sender: (0),
+            seq: 0,
+            kind: Deploy(
+                deployment: "red",
+                bundle: (
+                    files: [
+                        ("main.py", "# The fixture\'s second red program, deployed mid-match (Q11): every bot on\n# the color takes it at its next boundary. It stops hauling and stands\n# guard, attacking anything of another team it can see.\nclass Guard:\n    def __init__(self):\n        self.hits = 0\n\n    def target(self):\n        mine = me().team\n        for m in see():\n            if m.team != mine:\n                return m\n        return None\n\nguard = Guard()\nlog(\"guard online\", me().name)\nwhile True:\n    t = guard.target()\n    if t is None:\n        try:\n            move(\"w\")\n        except ValueError:\n            wait(3)\n        continue\n    try:\n        attack(t.id)\n        guard.hits += 1\n        log(\"attacked\", t.id, \"hits\", guard.hits)\n    except ValueError:\n        try:\n            move_to(t.pos[0], t.pos[1])\n        except ValueError:\n            wait(1)\n"),
+                    ],
+                ),
+            ),
+        ),
+        (
+            tick: 95,
+            sender: (0),
+            seq: 0,
+            kind: Deploy(
+                deployment: "blue",
+                bundle: (
+                    files: [
+                        ("main.py", "# The fixture\'s first red program: walk east, look around, pick from the\n# first deposit found, and keep a tally that a redeploy will throw away.\nsteps = 0\nwhile True:\n    found = None\n    for t in tiles(-30, -30, 30, 30):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            found = (t.x, t.y)\n            break\n    here = me().pos\n    if found is not None and abs(found[0] - here[0]) + abs(found[1] - here[1]) == 1:\n        try:\n            pick(\"ore\")\n            log(\"picked\", me().load[\"ore\"])\n        except ValueError as e:\n            wait(1)\n        continue\n    try:\n        if found is None:\n            move(\"e\")\n        else:\n            move_to(found[0], found[1])\n        steps += 1\n    except ValueError:\n        wait(2)\n    if steps % 4 == 0:\n        log(\"steps\", steps, \"sees\", len(see()), \"hears\", len(hear()))\n"),
+                    ],
+                ),
+            ),
+        ),
+    ],
+    ticks: 220,
+)

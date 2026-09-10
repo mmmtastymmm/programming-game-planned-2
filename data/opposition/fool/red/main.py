@@ -29,6 +29,29 @@ def step_toward(p):
         wait(1)
 
 
+def step_off():
+    # Standing on the tile itself: an action wants it adjacent, so leave it.
+    for d in ["n", "e", "s", "w"]:
+        try:
+            move(d)
+            return
+        except ValueError:
+            pass
+    wait(1)
+
+
+def approach(p):
+    # True once adjacent to p; otherwise one step nearer, or off it.
+    here = me().pos
+    if (here[0], here[1]) == (p[0], p[1]):
+        step_off()
+        return False
+    if adjacent(p):
+        return True
+    step_toward(p)
+    return False
+
+
 def drop_targets():
     targets = [(p[0], p[1]) for p in plans("building")]
     for m in see():
@@ -51,7 +74,7 @@ while True:
         if target is None:
             wait(5)
             continue
-        if adjacent(target):
+        if approach(target):
             for p in plans("building"):
                 if (p[0], p[1]) == target:
                     try:
@@ -62,17 +85,13 @@ while True:
                 drop("ore")
             except ValueError:
                 wait(1)
-        else:
-            step_toward(target)
         continue
     target = nearest(deposits())
     if target is None:
         wait(5)
         continue
-    if adjacent(target):
+    if approach(target):
         try:
             pick("ore")
         except ValueError:
             wait(1)
-    else:
-        step_toward(target)

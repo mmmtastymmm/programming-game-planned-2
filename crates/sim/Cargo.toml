@@ -8,5 +8,6 @@ description = "Deterministic world simulation — plain Rust, no ECS, no floats 
 workspace = true
 
 [dependencies]
-ron = "0.12.2"
+lang = { path = "../lang" }
 serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.9"

@@ -182,6 +182,161 @@ pub struct Bound {
     pub receiver: Value,
 }
 
+/// A canonical encoding of a value for a state hash (`docs/06`): every
+/// `num` its i128, every `str` its UTF-8 bytes length-prefixed, every
+/// collection its elements in iteration order; an object's contents once,
+/// by the first slot that reaches it, and its id after that.
+pub fn hash_value(v: &Value, out: &mut Vec<u8>, seen: &mut std::collections::BTreeSet<u64>) {
+    fn str_bytes(out: &mut Vec<u8>, s: &str) {
+        out.extend_from_slice(&(s.len() as u64).to_le_bytes());
+        out.extend_from_slice(s.as_bytes());
+    }
+    fn object(out: &mut Vec<u8>, seen: &mut std::collections::BTreeSet<u64>, id: u64) -> bool {
+        out.extend_from_slice(&id.to_le_bytes());
+        seen.insert(id)
+    }
+    match v {
+        Value::None => out.push(0),
+        Value::Bool(b) => {
+            out.push(1);
+            out.push(u8::from(*b));
+        }
+        Value::Num(n) => {
+            out.push(2);
+            out.extend_from_slice(&n.raw().to_le_bytes());
+        }
+        Value::Str(s) => {
+            out.push(3);
+            str_bytes(out, s);
+        }
+        Value::Tuple(t) => {
+            out.push(4);
+            out.extend_from_slice(&(t.len() as u64).to_le_bytes());
+            for x in t.iter() {
+                hash_value(x, out, seen);
+            }
+        }
+        Value::List(l) => {
+            out.push(5);
+            if object(out, seen, l.id) {
+                let items = l.items.borrow();
+                out.extend_from_slice(&(items.len() as u64).to_le_bytes());
+                for x in items.iter() {
+                    hash_value(x, out, seen);
+                }
+            }
+        }
+        Value::Dict(d) => {
+            out.push(6);
+            if object(out, seen, d.id) {
+                let items = d.items.borrow();
+                out.extend_from_slice(&(items.len() as u64).to_le_bytes());
+                for (k, x) in items.iter() {
+                    hash_value(k, out, seen);
+                    hash_value(x, out, seen);
+                }
+            }
+        }
+        Value::Set(s) => {
+            out.push(7);
+            if object(out, seen, s.id) {
+                let items = s.items.borrow();
+                out.extend_from_slice(&(items.len() as u64).to_le_bytes());
+                for x in items.iter() {
+                    hash_value(x, out, seen);
+                }
+            }
+        }
+        Value::Func(f) => {
+            out.push(8);
+            str_bytes(out, &f.code.name);
+            for d in &f.defaults {
+                hash_value(d, out, seen);
+            }
+        }
+        Value::Builtin(name) => {
+            out.push(9);
+            str_bytes(out, name);
+        }
+        Value::Method(m) => {
+            out.push(10);
+            str_bytes(out, m.name);
+            hash_value(&m.receiver, out, seen);
+        }
+        Value::ExcClass(c) => {
+            out.push(11);
+            str_bytes(out, c.name());
+        }
+        Value::Exc(e) => {
+            out.push(12);
+            str_bytes(out, &e.class_name());
+            out.extend_from_slice(&(e.args.len() as u64).to_le_bytes());
+            for a in &e.args {
+                hash_value(a, out, seen);
+            }
+            out.extend_from_slice(&u64::from(e.line).to_le_bytes());
+            out.extend_from_slice(&e.tick.to_le_bytes());
+        }
+        Value::Record(r) => {
+            out.push(13);
+            str_bytes(out, &r.type_name);
+            out.extend_from_slice(&(r.fields.len() as u64).to_le_bytes());
+            for (k, x) in &r.fields {
+                str_bytes(out, k);
+                hash_value(x, out, seen);
+            }
+        }
+        Value::Iter(it) => {
+            out.push(14);
+            out.extend_from_slice(&(it.pos.get() as u64).to_le_bytes());
+            out.extend_from_slice(&(it.items.len() as u64).to_le_bytes());
+            for x in &it.items {
+                hash_value(x, out, seen);
+            }
+            if let Some((obj, n)) = &it.inst {
+                hash_value(&Value::Inst(obj.clone()), out, seen);
+                out.extend_from_slice(&(*n as u64).to_le_bytes());
+            }
+        }
+        Value::Class(c) => {
+            out.push(15);
+            if object(out, seen, c.id) {
+                str_bytes(out, &c.name);
+                let attrs = c.attrs.borrow();
+                out.extend_from_slice(&(attrs.len() as u64).to_le_bytes());
+                for (k, x) in attrs.iter() {
+                    str_bytes(out, k);
+                    hash_value(x, out, seen);
+                }
+                if let Some(b) = &c.base {
+                    hash_value(&Value::Class(b.clone()), out, seen);
+                }
+            }
+        }
+        Value::Inst(i) => {
+            out.push(16);
+            if object(out, seen, i.id) {
+                hash_value(&Value::Class(i.class.clone()), out, seen);
+                let attrs = i.attrs.borrow();
+                out.extend_from_slice(&(attrs.len() as u64).to_le_bytes());
+                for (k, x) in attrs.iter() {
+                    str_bytes(out, k);
+                    hash_value(x, out, seen);
+                }
+            }
+        }
+        Value::Bound(b) => {
+            out.push(17);
+            str_bytes(out, &b.func.code.name);
+            hash_value(&b.receiver, out, seen);
+        }
+        Value::Module(m) => {
+            out.push(18);
+            str_bytes(out, &m.name);
+        }
+    }
+}
+
 /// What storing this value in one slot adds to the live-values count
 /// (`execution.md`, Limits): one for the slot, plus a tuple's elements,
 /// since a tuple is a value copied into every slot that holds it. An
