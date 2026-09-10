@@ -16,10 +16,10 @@ use crate::data::{Costs, Limits};
 use crate::dispatch::{Native, Need, Then};
 use crate::errors::{ExcClass, Exception, LoadError};
 use crate::num::Num;
-use crate::parser::parse_file;
+use crate::parser::parse_file_bounded;
 use crate::value::{
     Class, DictObj, Func, Globals, IterObj, ListObj, Method, Module, R, SetObj, Value, check_key,
-    dict_find, has_instance, set_find,
+    dict_find, has_instance, set_find, weight,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
@@ -85,7 +85,7 @@ impl Program {
             }
             version.write_len_prefixed(name.as_bytes());
             version.write_len_prefixed(src.as_bytes());
-            let stmts = parse_file(name, src)?;
+            let stmts = parse_file_bounded(name, src, limits.depth_nesting as u32)?;
             edges.insert(stem.to_string(), imported_modules(&stmts));
             let code = compile_module(name, &stmts)?;
             if stem == "main" {
@@ -451,6 +451,14 @@ pub struct Machine {
     /// result goes to the native, not the frame's stack.
     native_waiting: bool,
     native_input: Option<Value>,
+    /// The live-values limit (`execution.md`, Limits) is exact but not
+    /// walked at every store: `live_pressure` counts every value created
+    /// or reference stored since the last walk, an upper bound on growth,
+    /// and the walk runs only when `live_measured + live_pressure` could
+    /// exceed the limit — so the limit is caught at the operation that
+    /// crosses it, and a program well under it never pays for a walk.
+    live_measured: usize,
+    live_pressure: usize,
     /// The last fault, as `execution.md` defines the record.
     pub fault_record: Option<FaultRecord>,
     pub tick: u64,
@@ -478,6 +486,8 @@ impl Machine {
             waiting: false,
             native_waiting: false,
             native_input: None,
+            live_measured: 0,
+            live_pressure: 0,
             fault_record: None,
             tick: 0,
             mode: Mode::Main,
@@ -496,6 +506,8 @@ impl Machine {
         self.globals.borrow_mut().clear();
         self.modules_run.clear();
         self.frames.clear();
+        self.live_measured = 0;
+        self.live_pressure = 0;
         let globals = self.globals.clone();
         self.frames
             .push(Frame::new(self.program.main.clone(), globals));
@@ -517,6 +529,7 @@ impl Machine {
     }
 
     pub fn new_list(&mut self, items: Vec<Value>) -> Value {
+        self.note_values(&items);
         Value::List(Rc::new(ListObj {
             id: self.alloc_id(),
             items: RefCell::new(items),
@@ -524,6 +537,10 @@ impl Machine {
     }
 
     pub fn new_dict(&mut self, items: Vec<(Value, Value)>) -> Value {
+        for (k, v) in &items {
+            self.note_value(k);
+            self.note_value(v);
+        }
         Value::Dict(Rc::new(DictObj {
             id: self.alloc_id(),
             items: RefCell::new(items),
@@ -531,6 +548,7 @@ impl Machine {
     }
 
     pub fn new_set(&mut self, items: Vec<Value>) -> Value {
+        self.note_values(&items);
         Value::Set(Rc::new(SetObj {
             id: self.alloc_id(),
             items: RefCell::new(items),
@@ -788,6 +806,116 @@ impl Machine {
     /// Spend a per-element part: `n × factor`.
     pub fn charge_each(&mut self, n: usize, factor: u64) {
         self.charge((n as u64).saturating_mul(factor));
+    }
+
+    /// Note `n` values created or references stored, for the live-values
+    /// limit; the check itself runs at the end of the operation.
+    pub fn note_alloc(&mut self, n: usize) {
+        self.live_pressure = self.live_pressure.saturating_add(n);
+    }
+
+    /// Note one value stored or copied into a slot, by its weight.
+    pub fn note_value(&mut self, v: &Value) {
+        self.note_alloc(weight(v));
+    }
+
+    /// Note every value of a new or grown container.
+    pub fn note_values(&mut self, vs: &[Value]) {
+        let total = vs.iter().map(weight).fold(0usize, usize::saturating_add);
+        self.note_alloc(total);
+    }
+
+    /// The live-values check, at the end of an operation that created a
+    /// value or stored a reference: walk only when the bound says the
+    /// limit could have been crossed.
+    fn live_check(&mut self) -> R<()> {
+        let limit = usize::try_from(self.limits.size_live_values).unwrap_or(usize::MAX);
+        if self.live_pressure == 0 || self.live_measured.saturating_add(self.live_pressure) <= limit
+        {
+            return Ok(());
+        }
+        let count = self.live_count(limit.saturating_add(1));
+        self.live_measured = count;
+        self.live_pressure = 0;
+        if count > limit {
+            return Err(Exception::new(ExcClass::LimitError, vec![]));
+        }
+        Ok(())
+    }
+
+    /// Elements and scalars reachable from the globals and frames
+    /// (`execution.md`, Limits): an object's contents count once however
+    /// many slots reference it; a `str` or `tuple` counts per slot. Stops
+    /// counting past `cap`.
+    fn live_count(&self, cap: usize) -> usize {
+        let mut seen: BTreeSet<u64> = BTreeSet::new();
+        let mut seen_modules: BTreeSet<String> = BTreeSet::new();
+        let mut count = 0usize;
+        let mut todo: Vec<Value> = Vec::new();
+        for f in &self.frames {
+            todo.extend(f.locals.iter().flatten().cloned());
+            todo.extend(f.stack.iter().cloned());
+        }
+        todo.extend(self.globals.borrow().values().cloned());
+        for m in self.modules_run.values() {
+            if seen_modules.insert(m.name.clone()) {
+                todo.extend(m.globals.borrow().values().cloned());
+            }
+        }
+        while let Some(v) = todo.pop() {
+            if count > cap {
+                break;
+            }
+            count = count.wrapping_add(1);
+            match &v {
+                Value::Tuple(t) => todo.extend(t.iter().cloned()),
+                Value::List(l) => {
+                    if seen.insert(l.id) {
+                        todo.extend(l.items.borrow().iter().cloned());
+                    }
+                }
+                Value::Dict(d) => {
+                    if seen.insert(d.id) {
+                        for (k, x) in d.items.borrow().iter() {
+                            todo.push(k.clone());
+                            todo.push(x.clone());
+                        }
+                    }
+                }
+                Value::Set(s) => {
+                    if seen.insert(s.id) {
+                        todo.extend(s.items.borrow().iter().cloned());
+                    }
+                }
+                Value::Inst(i) => {
+                    if seen.insert(i.id) {
+                        todo.extend(i.attrs.borrow().iter().map(|(_, x)| x.clone()));
+                        todo.push(Value::Class(i.class.clone()));
+                    }
+                }
+                Value::Class(c) => {
+                    if seen.insert(c.id) {
+                        todo.extend(c.attrs.borrow().iter().map(|(_, x)| x.clone()));
+                        if let Some(b) = &c.base {
+                            todo.push(Value::Class(b.clone()));
+                        }
+                    }
+                }
+                Value::Module(m) => {
+                    if seen_modules.insert(m.name.clone()) {
+                        todo.extend(m.globals.borrow().values().cloned());
+                    }
+                }
+                Value::Func(f) => todo.extend(f.defaults.iter().cloned()),
+                Value::Bound(b) => todo.push(b.receiver.clone()),
+                Value::Method(m) => todo.push(m.receiver.clone()),
+                Value::Exc(e) => todo.extend(e.args.iter().cloned()),
+                Value::Iter(it) => todo.extend(it.items.iter().cloned()),
+                Value::Record(r) => todo.extend(r.fields.iter().map(|(_, x)| x.clone())),
+                _ => {}
+            }
+        }
+        count
     }
 
     /// The collection-size limit, checked before a write.
@@ -1059,6 +1187,12 @@ impl Machine {
                 Some(v) => self.drive(host, Some(v)),
                 None => self.step(host),
             };
+            // The live-values limit is measured at the operation that
+            // created a value or stored a reference: here, at its end.
+            let stepped = stepped.and_then(|s| {
+                self.live_check()?;
+                Ok(s)
+            });
             match stepped {
                 Ok(Step::Continue) => {}
                 Ok(Step::Wait) => {
@@ -1191,6 +1325,7 @@ impl Machine {
             }
             Instr::StoreLocal(slot) => {
                 let v = self.pop()?;
+                self.note_value(&v);
                 if let Some(s) = self.frame().locals.get_mut(slot) {
                     *s = Some(v);
                 }
@@ -1217,6 +1352,7 @@ impl Machine {
             }
             Instr::StoreGlobal(i) => {
                 let v = self.pop()?;
+                self.note_value(&v);
                 let name = code.names.get(i).cloned().unwrap_or_default();
                 self.frame().globals.borrow_mut().insert(name, v);
             }
@@ -1350,6 +1486,7 @@ impl Machine {
                     self.charge(c.op_display);
                     self.charge_each(n, c.factor_copy);
                     let items = self.pop_n(n)?;
+                    self.note_values(&items);
                     self.check_size(items.len())?;
                     self.push(Value::tuple(items));
                 }
@@ -1461,6 +1598,7 @@ impl Machine {
                 let idx = self.pop()?;
                 let obj = self.pop()?;
                 let v = self.pop()?;
+                self.note_value(&v);
                 if let Value::Inst(i) = &obj {
                     return self.start_native(
                         host,
@@ -1494,6 +1632,7 @@ impl Machine {
                 self.charge(c.op_attribute);
                 let obj = self.pop()?;
                 let v = self.pop()?;
+                self.note_value(&v);
                 let name = code.names.get(i).cloned().unwrap_or_default();
                 match &obj {
                     Value::Inst(inst) => inst.set(&name, v),
