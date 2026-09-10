@@ -84,25 +84,6 @@ parse error. Hook budgets and the interrupt kinds beyond `fault` are T7's.
 (`key=` taking only a builtin was a gap here until T11's dispatcher let a
 builtin re-enter a `def`.)
 
-**T14 — Determinism suite for the language**
-
-Mirroring `crates/sim`'s: golden fixtures for program execution, a cross-process
-check, and the guard the language spike needed — **a test that fails to run must
-not score green.**
-
-Two fixtures this suite owes that the spec names: the boundary cases of the
-256-bit wide-arithmetic routine behind `num` (T10) — the products and
-quotients nearest the range, the floor at each sign, the `**` procedure's
-count of steps — and the interrupt paths the golden replay is least likely to
-cover, a fault escaping mid-unwind and a hook exhausting its budget on its
-last operation.
-
-The determinism scan already strips string literals before looking for float
-literals, so a `num` literal like `1.5` inside a player-program fixture is
-safe in an ordinary Rust string; the one form it cannot strip is a raw string
-with hashes (`r##"…"##`), so fixtures avoid that spelling or live outside Rust
-source.
-
 ## M3 — Determinism assurance
 
 **T15 — Cross-architecture determinism check in CI**
