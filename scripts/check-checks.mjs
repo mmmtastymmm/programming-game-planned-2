@@ -488,7 +488,10 @@ const MUTATIONS = [
     // `### M0 — Scaffolding` to the same anchor, so the two are not even
     // distinguishable to a link — and the rule's own stated purpose, that the two
     // copies disagree, has nothing to do with how deep either one sits.
-    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\n### M0 — Scaffolding\n\nspliced\n") },
+    // Seeded against the file's own H1 rather than a milestone heading: the
+    // M0 one left the file the day its last task closed, and took this case
+    // with it.
+    mutate: (d) => appendFileSync(join(d, "docs/TASKS.md"), "\n### Tasks\n\nspliced\n") },
   { name: "a table separator that lost its header", check: "structure",
     expect: "no header row above it",
     mutate: (d) => appendFileSync(join(d, "docs/INBOX.md"), "\n---|---|\n| a | b |\n") },
