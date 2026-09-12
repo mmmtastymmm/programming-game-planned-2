@@ -100,9 +100,21 @@ pub fn host(
     me: TeamId,
     remote: &[TeamId],
     identity: MatchIdentity,
-    mut progress: impl FnMut(&str),
+    progress: impl FnMut(&str),
 ) -> Result<(Session, SocketAddr), String> {
     let listener = TcpListener::bind(addr).map_err(|e| format!("cannot listen: {e}"))?;
+    host_on(listener, me, remote, identity, progress)
+}
+
+/// [`host`] on a listener already bound — so a caller that needs the
+/// address before the host starts can bind first.
+pub fn host_on(
+    listener: TcpListener,
+    me: TeamId,
+    remote: &[TeamId],
+    identity: MatchIdentity,
+    mut progress: impl FnMut(&str),
+) -> Result<(Session, SocketAddr), String> {
     let bound = listener
         .local_addr()
         .map_err(|e| format!("no local address: {e}"))?;
@@ -327,11 +339,11 @@ mod tests {
     fn start_host(remote: Vec<TeamId>) -> (thread::JoinHandle<Session>, SocketAddr) {
         let (atx, arx) = channel();
         let h = thread::spawn(move || {
+            // Bound before the address is handed out, so a joiner never
+            // sees the port between a probe and the real bind.
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            let addr = listener.local_addr().unwrap();
-            drop(listener);
-            atx.send(addr).unwrap();
-            host(addr, TeamId(0), &remote, ID, |_| {}).unwrap().0
+            atx.send(listener.local_addr().unwrap()).unwrap();
+            host_on(listener, TeamId(0), &remote, ID, |_| {}).unwrap().0
         });
         let addr = arx.recv().unwrap();
         (h, addr)
@@ -405,7 +417,7 @@ mod tests {
         let mut refused = String::new();
         for _ in 0..200 {
             match join(addr, wrong, &teams) {
-                Err(e) if e.contains("refused") => {
+                Err(e) if e.starts_with("refused:") => {
                     refused = e;
                     break;
                 }
