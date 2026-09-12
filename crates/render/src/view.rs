@@ -835,8 +835,12 @@ pub fn animate(
     }
 }
 
-/// Append this tick's diagnostic log lines and faults to the panel.
-pub fn collect_log(d: &Driver, state: &mut ViewState) {
+/// Append this tick's diagnostic log lines, faults and exchange events to
+/// the panel.
+pub fn collect_log(d: &mut Driver, state: &mut ViewState) {
+    for e in d.events.drain(..) {
+        state.log_lines.push(format!("t{} net: {e}", d.tick));
+    }
     let snap = d.snapshot();
     for m in &snap.machines {
         for l in &m.log {

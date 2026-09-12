@@ -64,23 +64,33 @@ impl Default for ViewState {
 pub struct DriverResource(pub Driver);
 
 /// `RENDER_SCREENSHOT=path`: save a frame of the window to `path` once the
-/// scene has settled (`RENDER_SCREENSHOT_FRAME`, default 90), then exit —
-/// a look at the view without a person at the window.
-fn screenshot(mut commands: Commands, mut frames: Local<u32>, mut exit: MessageWriter<AppExit>) {
+/// scene has settled — at frame `RENDER_SCREENSHOT_FRAME` (default 90), or
+/// once the driver reaches tick `RENDER_SCREENSHOT_TICK`, which two peers
+/// can share — then exit a second later: a look at the view without a
+/// person at the window.
+fn screenshot(
+    mut commands: Commands,
+    driver: NonSend<DriverResource>,
+    mut frames: Local<u32>,
+    mut taken: Local<Option<u32>>,
+    mut exit: MessageWriter<AppExit>,
+) {
     let Ok(path) = std::env::var("RENDER_SCREENSHOT") else {
         return;
     };
-    let at: u32 = std::env::var("RENDER_SCREENSHOT_FRAME")
-        .ok()
-        .and_then(|f| f.parse().ok())
-        .unwrap_or(90);
+    let var = |name: &str| std::env::var(name).ok().and_then(|f| f.parse::<u64>().ok());
     *frames += 1;
-    if *frames == at {
+    let due = match var("RENDER_SCREENSHOT_TICK") {
+        Some(tick) => driver.0.tick >= tick,
+        None => u64::from(*frames) >= var("RENDER_SCREENSHOT_FRAME").unwrap_or(90),
+    };
+    if due && taken.is_none() {
+        *taken = Some(*frames);
         commands
             .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
             .observe(bevy::render::view::screenshot::save_to_disk(path));
     }
-    if *frames == at + 60 {
+    if taken.is_some_and(|t| *frames == t + 60) {
         exit.write(AppExit::Success);
     }
 }
@@ -90,8 +100,8 @@ fn drive(time: Res<Time>, mut driver: NonSendMut<DriverResource>, mut state: Res
     let dt = f64::from(time.delta_secs());
     let before = driver.0.tick;
     driver.0.advance(dt);
-    if driver.0.tick != before {
-        view::collect_log(&driver.0, &mut state);
+    if driver.0.tick != before || !driver.0.events.is_empty() {
+        view::collect_log(&mut driver.0, &mut state);
     }
 }
 
@@ -106,14 +116,23 @@ pub fn run(
         max: driver.bounds.1,
     };
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window {
-            title,
-            resolution: (1400, 900).into(),
-            ..default()
-        }),
-        ..default()
-    }))
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title,
+                    resolution: (1400, 900).into(),
+                    ..default()
+                }),
+                ..default()
+            })
+            // The baked textures live beside this crate, wherever the
+            // binary runs from.
+            .set(AssetPlugin {
+                file_path: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into(),
+                ..default()
+            }),
+    )
     .add_plugins(EguiPlugin::default())
     .insert_resource(ClearColor(CLEAR))
     .insert_resource(ViewState {

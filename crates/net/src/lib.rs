@@ -1,10 +1,17 @@
 //! The command log (`docs/06`, The command log) as a data structure: the
 //! per-tick sets by sender, the questions the driver asks of it, and the
-//! one canonical byte layout every command hashes to. Nothing here sends a
-//! byte; the exchange between peers is a transport over this, and lives
-//! with the driver that needs it (T16 for the renderer's).
+//! one canonical byte layout every command hashes to. [`wire`] is what
+//! goes between peers — the sets, the hashes, the handshake — in that
+//! layout; [`exchange`] is the driver's view of the other peers, and
+//! [`tcp`] the one transport. Nothing here holds a float, and nothing here
+//! decides what a tick does: the exchange delivers sets to the log, and
+//! the driver runs the tick when every set is in hand.
 
-use sim::{Command, CommandKind, PlanKind, TeamId};
+pub mod exchange;
+pub mod tcp;
+pub mod wire;
+
+use sim::{Command, CommandKind, PlanKind, TeamId, TilePos};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Every command every peer applied, by tick, then by sender and
@@ -55,6 +62,16 @@ impl CommandLog {
     /// A peer stops sending: its sets are no longer awaited.
     pub fn close(&mut self, peer: TeamId) {
         self.peers.remove(&peer);
+    }
+
+    /// Whether `peer`'s set for `tick` is in hand.
+    pub fn has_set(&self, peer: TeamId, tick: u64) -> bool {
+        self.sets_in.get(&tick).is_some_and(|s| s.contains(&peer))
+    }
+
+    /// The peers whose sets are awaited every tick.
+    pub fn peers(&self) -> impl Iterator<Item = TeamId> + '_ {
+        self.peers.iter().copied()
     }
 
     /// Whether every peer's set for `tick` is in hand.
@@ -171,6 +188,149 @@ fn plan_byte(p: PlanKind) -> u8 {
     }
 }
 
+fn plan_of(b: u8) -> Result<PlanKind, String> {
+    match b {
+        0 => Ok(PlanKind::Paint),
+        1 => Ok(PlanKind::Overlay),
+        2 => Ok(PlanKind::Building),
+        _ => Err(format!("unknown plan kind byte {b}")),
+    }
+}
+
+/// A cursor over canonical bytes; every read is bounds-checked, so a
+/// truncated or hostile frame is an `Err`, never a panic.
+pub struct Reader<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
+
+impl<'a> Reader<'a> {
+    pub fn new(bytes: &'a [u8]) -> Reader<'a> {
+        Reader { bytes, at: 0 }
+    }
+
+    pub fn done(&self) -> bool {
+        self.at == self.bytes.len()
+    }
+
+    pub fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
+        let end = self
+            .at
+            .checked_add(n)
+            .filter(|e| *e <= self.bytes.len())
+            .ok_or_else(|| format!("truncated: wanted {n} bytes at {}", self.at))?;
+        let out = &self.bytes[self.at..end];
+        self.at = end;
+        Ok(out)
+    }
+
+    pub fn u8(&mut self) -> Result<u8, String> {
+        Ok(self.take(1)?[0])
+    }
+
+    pub fn u32(&mut self) -> Result<u32, String> {
+        let b = self.take(4)?;
+        Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+
+    pub fn i32(&mut self) -> Result<i32, String> {
+        let b = self.take(4)?;
+        Ok(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+
+    pub fn u64(&mut self) -> Result<u64, String> {
+        let b = self.take(8)?;
+        Ok(u64::from_le_bytes([
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+        ]))
+    }
+
+    /// A length as `encode` writes one, refused if it cannot fit.
+    pub fn length(&mut self) -> Result<usize, String> {
+        let n = self.u64()?;
+        usize::try_from(n)
+            .ok()
+            .filter(|n| *n <= self.bytes.len().saturating_sub(self.at))
+            .ok_or_else(|| format!("length {n} exceeds the frame"))
+    }
+
+    pub fn str(&mut self) -> Result<String, String> {
+        let n = self.length()?;
+        String::from_utf8(self.take(n)?.to_vec()).map_err(|e| format!("not UTF-8: {e}"))
+    }
+
+    pub fn opt_str(&mut self) -> Result<Option<String>, String> {
+        match self.u8()? {
+            0 => Ok(None),
+            1 => Ok(Some(self.str()?)),
+            b => Err(format!("bad option byte {b}")),
+        }
+    }
+}
+
+/// The inverse of [`encode`]: the command from its canonical bytes, all of
+/// them — trailing bytes are a malformed frame.
+pub fn decode(bytes: &[u8]) -> Result<Command, String> {
+    let mut r = Reader::new(bytes);
+    let c = decode_from(&mut r)?;
+    if !r.done() {
+        return Err("trailing bytes after the command".into());
+    }
+    Ok(c)
+}
+
+/// One command read from the cursor's current position.
+pub fn decode_from(r: &mut Reader<'_>) -> Result<Command, String> {
+    let tick = r.u64()?;
+    let sender = TeamId(r.u32()?);
+    let seq = r.u32()?;
+    let kind = match r.u8()? {
+        1 => {
+            let deployment = r.str()?;
+            let n = r.length()?;
+            let mut files = Vec::with_capacity(n.min(1024));
+            for _ in 0..n {
+                let name = r.str()?;
+                let text = r.str()?;
+                files.push((name, text));
+            }
+            CommandKind::Deploy {
+                deployment,
+                bundle: sim::Bundle { files },
+            }
+        }
+        2 => {
+            let x = r.i32()?;
+            let y = r.i32()?;
+            let plan = plan_of(r.u8()?)?;
+            let value = r.opt_str()?;
+            CommandKind::Mark {
+                at: TilePos::new(x, y),
+                plan,
+                value,
+            }
+        }
+        3 => {
+            let x = r.i32()?;
+            let y = r.i32()?;
+            let plan = plan_of(r.u8()?)?;
+            CommandKind::Unmark {
+                at: TilePos::new(x, y),
+                plan,
+            }
+        }
+        4 => CommandKind::SetSpeed(r.u64()?),
+        5 => CommandKind::Resign,
+        b => return Err(format!("unknown command kind byte {b}")),
+    };
+    Ok(Command {
+        tick,
+        sender,
+        seq,
+        kind,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +360,59 @@ mod tests {
         assert!(log.have_all_sets(4));
         assert_eq!(log.next_tick_with_a_command(0), Some(3));
         assert_eq!(log.next_tick_with_a_command(3), None);
+    }
+
+    #[test]
+    fn every_kind_round_trips_through_its_bytes() {
+        let kinds = [
+            CommandKind::Deploy {
+                deployment: "red".into(),
+                bundle: sim::Bundle {
+                    files: vec![
+                        ("main.py".into(), "x = 1\n".into()),
+                        ("util.py".into(), "".into()),
+                    ],
+                },
+            },
+            CommandKind::Mark {
+                at: TilePos::new(-3, 2),
+                plan: PlanKind::Building,
+                value: Some("depot".into()),
+            },
+            CommandKind::Mark {
+                at: TilePos::new(0, 0),
+                plan: PlanKind::Overlay,
+                value: None,
+            },
+            CommandKind::Unmark {
+                at: TilePos::new(5, -5),
+                plan: PlanKind::Paint,
+            },
+            CommandKind::SetSpeed(7),
+            CommandKind::Resign,
+        ];
+        for (i, kind) in kinds.into_iter().enumerate() {
+            let c = Command::new(1000 + i as u64, TeamId(i as u32), 3, kind);
+            let bytes = encode(&c);
+            assert_eq!(decode(&bytes).unwrap(), c);
+            // A truncated frame is an error, never a panic, at every cut.
+            for cut in 0..bytes.len() {
+                assert!(decode(&bytes[..cut]).is_err(), "cut {cut} of {i}");
+            }
+            let mut extra = bytes.clone();
+            extra.push(0);
+            assert!(decode(&extra).unwrap_err().contains("trailing"));
+        }
+        assert!(
+            decode(&[0; 17])
+                .unwrap_err()
+                .contains("unknown command kind")
+        );
+        // A length claiming more than the frame holds is refused up front.
+        let mut huge = encode(&Command::new(1, TeamId(0), 0, CommandKind::Resign));
+        huge[16] = 1;
+        huge.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert!(decode(&huge).unwrap_err().contains("exceeds"));
     }
 
     #[test]
