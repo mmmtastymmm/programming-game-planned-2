@@ -88,8 +88,8 @@ pass.
   Decided entries, and they are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
 - **The interface's rulings live in [07-interface](07-interface.md)** —
-  Q33 (the editor), Q34 (faults) and Q35 (a bot's color) are its Decided
-  entries, and they are not repeated here.
+  Q33 (the editor), Q34 (faults), Q35 (a bot's color) and Q39 (windows,
+  amending Q33) are its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in

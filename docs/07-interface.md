@@ -11,10 +11,17 @@ here changes a hash; a peer with a different renderer sees the same match.
 ## Decided
 
 - **Programs are written in the game (Q33).** The renderer holds an editor:
-  a working copy of every deployment's bundle, edited in a panel beside the
-  map, and deployed from there as a `Deploy` command carrying the working
-  copy's files. The programs directory is where a match's opening bundles
-  are read from and where the player exports to; the game never watches it.
+  a working copy of every deployment's bundle, edited in a window over the
+  map (Q39 amended Q33's panel), and deployed from there as a `Deploy`
+  command carrying the working copy's files. The programs directory is
+  where a match's opening bundles are read from and where the player
+  exports to; the game never watches it.
+- **Everything floats over the map, as windows (Q39, amending Q33 and the
+  screen as first ruled).** One window per deployment's program, one each
+  for the inspector, the tools and the log, dragged, resized, collapsed and
+  closed by the player; the time bar is the only fixed strip and is the
+  dock that opens each; the layout is remembered in `windows.toml` beside
+  the programs.
 - **A fault reaches the player on every channel (Q34).** A mark over the
   machine while its fault record is fresh, a line per deployment counting
   faults by file and line in the programs panel, the full record in the
@@ -28,16 +35,20 @@ here changes a hash; a peer with a different renderer sees the same match.
 
 ## The screen
 
-One window, four regions around the map:
+The map fills the window; everything else floats over it (Q39):
 
-| Region | Holds | Ruled in |
+| Window | Holds | Ruled in |
 |---|---|---|
-| **top bar** | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end | Q6, Q12, `06` |
-| **left** | the editor: a tab per deployment, the file being edited, its running version against its working copy, and the deploy button; the fault summary per deployment | Q33, Q34 |
-| **right** | the inspector: the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions; the mark tools | Q34, open — `Q37` |
-| **bottom** | the log: machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
+| **the time bar** — the one fixed strip, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end; and the dock: a toggle per window below | Q6, Q12, `06`, Q39 |
+| **one per deployment** | the file being edited, its running version against its working copy, the deploy and export buttons; the deployment's fault summary | Q33, Q34, Q39 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions | Q34 |
+| **tools** | the mark tools and resign | open — `Q37` |
+| **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 
-The map is what remains. The camera orbits, pans and zooms and never
+Every window drags, resizes, collapses and closes, and several programs may
+be open at once. The layout is saved to `windows.toml` beside the programs
+whenever it changes and restored at start; nothing about it reaches a
+peer. The camera orbits, pans and zooms under the windows and never
 matters to the sim.
 
 ## Programs and the editor
