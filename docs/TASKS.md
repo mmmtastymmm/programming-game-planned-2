@@ -31,44 +31,4 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M0 — Scaffolding
-
-**T7 — Replace the placeholder sim in `crates/sim` with the real world model, and split out `lang`, `net` and `replay`**
-
-⚠HASH — this regenerates the golden fixture by definition. The world model
-has its rulings — Q7, Q9, Q21 through Q25, Q30 and Q31 — in `docs/02` and its
-world in `docs/03`, so it is buildable, and `docs/06` fixes the tick's seven steps,
-the command's fields, the snapshot's parts and the state hash's coverage and
-order. The crate split `06` draws — `lang`, `sim`, `net`, `replay` — is this
-task's too; `render` was T16, now closed.
-
-Q3 admits mid-match program updates, so `Command` **is** an ordered per-tick log
-— but its principal variant is a program deploy, not a machine order. The
-placeholder's `Spawn` / `SetGoal` / `Despawn` variants command individual machines,
-which Q3 forbids outright. They are scaffolding, not a model: not a register
-entry, since the placeholder never claimed to be one, but wrong to copy from.
-
-The golden fixture must exercise a mid-match redeploy. Q11 made it an interrupt
-delivered per machine at its next operation boundary, which is the hash-affecting
-path most likely to differ between peers.
-
-*Progress (2026-09-10):* the real world model is in `crates/sim` — the
-tables, the map with its validity rules, tiles and deposits, machines with
-their actions, senses and memory, the eight-step tick, the state hash in
-`docs/06`'s order, the snapshot, and scripted teams — with the game builtins
-as the language's host. `crates/net` holds the command log and its bytes;
-`crates/replay` the headless driver and the golden replay: the first map,
-a player against the Fool, a mid-match redeploy, a speed change and marks.
-The Fool's red bundle gained a step off a tile it stands on, since a bot
-builds and picks beside a tile, never on it.
-
-*Progress (2026-09-12):* the two leftovers are built. `net` carries the
-exchange: the wire — a set per tick per peer, a hash per tick, the
-handshake — in the canonical bytes, a decoder that refuses every
-truncation, and TCP as a star the host relays through; the renderer's
-driver is a peer of it (`--host`, `--join`), sending its sets and hashes,
-stalling on a missing set, dropping a peer that leaves, and stopping on
-the first tick two peers hash differently. `check-checks.mjs --rust` seeds
-each Rust gate with a defect it must catch, from the Rust half of
-`scripts/ci.sh`; the battery's cross-architecture compare moved into the
-script so it could be seeded too.
+No task is open. The next one starts a new milestone.
