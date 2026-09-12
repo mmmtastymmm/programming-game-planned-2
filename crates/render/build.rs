@@ -24,6 +24,10 @@ const SIZE: u32 = 256;
 /// Plain single textures.
 const PLAIN: &[&str] = &["crate", "paper"];
 
+/// The fault mark (`docs/07`, Q34): three scribble frames composited onto
+/// the thought bubble, baked as `scribble_error_f{frame}.png`.
+const SCRIBBLES: [&str; 3] = ["scribble_error_0", "scribble_error_1", "scribble_error_2"];
+
 /// The ground: three sway frames, no edges — it is what every other terrain
 /// draws its edge against. Baked as `tile_ground_f{frame}.png`.
 const GROUND: [&str; 3] = ["tile_grass", "tile_grass_sway_1", "tile_grass_sway_2"];
@@ -107,6 +111,25 @@ fn main() {
         render(&read(name), SIZE)
             .save_png(out.join(format!("tile_ground_f{f}.png")))
             .expect("save ground png");
+    }
+    // The icon shrinks into the bubble's body; the tail hangs bottom-left.
+    let bubble_svg = read("scribble_bubble");
+    for (f, name) in SCRIBBLES.iter().enumerate() {
+        let icon = render(&read(name), SIZE);
+        let mut base = render(&bubble_svg, SIZE);
+        let scale = 0.58;
+        let tx = SIZE as f32 * (1.0 - scale) / 2.0;
+        let ty = tx - SIZE as f32 * 0.075;
+        base.draw_pixmap(
+            0,
+            0,
+            icon.as_ref(),
+            &tiny_skia::PixmapPaint::default(),
+            tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, tx, ty),
+            None,
+        );
+        base.save_png(out.join(format!("scribble_error_f{f}.png")))
+            .expect("save scribble png");
     }
 
     // Bit order matches the view's mask computation: 0 = N, 1 = E, 2 = S,

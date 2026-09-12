@@ -3,7 +3,8 @@
 
 use crate::camera::{LmbGesture, orbit_camera};
 use crate::driver::Driver;
-use crate::palette::{CLEAR, Frame};
+use crate::editor::Editor;
+use crate::palette::{CLEAR, Frame, Interface};
 use crate::{input, ui, view};
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
@@ -41,6 +42,10 @@ pub struct ViewState {
     /// The tile under the cursor, if any.
     pub hover: Option<sim::TilePos>,
     pub status: String,
+    /// The working copies (`docs/07`, Q33).
+    pub editor: Editor,
+    /// The fault tick last logged per machine, so each record logs once.
+    pub faults_seen: std::collections::HashMap<sim::EntityId, u64>,
 }
 
 impl Default for ViewState {
@@ -54,6 +59,8 @@ impl Default for ViewState {
             show_log: true,
             hover: None,
             status: String::new(),
+            editor: Editor::default(),
+            faults_seen: Default::default(),
         }
     }
 }
@@ -115,6 +122,11 @@ pub fn run(
         min: driver.bounds.0,
         max: driver.bounds.1,
     };
+    let interface = Interface::load().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+    let editor = Editor::from_bundles(&deployed);
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -138,9 +150,11 @@ pub fn run(
     .insert_resource(ViewState {
         programs,
         deployed,
+        editor,
         ..Default::default()
     })
     .insert_resource(frame)
+    .insert_resource(interface)
     .insert_resource(view::Tuning::load())
     .insert_resource(view::Entities::default())
     .insert_resource(LmbGesture::default())
@@ -154,6 +168,7 @@ pub fn run(
             view::sync_machines,
             view::interpolate,
             view::health_bars,
+            view::fault_marks,
             view::sounds,
             view::animate,
             orbit_camera,
@@ -161,6 +176,7 @@ pub fn run(
             input::click,
             view::markers,
             view::billboard_bars,
+            view::level_rings,
             screenshot,
         )
             .chain(),
