@@ -56,7 +56,8 @@ team's. Its old team is out (`04`) if it was the last one.
 Nothing. A match is `(map, command log)` (`06`) and ends with a winner or
 a draw (`04`); the next match starts from its own map with nothing carried
 over but what the player learned and the programs they wrote, which live in
-their editor and not in the game. The tarot ladder (Q29) is the sequence a
+their programs directory, exported from the game's editor (Q33, `07`), and
+not in the match. The tarot ladder (Q29) is the sequence a
 player is meant to climb, and climbing it is a matter of beating each card,
 not of unlocking the next.
 

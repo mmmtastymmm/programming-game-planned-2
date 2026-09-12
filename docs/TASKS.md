@@ -31,4 +31,15 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-No task is open. The next one starts a new milestone.
+## M5 — Interface
+
+**T17 — The editor, the fault channels and the deployment colors in `render`**
+
+`docs/07`'s three rulings, none of which touches a hash: the in-game editor
+with a working copy per deployment, deploy and export, and a load error
+shown at its line (Q33); the fault mark, the per-deployment summary, the
+inspector's record and the log line (Q34); bot atlases per deployment color
+with the team as a ring, buildings in the team's color (Q35). The numbers
+are `data/interface.toml`'s. The predecessor's `crates/game/src/editor` is
+the reference for the editor's highlighting and completion, which are the
+build's choices and not rules.

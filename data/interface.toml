@@ -1,0 +1,12 @@
+# The renderer's tuning — the values behind docs/07-interface.md. Nothing
+# here reaches the sim or a hash; a peer with other numbers sees the same
+# match.
+
+[faults]
+# a fault mark stays over a machine this many ticks after its record's tick
+fault_mark_ticks = 30
+
+[teams]
+# ring colors for the teams that are not the player's, in team order
+# skipping the player's; the player's ring is white
+rings = ["#f24c40", "#4fa3f2", "#f2c94c", "#e254c7", "#f2913f", "#9b59f2", "#45d4d4"]
