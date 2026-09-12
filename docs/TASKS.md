@@ -60,7 +60,15 @@ as the language's host. `crates/net` holds the command log and its bytes;
 `crates/replay` the headless driver and the golden replay: the first map,
 a player against the Fool, a mid-match redeploy, a speed change and marks.
 The Fool's red bundle gained a step off a tile it stands on, since a bot
-builds and picks beside a tile, never on it. **Still open under this
-task:** the peer exchange itself, which lives with the renderer's driver
-(closed as T16) since headless has one peer; and `docs/06`'s check-on-the-checks
-extended to the Rust gates.
+builds and picks beside a tile, never on it.
+
+*Progress (2026-09-12):* the two leftovers are built. `net` carries the
+exchange: the wire — a set per tick per peer, a hash per tick, the
+handshake — in the canonical bytes, a decoder that refuses every
+truncation, and TCP as a star the host relays through; the renderer's
+driver is a peer of it (`--host`, `--join`), sending its sets and hashes,
+stalling on a missing set, dropping a peer that leaves, and stopping on
+the first tick two peers hash differently. `check-checks.mjs --rust` seeds
+each Rust gate with a defect it must catch, from the Rust half of
+`scripts/ci.sh`; the battery's cross-architecture compare moved into the
+script so it could be seeded too.

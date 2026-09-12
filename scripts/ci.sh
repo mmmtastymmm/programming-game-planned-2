@@ -37,6 +37,17 @@ run_rust() {
 
   step "cargo test (incl. golden replays and the determinism scan)"
   cargo test --workspace || FAILED+=("rust")
+
+  # The check on the Rust gates (docs/06, Testing): each gate seeded with a
+  # defect it must catch, in a copy of the tree under target/. After the gates
+  # themselves, because a tree the gates reject is reported there first.
+  step "the Rust gates catch what they claim to"
+  if command -v node >/dev/null 2>&1; then
+    node scripts/check-checks.mjs . --rust || FAILED+=("check-checks --rust")
+  else
+    echo "node not found — install Node 20+ to run the check on the Rust gates" >&2
+    FAILED+=("check-checks --rust (node missing)")
+  fi
 }
 
 run_docs() {

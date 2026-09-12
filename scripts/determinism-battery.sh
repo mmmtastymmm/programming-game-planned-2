@@ -5,6 +5,7 @@
 #
 #   scripts/determinism-battery.sh              # hashes to stdout
 #   scripts/determinism-battery.sh OUT.txt      # hashes to OUT.txt
+#   scripts/determinism-battery.sh compare A B  # two hash files agree, line for line
 #
 # CI runs this on an x86-64 and an arm64 runner and diffs the two files: a
 # difference is a desync that would have hit two peers on different
@@ -16,6 +17,32 @@
 # stderr so the file compares clean across machines.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# The cross-architecture job's compare step lives here rather than inline in
+# ci.yml so the check-on-the-checks can seed a disagreement against it: a
+# check nobody has seen fail is a check nobody has seen work.
+if [ "${1:-}" = "compare" ]; then
+  A="${2:?compare A B}"; B="${3:?compare A B}"
+  for f in "$A" "$B"; do
+    # The same shape the emit filter below accepts — a stricter count here
+    # rejected the lang fixtures' line, whose value is several hashes.
+    n=$(grep -cE '^[A-Z_]+=' "$f" || true)
+    if [ "$n" -lt 3 ]; then
+      echo "$f holds fewer than 3 streams ($n): the battery did not emit every gate" >&2
+      exit 1
+    fi
+  done
+  if ! diff "$A" "$B" >/dev/null; then
+    keys=$( (diff "$A" "$B" || true) | sed -nE 's/^[<>] ([A-Z_]+)=.*/\1/p' | sort -u | tr '\n' ' ')
+    echo "the two architectures disagree on ${keys% }:" >&2
+    diff "$A" "$B" >&2 || true
+    exit 1
+  fi
+  echo "the two architectures agree on $(wc -l < "$A" | tr -d ' ') streams:"
+  cat "$A"
+  exit 0
+fi
+
 OUT="${1:-/dev/stdout}"
 
 rustc -vV | sed -n 's/^host: /host: /p' >&2

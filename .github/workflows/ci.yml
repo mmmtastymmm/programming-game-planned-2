@@ -89,14 +89,13 @@ jobs:
     needs: determinism
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: hashes-*
           merge-multiple: true
+      # The compare is the battery script's `compare` mode, not an inline
+      # diff: scripts/check-checks.mjs --rust seeds a disagreement against
+      # the same code this step runs.
       - name: the two architectures agree on every stream
-        run: |
-          set -euo pipefail
-          ls -l hashes-*.txt
-          test "$(wc -l < hashes-ubuntu-latest.txt)" -ge 3
-          diff hashes-ubuntu-latest.txt hashes-ubuntu-24.04-arm.txt \
-            && echo "x86-64 and arm64 agree:" && cat hashes-ubuntu-latest.txt
+        run: scripts/determinism-battery.sh compare hashes-ubuntu-latest.txt hashes-ubuntu-24.04-arm.txt

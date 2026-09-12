@@ -50,6 +50,27 @@ pub fn panels(
             ui.label(format!("delay {}", d.delay));
             ui.separator();
             ui.monospace(format!("{:016x}", d.state_hash()));
+            if d.is_networked() {
+                ui.separator();
+                let peers: Vec<String> = d
+                    .remote_peers
+                    .iter()
+                    .map(|t| format!("team {}", t.0))
+                    .collect();
+                ui.label(format!(
+                    "you are team {} · with {}",
+                    d.player.0,
+                    if peers.is_empty() {
+                        "none left".to_string()
+                    } else {
+                        peers.join(", ")
+                    }
+                ));
+            }
+            if let Some(r) = &d.desync {
+                ui.separator();
+                ui.colored_label(egui::Color32::LIGHT_RED, r);
+            }
             if let Some(r) = &d.stall_report {
                 ui.separator();
                 ui.colored_label(egui::Color32::YELLOW, format!("stalled: {r}"));

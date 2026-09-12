@@ -105,7 +105,11 @@ which is indistinguishable from agreement.
   copy by hand, and the round that skipped that step is the round three of them
   shipped in.
   **Adding a check means adding mutations there**; a check with no mutation is a
-  check nobody has ever seen fail.
+  check nobody has ever seen fail. The Rust gates — the golden replay, the
+  language fixtures, the source scan, the determinism battery and its
+  cross-architecture compare — have their own table in
+  `scripts/lib/rust-gates.mjs`, run as `check-checks.mjs --rust` from the Rust
+  half of `scripts/ci.sh` against one copy of the tree under `target/`.
 - [.claude/design-invariants.md](.claude/design-invariants.md) lists the
   properties the design corpus must have, each with how to check it. Some bind
   only once the design grows the structure they describe; each says so.

@@ -29,6 +29,10 @@
 //
 // ADDING A CHECK MEANS ADDING MUTATIONS HERE. A check with no mutation is a
 // check nobody has ever seen fail.
+//
+//   node scripts/check-checks.mjs . --rust
+//
+// runs the same contract against the Rust determinism gates (lib/rust-gates.mjs).
 
 import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, readdirSync, renameSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -56,6 +60,26 @@ import { workspaceMembers } from "./lib/workspace-lints.mjs";
 import { CITATION_CLAIMS, HISTORY_BANNER, TOTAL_CLAIMS } from "./lib/registers.mjs";
 
 const repo = process.argv[2] ?? ".";
+
+// The Rust gates — the golden replay, the language fixtures, the source scan,
+// the battery and its compare — have the same contract and their own table,
+// in lib/rust-gates.mjs, because every case there needs a cargo build. The
+// docs half of scripts/ci.sh runs this file bare, in seconds; the Rust half
+// runs it with --rust, in minutes, after the gates themselves have passed.
+if (process.argv.includes("--rust")) {
+  const { runRustGates } = await import("./lib/rust-gates.mjs");
+  const { failures, defects, inverse, gates } = runRustGates(repo);
+  if (failures.length) {
+    console.error(`✗ ${failures.length} problem(s) with the Rust gates themselves:\n`);
+    for (const f of failures) console.error("  " + f.replace(/\n/g, "\n    ") + "\n");
+    process.exit(1);
+  }
+  console.log(
+    `✓ ${defects} seeded defects each caught by the right Rust gate, ` +
+      `${inverse} legal inputs each accepted, ${gates} gates pass the tree clean`,
+  );
+  process.exit(0);
+}
 
 // Each check, and how it is invoked against a corpus root. Every entry returns
 // {code, out} so an in-process check sits on the same driver as a spawned one:
@@ -197,12 +221,17 @@ const NEXT_I = nextInbox();
 // And the tasks register: the open-and-closed-at-once case seeded a closed T7
 // while T7 was open, which is right until T7 closes and the seed overwrites the
 // real file with a well-formed one. The first open task is the one to seed.
+// When no task is open — the day the last milestone finishes — the case
+// seeds one at the next free number, as the open-question case does, so an
+// empty register does not take the suite down with it.
 const openTask = () => {
   const m = readFileSync(join(repo, "docs/TASKS.md"), "utf8").match(/^\*\*T(\d+) [—–-] /m);
-  if (!m) throw new Error("check-checks: docs/TASKS.md has no open entry to seed a collision against");
-  return Number(m[1]);
+  if (m) return { n: Number(m[1]), seeded: false };
+  const closed = readdirSync(tc(repo))
+    .map((x) => x.match(/^task-completed-0*(\d+)\.md$/)).filter(Boolean).map((x) => Number(x[1]));
+  return { n: Math.max(0, ...closed) + 1, seeded: true };
 };
-const OPEN_T = openTask();
+const { n: OPEN_T, seeded: OPEN_T_SEEDED } = openTask();
 
 // And the problems register, whose cases hard-coded "0 opened, 0 fixed", a
 // seeded P1 and a seeded P2 against a register that was empty — right until the
@@ -1095,8 +1124,12 @@ const MUTATIONS = [
   // register, which leaves it open and closed at once.
   { name: "an entry that is open and closed at once", check: "registers",
     expect: "appears twice", reject: "is missing from",
-    mutate: (d) => closedFile(tc(d), OPEN_T_FILE,
-      `# T${OPEN_T} — closed while still listed as open\n`) },
+    mutate: (d) => {
+      if (OPEN_T_SEEDED) {
+        appendFileSync(join(d, "docs/TASKS.md"), `\n**T${OPEN_T} — seeded so an open task exists to close**\n`);
+      }
+      closedFile(tc(d), OPEN_T_FILE, `# T${OPEN_T} — closed while still listed as open\n`);
+    } },
   { name: "a history file missing the closed-record banner", check: "registers",
     expect: "closed-record banner",
     // Sixteen files carried it by imitation, documented nowhere and checked by
