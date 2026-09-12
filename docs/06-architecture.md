@@ -71,7 +71,7 @@ flowchart LR
 | `lang` | nothing | the interpreter [01-language](01-language.md) specifies: the loader, the evaluator, the interrupt machinery, `num` | none |
 | `sim` | `lang` | the world: tiles, machines, the tick loop, the state hash, the snapshot; the game builtins `02` names, which it registers with `lang` | none |
 | `net` | `sim`'s command types only | the command log as a data structure and its exchange between peers: stamping, the per-tick sets, the stall | none in anything it sends |
-| `render` | `sim`, `net`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the mark tools, the log view | yes, and only here |
+| `render` | `sim`, `net`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
 | `replay` | `sim`, `net` | the headless driver: runs a `(map, command log)` to a hash stream; the golden fixtures; the determinism suite; the cross-architecture check | none |
 
 **The arrow that does not exist** is any edge into `sim` or `lang` from

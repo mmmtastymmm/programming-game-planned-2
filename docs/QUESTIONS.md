@@ -26,16 +26,16 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-09.** Every question this file has issued, Q1 through Q32,
-is answered — Q17 through Q20, Q23, Q24, Q26 through Q28 and Q30 through Q32
-were each opened and answered in one commit, as the amendments that the history rules require
-to be new numbers. The rulings of Q7, Q9, Q21, Q22, Q23, Q24 and Q25 are
+**Status 2026-09-12.** Every question this file has issued is answered
+except the three under **Open** below, which the writing of
+[07-interface](07-interface.md) raised. Q33, Q34 and Q35 were each opened and
+answered in one commit, and their rulings are `07`'s Decided entries. The
+rulings of Q7, Q9, Q21, Q22, Q23, Q24 and Q25 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and Q22
-from there, and the rulings of Q6, Q10, Q12, Q15 and Q26 through Q28 are
-[06-architecture](06-architecture.md)'s, Q4 is [04-opposition](04-opposition.md)'s,
-and Q30 is [05-progression](05-progression.md)'s.
-Nothing is undecided, and **Open** below is empty until the next question
-is opened. The
+from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28 and Q32 are
+[06-architecture](06-architecture.md)'s, Q4 and Q29 are
+[04-opposition](04-opposition.md)'s, and Q30 is
+[05-progression](05-progression.md)'s. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
 and the language's by [01-language](01-language.md)'s parts; none is repeated
 here. Each worksheet is a file of its own in
@@ -49,12 +49,44 @@ attached to the commit that changed it.
 
 **Every numbered doc is written** — [01-language](01-language.md),
 [02-machines](02-machines.md), [03-world](03-world.md),
-[04-opposition](04-opposition.md), [05-progression](05-progression.md) and
-[06-architecture](06-architecture.md), each with the rulings it waited on
+[04-opposition](04-opposition.md), [05-progression](05-progression.md),
+[06-architecture](06-architecture.md) and [07-interface](07-interface.md),
+each with the rulings it waited on
 as its Decided entries or citing them from `02`. `02` opened Q24 and `04`
 opened Q29 in the writing, and both are answered; `05` was written from Q30,
-opened and answered for it. The overview's table says the same.
+opened and answered for it; `07` from Q33 through Q35, and it opened the
+three below. The overview's table says the same.
 
 ## Open
 
-*(none — every question issued so far is answered)*
+**Q36 — What does the interface show before the first tick and after the last?**
+
+A match today starts from the command line — a map, opposition directories,
+a host or a join address — and ends with a line in the top bar. The
+question is what the player sees instead: a start screen picking the map
+and the cards (`04`), hosting or joining (`06`), and reading the programs
+directory in (Q33); and an end screen naming the winner or the draw, with
+the replay `(map, command log)` saved to a file for the report `06`
+promises. *Leaning:* both screens in the game, the command line kept for
+the headless driver and CI; the replay always saved, since a desync report
+without one is nothing.
+
+**Q37 — How are the mark tools picked, and how do the team's own plans read on the map?**
+
+The tools are a building model, one of eight paint colors, one of the
+overlay labels in data, a clear and a withdrawal (Q10, Q26, Q27), and
+today they are five radio buttons. The question is the strip that holds
+them — hotkeys, whether a drag paints a run of tiles, whether a tool stays
+armed — and how a tile carrying the team's plan is drawn, since a plan is
+private to its team (`03`) and a program consumes it. *Leaning:* a tool
+strip with every color and label, a drag paints, a tool stays armed until
+`Esc`, and a planned tile shows a translucent version of what the plan
+would make it.
+
+**Q38 — What may the player do while stalled on a peer, or after a desync?**
+
+`06` reports a stall after `stall_report_ticks` and stops the driver on a
+desync, and says what the player may do then is the renderer's. *Leaning:*
+a banner naming the peer awaited with a resign button beside it; on a
+desync, the match frozen with the report, the replay saved, and a button to
+leave.
