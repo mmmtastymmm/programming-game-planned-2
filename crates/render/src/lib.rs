@@ -30,6 +30,7 @@
 pub mod app;
 pub mod camera;
 pub mod driver;
+pub mod editor;
 pub mod input;
 pub mod palette;
 pub mod programs;

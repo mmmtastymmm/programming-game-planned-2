@@ -4843,7 +4843,9 @@ dependencies = [
  "lang",
  "net",
  "resvg",
+ "serde",
  "sim",
+ "toml",
 ]
 
 [[package]]

@@ -9,8 +9,8 @@ use crate::app::{DriverResource, ViewState};
 use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
 use crate::palette::{
-    BOT_HALF, Frame, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, Palette, ROCK_HEIGHT, WATER_SINK,
-    block_y_off, team_index,
+    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, Palette, ROCK_HEIGHT,
+    WATER_SINK, block_y_off,
 };
 use bevy::prelude::*;
 use sim::map::Terrain;
@@ -55,6 +55,10 @@ pub struct SoundRing {
 #[derive(Component)]
 pub struct SelectMarker;
 
+/// The scribble over a faulting machine (`docs/07`, Q34).
+#[derive(Component)]
+pub struct FaultMark;
+
 #[derive(Component)]
 pub struct HoverMarker;
 
@@ -68,6 +72,7 @@ pub struct MachineView {
     pub health_age: f32,
     pub bar_root: Entity,
     pub bar_fill: Entity,
+    pub mark: Entity,
     pub yaw: f32,
     pub yaw_prev: f32,
     pub pos_seen: TilePos,
@@ -450,6 +455,7 @@ pub fn sync_machines(
     mut commands: Commands,
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
+    interface: Res<Interface>,
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
@@ -500,6 +506,8 @@ pub fn sync_machines(
         let view = spawn_machine(
             &mut commands,
             &frame,
+            &interface,
+            player,
             &mut palette,
             &mut materials,
             &ents,
@@ -525,6 +533,8 @@ pub fn sync_machines(
 fn spawn_machine(
     commands: &mut Commands,
     frame: &Frame,
+    interface: &Interface,
+    player: sim::TeamId,
     palette: &mut Palette,
     materials: &mut Assets<StandardMaterial>,
     ents: &Entities,
@@ -533,16 +543,46 @@ fn spawn_machine(
     dimmed: bool,
 ) -> MachineView {
     let model = m.record.model;
-    let team = team_index(m.record.team);
+    let team = m.record.team;
+    let team_color = interface.team_color(player, team);
+    // A bot's body is its deployment's color; a building wears the team's
+    // (Q35). The tint of a white base by white is the base itself.
     let (mesh, live_mat) = match model {
-        Model::Bot => (palette.bot_cube.clone(), palette.bot_mats[team].clone()),
-        Model::Printer => (
-            palette.printer_box.clone(),
-            palette.printer_mats[team].clone(),
-        ),
-        Model::Depot => (palette.crate_box.clone(), palette.crate_mat.clone()),
-        Model::Site => (palette.site_cube.clone(), palette.site_mat.clone()),
+        Model::Bot => {
+            let color = m.record.deployment.as_deref().unwrap_or("white");
+            let base = palette
+                .bot_mats
+                .get(color)
+                .unwrap_or(&palette.bot_mats["white"])
+                .clone();
+            (palette.bot_cube.clone(), base)
+        }
+        Model::Printer => {
+            let base = palette.printer_mat.clone();
+            (
+                palette.printer_box.clone(),
+                palette.tinted(materials, &base, team, team_color),
+            )
+        }
+        Model::Depot => {
+            let base = palette.crate_mat.clone();
+            (
+                palette.crate_box.clone(),
+                palette.tinted(materials, &base, team, team_color),
+            )
+        }
+        Model::Site => {
+            let base = palette.site_mat.clone();
+            (
+                palette.site_cube.clone(),
+                palette.tinted(materials, &base, team, team_color),
+            )
+        }
     };
+    let ring_base = palette.ring_mat.clone();
+    let ring_mat = palette.tinted(materials, &ring_base, team, team_color);
+    let glass_base = palette.lens_glass_mat.clone();
+    let glass_mat = palette.tinted(materials, &glass_base, team, team_color);
     let mat = if dimmed {
         palette.dim(materials, &live_mat)
     } else {
@@ -553,6 +593,8 @@ fn spawn_machine(
     let yaw = if model == Model::Printer { PI } else { 0.0 };
     let mut bar_root = Entity::PLACEHOLDER;
     let mut bar_fill = Entity::PLACEHOLDER;
+    let mut mark = Entity::PLACEHOLDER;
+    let lift = body_lift(model);
     let body = commands
         .spawn((
             MachineBody(m.record.id),
@@ -578,7 +620,7 @@ fn spawn_machine(
                     ));
                     parent.spawn((
                         Mesh3d(palette.lens_glass.clone()),
-                        MeshMaterial3d(palette.lens_glass_mats[team].clone()),
+                        MeshMaterial3d(glass_mat),
                         Transform::from_xyz(0.0, LENS_Y, LENS_GLASS_Z).with_rotation(tip),
                     ));
                 }
@@ -592,6 +634,25 @@ fn spawn_machine(
                 }
                 Model::Depot | Model::Site => {}
             }
+            // The team's ring, flat on the tile under the body (Q35); it
+            // does not turn with the body, since a ring has no front.
+            parent.spawn((
+                TeamRing,
+                Mesh3d(palette.team_ring.clone()),
+                MeshMaterial3d(ring_mat),
+                Transform::from_xyz(0.0, 0.03 - lift, 0.0)
+                    .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
+            ));
+            mark = parent
+                .spawn((
+                    FaultMark,
+                    BillboardBar,
+                    Mesh3d(palette.scribble_quad.clone()),
+                    MeshMaterial3d(palette.scribble_mats[0].clone()),
+                    Transform::from_xyz(0.0, bar_height(model) + 0.55, 0.0),
+                    Visibility::Hidden,
+                ))
+                .id();
             bar_root = parent
                 .spawn((
                     BillboardBar,
@@ -626,9 +687,63 @@ fn spawn_machine(
         health_age: f32::MAX,
         bar_root,
         bar_fill,
+        mark,
         yaw,
         yaw_prev: yaw,
         pos_seen: m.record.pos,
+    }
+}
+
+/// A ring does not turn with its body.
+#[derive(Component)]
+pub struct TeamRing;
+
+/// Rings stay flat while their bodies turn: local = parent's inverse
+/// times flat.
+pub fn level_rings(
+    parents: Query<&Transform, (Without<TeamRing>, Without<Camera3d>)>,
+    mut rings: Query<(&mut Transform, &ChildOf), With<TeamRing>>,
+) {
+    for (mut t, child_of) in &mut rings {
+        let parent_rotation = parents
+            .get(child_of.parent())
+            .map(|p| p.rotation)
+            .unwrap_or(Quat::IDENTITY);
+        t.rotation = parent_rotation.inverse() * Quat::from_rotation_x(-FRAC_PI_2);
+    }
+}
+
+/// The fault mark shows for `fault_mark_ticks` after the record's tick
+/// (`docs/07`, Q34), cycling its frames.
+pub fn fault_marks(
+    time: Res<Time>,
+    driver: NonSend<DriverResource>,
+    interface: Res<Interface>,
+    palette: Res<Palette>,
+    ents: Res<Entities>,
+    mut marks: Query<(&mut Visibility, &mut MeshMaterial3d<StandardMaterial>), With<FaultMark>>,
+) {
+    let snap = driver.0.snapshot();
+    let frame = ((time.elapsed_secs() * 4.0) as usize) % palette.scribble_mats.len();
+    for m in &snap.machines {
+        let Some(view) = ents.machines.get(&m.record.id) else {
+            continue;
+        };
+        let Ok((mut vis, mut mat)) = marks.get_mut(view.mark) else {
+            continue;
+        };
+        let fresh = m
+            .fault
+            .as_ref()
+            .is_some_and(|f| snap.tick.saturating_sub(f.tick) < interface.faults.fault_mark_ticks);
+        *vis = if fresh && view.shown {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if fresh && mat.0 != palette.scribble_mats[frame] {
+            mat.0 = palette.scribble_mats[frame].clone();
+        }
     }
 }
 
@@ -849,6 +964,20 @@ pub fn collect_log(d: &mut Driver, state: &mut ViewState) {
                 l.tick, m.record.name, l.level, l.text
             ));
         }
+        // One line per new fault record (Q34).
+        if let Some(f) = &m.fault
+            && state.faults_seen.get(&m.record.id) != Some(&f.tick)
+        {
+            state.faults_seen.insert(m.record.id, f.tick);
+            state.log_lines.push(format!(
+                "t{} {} faulted: {} at {}:{}",
+                f.tick,
+                m.record.name,
+                fault_what(f),
+                f.file.as_deref().unwrap_or("?"),
+                f.line
+            ));
+        }
     }
     for ev in &d.last_report.dropped {
         state
@@ -866,6 +995,14 @@ pub fn collect_log(d: &mut Driver, state: &mut ViewState) {
         let drop = state.log_lines.len() - keep;
         state.log_lines.drain(..drop);
     }
+}
+
+/// What a fault record says went wrong.
+pub fn fault_what(f: &lang::FaultRecord) -> String {
+    f.exception
+        .as_ref()
+        .map(|e| e.display())
+        .unwrap_or_else(|| format!("hook budget exhausted ({:?})", f.exhausted))
 }
 
 /// The snapshot's machine record, for the inspector.

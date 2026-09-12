@@ -78,31 +78,15 @@ pub fn step_speed(driver: &mut crate::driver::Driver, state: &mut ViewState, up:
     }
 }
 
-/// Re-read the programs directory and deploy every bundle that changed.
+/// Deploy every working copy that is ahead of its running version
+/// (`docs/07`, Q33).
 pub fn deploy(driver: &mut crate::driver::Driver, state: &mut ViewState) {
-    let Some(root) = state.programs.clone() else {
-        state.status = "no programs directory (--programs DIR)".into();
-        return;
-    };
-    match crate::programs::read_all(&root) {
-        Ok(bundles) => {
-            let deploys = crate::programs::deploys_for(&bundles, &state.deployed);
-            if deploys.is_empty() {
-                state.status = "programs unchanged".into();
-            }
-            for kind in deploys {
-                let name = match &kind {
-                    CommandKind::Deploy { deployment, .. } => deployment.clone(),
-                    _ => String::new(),
-                };
-                if submit(driver, state, kind)
-                    && let Some(b) = bundles.get(&name)
-                {
-                    state.deployed.insert(name, b.clone());
-                }
-            }
-        }
-        Err(e) => state.status = e,
+    let names = state.editor.changed(driver.snapshot(), driver.player);
+    if names.is_empty() {
+        state.status = "every working copy is what its deployment runs".into();
+    }
+    for name in names {
+        crate::editor::deploy_doc(driver, state, &name);
     }
 }
 

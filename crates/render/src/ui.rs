@@ -1,10 +1,12 @@
-//! The panels, in the predecessor's layout: a time bar across the top, the
-//! tools on the left, the inspector on the right, the log along the bottom.
-//! Every button becomes a command the renderer submits and forgets.
+//! The panels, in `docs/07`'s layout: the time bar across the top, the
+//! editor on the left, the inspector and the mark tools on the right, the
+//! log along the bottom. Every button becomes a command the renderer
+//! submits and forgets.
 
 use crate::app::{DriverResource, Tool, ViewState};
-use crate::input::{deploy, step_speed, submit};
-use crate::palette::team_color32;
+use crate::editor;
+use crate::input::{step_speed, submit};
+use crate::palette::Interface;
 use crate::view;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -13,6 +15,7 @@ use sim::{CommandKind, PlanKind};
 
 pub fn panels(
     mut contexts: EguiContexts,
+    interface: Res<Interface>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
@@ -27,9 +30,9 @@ pub fn panels(
             .layer_id(egui::LayerId::background())
             .max_rect(ctx.viewport_rect()),
     );
-    let d = &mut driver.0;
 
     egui::Panel::top("time").show(&mut root, |ui| {
+        let d = &mut driver.0;
         ui.horizontal(|ui| {
             ui.strong(&d.map_name);
             ui.separator();
@@ -91,9 +94,17 @@ pub fn panels(
         }
     });
 
-    egui::Panel::left("tools")
-        .exact_size(240.0)
+    egui::Panel::left("editor")
+        .exact_size(460.0)
         .show(&mut root, |ui| {
+            editor::panel(ui, &mut driver, &mut state);
+        });
+
+    egui::Panel::right("inspector")
+        .exact_size(320.0)
+        .show(&mut root, |ui| {
+            let d = &mut driver.0;
+            let player = d.player;
             ui.heading("Tools");
             let mut tool = state.tool.clone();
             ui.radio_value(&mut tool, Tool::Select, "select (Esc)");
@@ -115,30 +126,10 @@ pub fn panels(
                 "withdraw building plan (5)",
             );
             state.tool = tool;
-            ui.separator();
-            ui.heading("Programs");
-            if ui.button("deploy changed (Shift+D)").clicked() {
-                deploy(d, &mut state);
-            }
-            if let Some(p) = &state.programs {
-                ui.small(format!("{}", p.display()));
-            }
-            for (name, b) in &state.deployed {
-                ui.small(format!("{name}: {} file(s)", b.files.len()));
-            }
-            ui.separator();
             if ui.button("resign (Shift+R)").clicked() {
                 submit(d, &mut state, CommandKind::Resign);
             }
             ui.separator();
-            ui.small("left drag / middle / Shift+right: pan");
-            ui.small("right drag: orbit · wheel: zoom");
-            ui.small("WASD: pan · L: log · -/=: speed");
-        });
-
-    egui::Panel::right("inspector")
-        .exact_size(320.0)
-        .show(&mut root, |ui| {
             ui.heading("Inspector");
             let snap = d.snapshots.cur.clone();
             if let Some(id) = state.selected {
@@ -146,7 +137,7 @@ pub fn panels(
                     Some(m) => {
                         let r = &m.record;
                         ui.colored_label(
-                            team_color32(r.team),
+                            interface.team_color32(player, r.team),
                             format!(
                                 "{} — {} #{} of team {}",
                                 r.name,
@@ -161,8 +152,17 @@ pub fn panels(
                             Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
                             None => ui.label("idle"),
                         };
+                        let running = r.deployment.as_ref().and_then(|dep| {
+                            snap.teams
+                                .iter()
+                                .find(|t| t.id == r.team)
+                                .and_then(|t| t.deployments.get(dep).copied().flatten())
+                        });
                         if let Some(dep) = &r.deployment {
-                            ui.label(format!("runs {dep}"));
+                            match running {
+                                Some(v) => ui.label(format!("runs {dep} ({v:016x})")),
+                                None => ui.label(format!("runs {dep}")),
+                            };
                         }
                         if let Some(l) = &r.load {
                             ui.label(format!("load: {}", amounts(l)));
@@ -171,17 +171,15 @@ pub fn panels(
                             ui.label(format!("store: {}", amounts(s)));
                         }
                         if let Some(f) = &m.fault {
-                            let what =
-                                f.exception
-                                    .as_ref()
-                                    .map(|e| e.display())
-                                    .unwrap_or_else(|| {
-                                        format!("hook budget exhausted ({:?})", f.exhausted)
-                                    });
+                            let version = match running {
+                                Some(v) if v == f.version => "the running version".to_string(),
+                                _ => format!("version {:016x}, since redeployed", f.version),
+                            };
                             ui.colored_label(
                                 egui::Color32::LIGHT_RED,
                                 format!(
-                                    "fault: {what}\n  at {}:{} tick {}",
+                                    "fault: {}\n  at {}:{} tick {}\n  {version}",
+                                    view::fault_what(f),
                                     f.file.as_deref().unwrap_or("?"),
                                     f.line,
                                     f.tick
@@ -204,7 +202,7 @@ pub fn panels(
             match state.hover {
                 Some(p) => {
                     ui.label(format!("tile ({}, {})", p.x, p.y));
-                    match view::tile(&snap, d.player, p) {
+                    match view::tile(&snap, player, p) {
                         Some(mem) if mem.state != TileState::Unknown => {
                             let seen = match mem.state {
                                 TileState::Visible => "in sight".to_string(),
@@ -223,7 +221,7 @@ pub fn panels(
                             if let Some(b) = &mem.building {
                                 ui.small(format!("{} of team {}", b.name, b.team.0));
                             }
-                            if let Some(plan) = d.snapshot_plan(d.player, p) {
+                            if let Some(plan) = d.snapshot_plan(player, p) {
                                 ui.small(format!("your plan: {plan}"));
                             }
                         }
@@ -239,10 +237,10 @@ pub fn panels(
             ui.separator();
             ui.heading("Teams");
             for t in &snap.teams {
-                let mine = if t.id == d.player { " (you)" } else { "" };
+                let mine = if t.id == player { " (you)" } else { "" };
                 let out = if t.out { " — out" } else { "" };
                 ui.colored_label(
-                    team_color32(t.id),
+                    interface.team_color32(player, t.id),
                     format!(
                         "team {}{mine}: {} bots / cap {}{out}",
                         t.id.0, t.bots, t.cap
@@ -254,6 +252,10 @@ pub fn panels(
                     }
                 }
             }
+            ui.separator();
+            ui.small("left drag / middle / Shift+right: pan");
+            ui.small("right drag: orbit · wheel: zoom");
+            ui.small("WASD: pan · L: log · -/=: speed");
         });
 
     if state.show_log {
