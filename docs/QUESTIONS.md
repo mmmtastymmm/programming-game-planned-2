@@ -28,8 +28,9 @@ Known-wrong *decided* text is not a question — it goes in
 
 **Status 2026-09-12.** Every question this file has issued is answered
 except the three under **Open** below, which the writing of
-[07-interface](07-interface.md) raised. Q33, Q34 and Q35 were each opened and
-answered in one commit, and their rulings are `07`'s Decided entries. The
+[07-interface](07-interface.md) raised. Q33, Q34, Q35 and Q39 were each
+opened and answered in one commit, and their rulings are `07`'s Decided
+entries — Q39 amending Q33's panel to a window. The
 rulings of Q7, Q9, Q21, Q22, Q23, Q24 and Q25 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and Q22
 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28 and Q32 are

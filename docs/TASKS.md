@@ -33,13 +33,11 @@ Two conventions carried over from the predecessor project:
 
 ## M5 — Interface
 
-**T17 — The editor, the fault channels and the deployment colors in `render`**
+**T18 — Floating windows over the map in `render`**
 
-`docs/07`'s three rulings, none of which touches a hash: the in-game editor
-with a working copy per deployment, deploy and export, and a load error
-shown at its line (Q33); the fault mark, the per-deployment summary, the
-inspector's record and the log line (Q34); bot atlases per deployment color
-with the team as a ring, buildings in the team's color (Q35). The numbers
-are `data/interface.toml`'s. The predecessor's `crates/game/src/editor` is
-the reference for the editor's highlighting and completion, which are the
-build's choices and not rules.
+Q39: the map fills the window; one `egui` window per deployment's program
+holding what T17's panel held, plus inspector, tools and log windows, each
+dragged, resized, collapsed and closed; the time bar stays fixed and is the
+dock; the layout saved to `windows.toml` beside the programs whenever it
+changes and restored at start, the default layout when the file is missing
+or malformed. Nothing touches a hash.
