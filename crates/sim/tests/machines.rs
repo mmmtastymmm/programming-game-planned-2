@@ -72,10 +72,10 @@ fn bots(sim: &Sim, team: u32) -> Vec<(TilePos, Num)> {
 }
 
 /// Prints, and says so when refused.
-const PRINT_LOG: &str = "while True:\n    try:\n        print('red')\n    except ValueError:\n        log('print refused')\n        wait(1)\n";
+const PRINT_LOG: &str = "while True:\n    try:\n        print(1)\n    except ValueError:\n        log('print refused')\n        wait(1)\n";
 
 const PRINT_RED: &str =
-    "while True:\n    try:\n        print('red')\n    except ValueError:\n        wait(3)\n";
+    "while True:\n    try:\n        print(1)\n    except ValueError:\n        wait(3)\n";
 
 #[test]
 fn a_printer_prints_one_bot_per_print_time_up_to_the_cap() {
@@ -84,7 +84,7 @@ fn a_printer_prints_one_bot_per_print_time_up_to_the_cap() {
         &mut s,
         vec![
             deploy(0, "printer", PRINT_LOG),
-            deploy(0, "red", "wait(1000)\n"),
+            deploy(0, "1", "wait(1000)\n"),
         ],
         30,
     );
@@ -113,22 +113,14 @@ fn a_printer_prints_one_bot_per_print_time_up_to_the_cap() {
         Some("print")
     );
     for (i, y) in (-3..=3).enumerate() {
-        s.world.place(
-            Model::Bot,
-            TeamId(0),
-            TilePos::new(1, y),
-            Some("red".into()),
-        );
+        s.world
+            .place(Model::Bot, TeamId(0), TilePos::new(1, y), Some("1".into()));
         if i == 7 {
             break;
         }
     }
-    s.world.place(
-        Model::Bot,
-        TeamId(0),
-        TilePos::new(0, -3),
-        Some("red".into()),
-    );
+    s.world
+        .place(Model::Bot, TeamId(0), TilePos::new(0, -3), Some("1".into()));
     assert_eq!(bots(&s, 0).len(), 10);
     run(&mut s, vec![], 29);
     assert_eq!(
@@ -160,7 +152,7 @@ fn a_move_takes_its_ticks_and_a_tile_holds_one_machine() {
         &mut s,
         vec![
             deploy(0, "printer", PRINT_RED),
-            deploy(0, "red", "move('e')\nwait(1000)\n"),
+            deploy(0, "1", "move('e')\nwait(1000)\n"),
         ],
         30,
     );
@@ -191,8 +183,8 @@ fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
     run(
         &mut s,
         vec![
-            deploy(0, "printer", "print('red')\nwait(1000)\n"),
-            deploy(0, "red", program),
+            deploy(0, "printer", "print(1)\nwait(1000)\n"),
+            deploy(0, "1", program),
         ],
         38,
     );
@@ -288,14 +280,11 @@ fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
 #[test]
 fn a_printer_defends_itself_and_a_bot_at_zero_health_dies() {
     let mut s = sim();
-    run(&mut s, vec![deploy(0, "red", "wait(1000)\n")], 1);
+    run(&mut s, vec![deploy(0, "1", "wait(1000)\n")], 1);
     // A team-0 bot beside team 1's printer, by fiat.
-    let id = s.world.place(
-        Model::Bot,
-        TeamId(0),
-        TilePos::new(2, 0),
-        Some("red".into()),
-    );
+    let id = s
+        .world
+        .place(Model::Bot, TeamId(0), TilePos::new(2, 0), Some("1".into()));
     run(&mut s, vec![], 9);
     assert_eq!(
         s.world.machines[&id].health,
@@ -316,13 +305,10 @@ fn a_printer_defends_itself_and_a_bot_at_zero_health_dies() {
 fn converting_the_last_printer_ends_the_match() {
     let convert = "for m in see():\n    if m.model == 'printer' and m.team != me().team:\n        convert(m.id)\nwait(1000)\n";
     let mut s = sim();
-    run(&mut s, vec![deploy(0, "red", convert)], 1);
-    let bot = s.world.place(
-        Model::Bot,
-        TeamId(0),
-        TilePos::new(2, 0),
-        Some("red".into()),
-    );
+    run(&mut s, vec![deploy(0, "1", convert)], 1);
+    let bot = s
+        .world
+        .place(Model::Bot, TeamId(0), TilePos::new(2, 0), Some("1".into()));
     let printer1 = s
         .world
         .machines
@@ -354,7 +340,7 @@ fn converting_the_last_printer_ends_the_match() {
     );
     assert!(s.world.teams[&TeamId(1)].out);
     assert_eq!(s.world.printers_of(TeamId(0)), 2);
-    assert_eq!(s.world.unlocked_colors(TeamId(0)), ["red", "blue"]);
+    assert_eq!(s.world.unlocked_deployments(TeamId(0)), ["1", "2"]);
 }
 
 #[test]
@@ -363,8 +349,8 @@ fn a_fault_costs_health_and_a_faulting_program_dies_in_time() {
     run(
         &mut s,
         vec![
-            deploy(0, "printer", "print('red')\nwait(1000)\n"),
-            deploy(0, "red", "x = 1 / 0\n"),
+            deploy(0, "printer", "print(1)\nwait(1000)\n"),
+            deploy(0, "1", "x = 1 / 0\n"),
         ],
         30,
     );
@@ -396,8 +382,8 @@ fn a_redeploy_cancels_the_action_and_the_new_program_runs() {
     run(
         &mut s,
         vec![
-            deploy(0, "printer", "print('red')\nwait(1000)\n"),
-            deploy(0, "red", "wait(500)\n"),
+            deploy(0, "printer", "print(1)\nwait(1000)\n"),
+            deploy(0, "1", "wait(500)\n"),
         ],
         31,
     );
@@ -409,7 +395,7 @@ fn a_redeploy_cancels_the_action_and_the_new_program_runs() {
         .unwrap()
         .id;
     assert_eq!(s.world.machines[&id].busy(), Some("wait"));
-    let mut redeploy = deploy(0, "red", "log('new program')\nmove('e')\nwait(1000)\n");
+    let mut redeploy = deploy(0, "1", "log('new program')\nmove('e')\nwait(1000)\n");
     redeploy.tick = 32;
     s.step(&[redeploy]);
     let m = &s.world.machines[&id];
@@ -424,15 +410,11 @@ fn a_redeploy_cancels_the_action_and_the_new_program_runs() {
     );
     // A deploy to a locked color waits, and a second deploy to the same
     // slot replaces it.
-    let mut locked = deploy(0, "blue", "wait(1)\n");
+    let mut locked = deploy(0, "2", "wait(1)\n");
     locked.tick = 33;
     let report = s.step(&[locked]);
     assert!(report.dropped.is_empty());
-    assert!(
-        s.world.teams[&TeamId(0)].deployments["blue"]
-            .pending
-            .is_some()
-    );
+    assert!(s.world.teams[&TeamId(0)].deployments["2"].pending.is_some());
 }
 
 #[test]
@@ -523,7 +505,7 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
         TeamId(0),
         0,
         CommandKind::Deploy {
-            deployment: "red".into(),
+            deployment: "1".into(),
             bundle: bundle_of("def (:\n"),
         },
     );
@@ -531,4 +513,64 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
     let report = s.step(&[broken]);
     assert_eq!(report.dropped.len(), 1);
     let _ = mark;
+}
+
+/// Q40: deployments are numbered without bound — a team with nine
+/// printers prints deployment 9, a deploy to a number not yet unlocked
+/// waits, and a name that is not a number is refused.
+#[test]
+fn deployments_are_numbered_past_any_color_list() {
+    let mut s = sim();
+    // Eight more printers by fiat, on free ground: nine in all.
+    for pos in (-3..=3)
+        .map(|y| TilePos::new(1, y))
+        .chain([TilePos::new(0, -3)])
+    {
+        s.world
+            .place(Model::Printer, TeamId(0), pos, Some("printer".into()));
+    }
+    assert_eq!(s.world.printers_of(TeamId(0)), 9);
+    assert_eq!(s.world.unlocked_deployments(TeamId(0)).len(), 9);
+    assert!(s.world.is_unlocked(TeamId(0), "9"));
+    assert!(!s.world.is_unlocked(TeamId(0), "10"));
+    for bad in ["red", "0", "01", "-1", ""] {
+        assert!(
+            s.validate(&deploy(0, bad, "wait(1)\n")).is_err(),
+            "`{bad}` accepted as a deployment"
+        );
+    }
+    assert!(s.validate(&deploy(0, "12", "wait(1)\n")).is_ok());
+    run(
+        &mut s,
+        vec![
+            deploy(0, "printer", "print(9)\nwait(1000)\n"),
+            deploy(0, "9", "wait(1000)\n"),
+            deploy(0, "12", "wait(1)\n"),
+        ],
+        31,
+    );
+    // Every printer runs the printer program, so each printed one.
+    assert_eq!(bots(&s, 0).len(), 9, "deployment 9 printed no bots");
+    for bot in s
+        .world
+        .machines
+        .values()
+        .filter(|m| m.team == TeamId(0) && m.model == Model::Bot)
+    {
+        assert_eq!(bot.deployment.as_deref(), Some("9"));
+        assert_eq!(bot.name, format!("9-{}", bot.id.0));
+    }
+    let slot = &s.world.teams[&TeamId(0)].deployments["12"];
+    assert!(
+        slot.pending.is_some() && slot.bundle.is_none(),
+        "a deploy to 12 did not wait"
+    );
+    let snap = s.snapshot();
+    let team = snap.teams.iter().find(|t| t.id == TeamId(0)).unwrap();
+    assert!(team.deployments.contains_key("9") && team.deployments.contains_key("12"));
+    assert_eq!(
+        team.deployments.len(),
+        9 + 1 + 2,
+        "unlocked 1..9, 12 pending, printer, depot"
+    );
 }

@@ -2,7 +2,7 @@
 # team's cap so a change in Q24's arithmetic moves the transcript.
 while True:
     try:
-        print("red")
+        print(1)
     except ValueError:
         log("cannot print", len(see()))
         wait(5)

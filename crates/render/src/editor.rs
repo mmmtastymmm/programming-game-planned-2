@@ -94,21 +94,17 @@ impl Doc {
     }
 }
 
-/// The tabs' order: the printer, the depot, then the colors as
-/// `data/machines.toml` lists them, then anything else by name.
+/// The tabs' order: the printer, the depot, then the numbered
+/// deployments in numeric order (Q40), then anything else by name.
 pub fn deployment_order(names: impl Iterator<Item = String>) -> Vec<String> {
-    let colors = sim::Data::load()
-        .map(|d| d.machines.colors)
-        .unwrap_or_default();
-    let rank = |n: &str| -> usize {
+    let rank = |n: &str| -> (u64, u64) {
         match n {
-            "printer" => 0,
-            "depot" => 1,
-            _ => colors
-                .iter()
-                .position(|c| c == n)
-                .map(|i| i + 2)
-                .unwrap_or(usize::MAX),
+            "printer" => (0, 0),
+            "depot" => (1, 0),
+            _ => match sim::world::deployment_number(n) {
+                Some(k) => (2, k),
+                None => (3, 0),
+            },
         }
     };
     let mut v: Vec<String> = names.collect();
@@ -116,14 +112,41 @@ pub fn deployment_order(names: impl Iterator<Item = String>) -> Vec<String> {
     v
 }
 
-/// The tab to open first: the first color deployment, which is what the
-/// player edits most; failing that, the first tab.
+/// The tab to open first: the first numbered deployment, which is what
+/// the player edits most; failing that, the first tab.
 fn first_tab(names: &[String]) -> Option<String> {
     names
         .iter()
-        .find(|n| n.as_str() != "printer" && n.as_str() != "depot")
+        .find(|n| sim::world::deployment_number(n).is_some())
         .or(names.first())
         .cloned()
+}
+
+impl Editor {
+    /// The number after the highest the editor holds: what the *next* tab
+    /// opens (Q40), so a program can be written for a printer not yet
+    /// taken.
+    pub fn next_deployment(&self) -> String {
+        let max = self
+            .docs
+            .keys()
+            .filter_map(|n| sim::world::deployment_number(n))
+            .max()
+            .unwrap_or(0);
+        (max + 1).to_string()
+    }
+
+    /// Open a working copy for `name` if none exists.
+    pub fn open_doc(&mut self, name: &str) {
+        self.docs.entry(name.to_string()).or_insert_with(|| {
+            let mut d = Doc {
+                files: vec![("main.py".into(), String::new())],
+                ..Default::default()
+            };
+            d.check();
+            d
+        });
+    }
 }
 
 impl Editor {

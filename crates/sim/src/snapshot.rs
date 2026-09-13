@@ -54,11 +54,19 @@ impl Sim {
             .map(|t| TeamSnapshot {
                 id: t.id,
                 out: t.out,
-                deployments: t
-                    .deployments
-                    .iter()
-                    .map(|(k, d)| (k.clone(), d.bundle.as_ref().map(|b| b.version)))
-                    .collect(),
+                // Every unlocked deployment, and any holding or awaiting
+                // a bundle (Q40).
+                deployments: {
+                    let mut m: BTreeMap<String, Option<u64>> = t
+                        .deployments
+                        .iter()
+                        .map(|(k, d)| (k.clone(), d.bundle.as_ref().map(|b| b.version)))
+                        .collect();
+                    for n in w.unlocked_deployments(t.id) {
+                        m.entry(n).or_insert(None);
+                    }
+                    m
+                },
                 cap: w.bot_cap(t.id),
                 bots: w.bots_of(t.id),
                 tiles: w

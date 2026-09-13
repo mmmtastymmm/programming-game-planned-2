@@ -35,3 +35,8 @@ scripts/node_modules/
 # every build, so the PNGs are derived, and a 3x2 atlas at 256px per face
 # is a binary the size gate would refuse for good reason.
 crates/render/assets/textures/
+
+# The renderer's per-player files inside a programs directory (docs/07): the
+# window layout and saved replays are the player's, never the repo's.
+windows.toml
+replays/

@@ -417,12 +417,22 @@ impl<'a> GameHost<'a> {
         if self.me().model != Model::Printer {
             return Err(value_error());
         }
-        let [color] = args else {
+        let [n] = args else {
             return Err(type_error());
         };
-        let color = str_arg(color)?;
+        // A bot deployment is a positive integral `num` (Q40).
+        let n = n.expect_num()?;
+        let one = lang::Num::ONE.raw();
+        let whole = n
+            .raw()
+            .checked_div(one)
+            .filter(|_| n.raw().checked_rem(one) == Some(0));
+        let color = match whole {
+            Some(k) if k >= 1 => k.to_string(),
+            _ => return Err(value_error()),
+        };
         let team = self.team();
-        if !self.world.unlocked_colors(team).contains(&color) {
+        if !self.world.unlocked_deployments(team).contains(&color) {
             return Err(value_error());
         }
         let has_bundle = self.world.teams[&team]

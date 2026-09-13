@@ -15,8 +15,8 @@ bundle = "printer"
 [[command]]
 tick = 0
 kind = "Deploy"
-deployment = "red"
-bundle = "red"
+deployment = "1"
+bundle = "1"
 
 [[command]]
 tick = 0

@@ -10,7 +10,7 @@ use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
 use crate::palette::Interface;
-use crate::view;
+use crate::view::{self, Entities, MachineBody};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use sim::world::TileState;
@@ -39,6 +39,9 @@ pub fn panels(
     mut contexts: EguiContexts,
     time: Res<Time>,
     interface: Res<Interface>,
+    ents: Res<Entities>,
+    cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    bodies: Query<&GlobalTransform, With<MachineBody>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
@@ -151,6 +154,20 @@ pub fn panels(
                     toggle(&mut state, name);
                 }
             }
+            // The next number (Q40): a program for a printer not yet taken.
+            let next = state.editor.next_deployment();
+            if ui
+                .small_button("+")
+                .on_hover_text(format!("open deployment {next}"))
+                .clicked()
+            {
+                state.editor.open_doc(&next);
+                let p = state.layout.placement(&next, || {
+                    default_placement(&next, names.len(), screen, true)
+                });
+                p.open = true;
+                state.layout_dirty = true;
+            }
             if !state.status.is_empty() {
                 ui.separator();
                 ui.small(&state.status);
@@ -213,6 +230,54 @@ pub fn panels(
                 .expect("placed above")
                 .open = false;
             state.layout_dirty = true;
+        }
+    }
+
+    // Every bot wears its deployment's number (Q40): drawn on the
+    // background layer at the body's screen position, under the windows.
+    if let Ok((camera, cam_tf)) = cams.single() {
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let font = egui::FontId::proportional(15.0);
+        let snap = driver.0.snapshot();
+        for m in &snap.machines {
+            let Some(n) = m
+                .record
+                .deployment
+                .as_deref()
+                .and_then(sim::world::deployment_number)
+            else {
+                continue;
+            };
+            let Some(view) = ents.machines.get(&m.record.id) else {
+                continue;
+            };
+            if !view.shown {
+                continue;
+            }
+            let Ok(tf) = bodies.get(view.body) else {
+                continue;
+            };
+            let Ok(at) = camera.world_to_viewport(cam_tf, tf.translation() + Vec3::Y * 0.05) else {
+                continue;
+            };
+            let pos = egui::pos2(at.x, at.y);
+            let text = n.to_string();
+            for d in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+                painter.text(
+                    pos + egui::vec2(d.0, d.1),
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font.clone(),
+                    egui::Color32::BLACK,
+                );
+            }
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font.clone(),
+                egui::Color32::WHITE,
+            );
         }
     }
 

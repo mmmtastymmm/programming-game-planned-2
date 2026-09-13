@@ -575,7 +575,7 @@ mod tests {
             &[&fool],
             vec![CommandKind::Deploy {
                 deployment: "printer".into(),
-                bundle: bundle_of("while True:\n    try:\n        print('red')\n    except ValueError:\n        wait(5)\n"),
+                bundle: bundle_of("while True:\n    try:\n        print(1)\n    except ValueError:\n        wait(5)\n"),
             }],
         )
         .unwrap()
@@ -663,7 +663,7 @@ mod tests {
         vec![CommandKind::Deploy {
             deployment: "printer".into(),
             bundle: bundle_of(
-                "while True:\n    try:\n        print('red')\n    except ValueError:\n        wait(5)\n",
+                "while True:\n    try:\n        print(1)\n    except ValueError:\n        wait(5)\n",
             ),
         }]
     }
