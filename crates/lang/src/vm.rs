@@ -27,13 +27,22 @@ use std::rc::Rc;
 
 /// A loaded bundle: `main.py` and the modules it may import, each compiled,
 /// with the import graph checked for cycles.
-/// The two hooks, bound at load from `main.py`'s top-level `def`s
-/// (`execution.md`, Hooks): a property of the bundle, not of how far the
-/// program has run.
+/// A hook's code, and the module it was defined in when that is not
+/// `main.py` — the interrupt file `on_fault.py` or `on_dying.py` (Q41),
+/// whose body runs before the hook the first time, as an import would.
+#[derive(Debug, Clone)]
+pub struct Hook {
+    pub code: Rc<Code>,
+    pub module: Option<String>,
+}
+
+/// The two hooks, bound at load from `main.py`'s top-level `def`s, else
+/// from the interrupt file of the same name (`execution.md`, Hooks, Q41):
+/// a property of the bundle, not of how far the program has run.
 #[derive(Debug, Clone, Default)]
 pub struct Hooks {
-    pub on_fault: Option<Rc<Code>>,
-    pub on_dying: Option<Rc<Code>>,
+    pub on_fault: Option<Hook>,
+    pub on_dying: Option<Hook>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +75,9 @@ impl Program {
         let mut modules: BTreeMap<String, Rc<Code>> = BTreeMap::new();
         let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut hooks = Hooks::default();
+        // The interrupt files' statements, kept for the second binding
+        // pass below.
+        let mut interrupt_stmts: BTreeMap<String, Vec<Stmt>> = BTreeMap::new();
         for (name, src) in &sorted {
             if !valid_file_name(name) {
                 return Err(bad(name, "a file name is `[a-z_][a-z0-9_]*.py`".into()));
@@ -89,13 +101,28 @@ impl Program {
             edges.insert(stem.to_string(), imported_modules(&stmts));
             let code = compile_module(name, &stmts)?;
             if stem == "main" {
-                hooks = bind_hooks(&stmts, &code)?;
+                hooks = bind_hooks(&stmts, &code, name, None)?;
+            } else if HOOK_NAMES.contains(&stem) {
+                interrupt_stmts.insert(stem.to_string(), stmts);
             }
             modules.insert(stem.to_string(), code);
         }
         let Some(main) = modules.get("main").cloned() else {
             return Err(bad("<bundle>", "a bundle must contain `main.py`".into()));
         };
+        // A hook `main.py` does not define binds from the interrupt file of
+        // its name, if the bundle has one and it defines it (Q41).
+        for (stem, stmts) in &interrupt_stmts {
+            let code = modules.get(stem).cloned().expect("compiled above");
+            let file = format!("{stem}.py");
+            let from_file = bind_hooks(stmts, &code, &file, Some(stem.as_str()))?;
+            if stem == "on_fault" && hooks.on_fault.is_none() {
+                hooks.on_fault = from_file.on_fault;
+            }
+            if stem == "on_dying" && hooks.on_dying.is_none() {
+                hooks.on_dying = from_file.on_dying;
+            }
+        }
         // The module set is closed and known at load: every import names a
         // bundle file or a game module, and the graph has no cycle.
         for (from, imports) in &edges {
@@ -123,10 +150,20 @@ impl Program {
     }
 }
 
-/// Find `on_fault` and `on_dying` among `main.py`'s top-level `def`s and
+/// The hook names, which are also the interrupt files' stems (Q41).
+const HOOK_NAMES: [&str; 2] = ["on_fault", "on_dying"];
+
+/// Find `on_fault` and `on_dying` among a file's top-level `def`s and
 /// check their shape: `on_fault` takes exactly one parameter, `on_dying`
-/// none; two top-level `def`s of one hook name are a load error.
-fn bind_hooks(stmts: &[Stmt], main: &Rc<Code>) -> Result<Hooks, LoadError> {
+/// none; two top-level `def`s of one hook name are a load error. `module`
+/// is the interrupt file's stem when the file is one, `None` for
+/// `main.py`; an interrupt file binds only its own name.
+fn bind_hooks(
+    stmts: &[Stmt],
+    main: &Rc<Code>,
+    file: &str,
+    module: Option<&str>,
+) -> Result<Hooks, LoadError> {
     let mut hooks = Hooks::default();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for s in stmts {
@@ -138,8 +175,11 @@ fn bind_hooks(stmts: &[Stmt], main: &Rc<Code>) -> Result<Hooks, LoadError> {
             "on_dying" => 0,
             _ => continue,
         };
+        if module.is_some_and(|m| m != name) {
+            continue;
+        }
         let err = |message: String| LoadError {
-            file: "main.py".to_string(),
+            file: file.to_string(),
             line: s.line,
             message,
         };
@@ -160,10 +200,14 @@ fn bind_hooks(stmts: &[Stmt], main: &Rc<Code>) -> Result<Hooks, LoadError> {
             .find(|c| c.name == *name)
             .cloned()
             .ok_or_else(|| err(format!("`{name}` has no code")))?;
+        let hook = Hook {
+            code,
+            module: module.map(str::to_string),
+        };
         if name == "on_fault" {
-            hooks.on_fault = Some(code);
+            hooks.on_fault = Some(hook);
         } else {
-            hooks.on_dying = Some(code);
+            hooks.on_dying = Some(hook);
         }
     }
     Ok(hooks)
@@ -409,6 +453,9 @@ struct Frame {
     globals: Globals,
     /// For a module body run by `import`: the module to hand back.
     import_of: Option<Rc<Module>>,
+    /// The module body ran ahead of a hook from its file (Q41): its end
+    /// pushes nothing.
+    discard_result: bool,
 }
 
 /// A jump deferred until its condition's truth is known.
@@ -437,6 +484,7 @@ impl Frame {
             class_base: None,
             globals,
             import_of: None,
+            discard_result: false,
         }
     }
 }
@@ -735,8 +783,8 @@ impl Machine {
                     hook_running: false,
                 };
                 match self.program.hooks.on_dying.clone() {
-                    Some(code) => {
-                        self.start_hook(code, vec![]);
+                    Some(hook) => {
+                        self.start_hook(hook, vec![]);
                     }
                     // No hook: the epilogue raises `death` at once.
                     None => {
@@ -768,14 +816,39 @@ impl Machine {
     }
 
     /// Push a hook's frame and start debiting its budget.
-    fn start_hook(&mut self, code: Rc<Code>, args: Vec<Value>) {
+    /// Push the hook's frame. A hook from an interrupt file (Q41) runs in
+    /// that module's globals; if the module has not run this main-flow run,
+    /// its body runs first, on top of the hook's frame, as an import would
+    /// — charged to the hook's budget, its result discarded.
+    fn start_hook(&mut self, hook: Hook, args: Vec<Value>) {
+        let (globals, first_run) = match &hook.module {
+            None => (self.globals.clone(), None),
+            Some(name) => match self.modules_run.get(name) {
+                Some(m) => (m.globals.clone(), None),
+                None => {
+                    let module = Rc::new(Module {
+                        name: name.clone(),
+                        globals: Rc::new(RefCell::new(BTreeMap::new())),
+                    });
+                    self.modules_run.insert(name.clone(), module.clone());
+                    let body = self.program.modules.get(name).cloned();
+                    (module.globals.clone(), body.map(|b| (b, module)))
+                }
+            },
+        };
         let f = Func {
-            code,
+            code: hook.code,
             defaults: vec![],
-            globals: self.globals.clone(),
+            globals,
         };
         if let Ok(frame) = bind_arguments(&f, args, vec![], self) {
             self.frames.push(frame);
+            if let Some((body, module)) = first_run {
+                let mut frame = Frame::new(body, module.globals.clone());
+                frame.import_of = Some(module);
+                frame.discard_result = true;
+                self.frames.push(frame);
+            }
             if let Mode::Handler { hook_running, .. } = &mut self.mode {
                 *hook_running = true;
             }
@@ -798,8 +871,8 @@ impl Machine {
         };
         self.frames.clear();
         match self.program.hooks.on_fault.clone() {
-            Some(code) => {
-                self.start_hook(code, vec![exc.as_value()]);
+            Some(hook) => {
+                self.start_hook(hook, vec![exc.as_value()]);
                 None
             }
             // A hookless handler has a boundary after its prologue, where a
@@ -2010,7 +2083,11 @@ impl Machine {
                     return Ok(Step::MainEnded);
                 };
                 if let Some(module) = popped.import_of {
-                    // A module body's end: the import evaluates to the module.
+                    // A module body's end: the import evaluates to the module
+                    // — or to nothing, when the body ran ahead of a hook.
+                    if popped.discard_result {
+                        return Ok(Step::Continue);
+                    }
                     v = Value::Module(module);
                 } else if popped.code.is_module || self.frames.is_empty() {
                     return Ok(Step::MainEnded);

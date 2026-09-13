@@ -1,10 +1,11 @@
-//! The editor (`docs/07`, Q33): a working copy of every deployment's
-//! bundle, edited in a panel beside the map and deployed from there as one
-//! `Deploy` carrying the working copy's files. The programs directory is
-//! where the opening bundles were read from and where `export` writes to;
-//! the game never watches it. Highlighting and the load-error squiggle are
-//! the build's choices; nothing here reaches a peer except through the
-//! command log.
+//! The editor (`docs/07`, Q33 as Q41 amended): the team's program tree —
+//! `robots/` with a file per deployment, `interrupts/` with the two hook
+//! files, and the player's own files and folders — held as text, composed
+//! into one bundle per deployment, and deployed as one `Deploy` per
+//! deployment a file reaches. The programs directory is where the tree was
+//! read from and where `export` writes to; the game never watches it.
+//! Highlighting and the load-error squiggle are the build's choices;
+//! nothing here reaches a peer except through the command log.
 
 use crate::app::{DriverResource, ViewState};
 use crate::driver::Driver;
@@ -13,231 +14,385 @@ use crate::view;
 use bevy_egui::egui;
 use lang::errors::LoadError;
 use lang::{Limits, Program};
+use sim::script::{INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose};
 use sim::snapshot::Snapshot;
 use sim::{Bundle, CommandKind, TeamId};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-/// One deployment's working copy.
+/// One file of the tree, as text.
 #[derive(Debug, Clone, Default)]
 pub struct Doc {
-    pub files: Vec<(String, String)>,
-    /// The file open in the panel.
-    pub file: usize,
-    /// The working copy's version, when it loads; the error when it does
-    /// not (`01`), shown at its file and line.
-    pub version: Option<u64>,
-    pub error: Option<LoadError>,
-    /// A file name being typed for "new file".
-    pub new_name: String,
+    pub text: String,
 }
 
-impl Doc {
-    pub fn from_bundle(b: &Bundle) -> Doc {
-        let mut d = Doc {
-            files: b.files.clone(),
-            ..Default::default()
-        };
-        d.check();
-        d
-    }
-
-    pub fn bundle(&self) -> Bundle {
-        let mut files = self.files.clone();
-        files.sort();
-        Bundle { files }
-    }
-
-    /// Load the working copy the way the sim will, for its version or its
-    /// first error.
-    pub fn check(&mut self) {
-        let limits = Limits::parse(lang::data::LIMITS_TOML).expect("limits");
-        let refs: Vec<(&str, &str)> = self
-            .files
-            .iter()
-            .map(|(n, s)| (n.as_str(), s.as_str()))
-            .collect();
-        match Program::load(&refs, &limits) {
-            Ok(p) => {
-                self.version = Some(p.version);
-                self.error = None;
-            }
-            Err(e) => {
-                self.version = None;
-                self.error = Some(e);
-            }
-        }
-    }
-}
-
+/// The tree and what it composes to.
 #[derive(Debug, Clone, Default)]
 pub struct Editor {
-    pub docs: BTreeMap<String, Doc>,
-    pub active: Option<String>,
-    /// Rows the text box shows.
+    /// Every file by its tree path (`robots/1.py`, `lib/nav.py`).
+    pub files: BTreeMap<String, Doc>,
+    /// The player's folders, including empty ones.
+    pub folders: BTreeSet<String>,
+    /// What the tree composes to, per deployment.
+    pub bundles: BTreeMap<String, Bundle>,
+    /// Each composed bundle loaded the sim's way: its version, or the
+    /// error (`01`) at a bundle file name.
+    pub loaded: BTreeMap<String, Result<u64, LoadError>>,
+    /// A tree that does not compose at all (a name shared by two files).
+    pub compose_error: Option<String>,
+    /// The tree panel's selection, for rename and delete.
+    pub selected: Option<String>,
+    /// Text being typed for a new file, a new folder, or a rename.
+    pub new_file: String,
+    pub new_folder: String,
+    pub rename_to: String,
+    /// Rows a window's text box shows.
     pub rows: usize,
 }
 
-impl Doc {
-    /// A working copy with nothing in it: no file with any text.
-    pub fn is_empty(&self) -> bool {
-        self.files.iter().all(|(_, t)| t.trim().is_empty())
-    }
-
-    /// Whether the working copy is ahead of what the deployment runs: it
-    /// loads, differs, and is not an untouched empty copy of nothing.
-    pub fn ahead(&self, running: Option<u64>) -> bool {
-        match self.version {
-            Some(v) => running != Some(v) && (running.is_some() || !self.is_empty()),
-            None => false,
-        }
-    }
-}
-
-/// The tabs' order: the printer, the depot, then the numbered
-/// deployments in numeric order (Q40), then anything else by name.
-pub fn deployment_order(names: impl Iterator<Item = String>) -> Vec<String> {
-    let rank = |n: &str| -> (u64, u64) {
-        match n {
-            "printer" => (0, 0),
-            "depot" => (1, 0),
-            _ => match sim::world::deployment_number(n) {
-                Some(k) => (2, k),
-                None => (3, 0),
-            },
-        }
-    };
-    let mut v: Vec<String> = names.collect();
-    v.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.cmp(b)));
-    v
-}
-
-/// The tab to open first: the first numbered deployment, which is what
-/// the player edits most; failing that, the first tab.
-fn first_tab(names: &[String]) -> Option<String> {
-    names
+/// The fixed files a tree always holds (Q41), besides the robots.
+fn interrupt_paths() -> Vec<String> {
+    INTERRUPT_FILES
         .iter()
-        .find(|n| sim::world::deployment_number(n).is_some())
-        .or(names.first())
-        .cloned()
+        .map(|f| format!("{INTERRUPTS}/{f}"))
+        .collect()
+}
+
+pub fn robot_path(deployment: &str) -> String {
+    format!("{ROBOTS}/{deployment}.py")
+}
+
+/// The deployment a robot file is, if `path` is one.
+pub fn robot_of(path: &str) -> Option<&str> {
+    path.strip_prefix(&format!("{ROBOTS}/"))
+        .and_then(|f| f.strip_suffix(".py"))
+        .filter(|d| !d.contains('/'))
+}
+
+/// Whether the path is one of the fixed entries the player cannot rename,
+/// move or delete.
+pub fn is_fixed(path: &str) -> bool {
+    robot_of(path).is_some() || interrupt_paths().iter().any(|p| p == path)
 }
 
 impl Editor {
-    /// The number after the highest the editor holds: what the *next* tab
-    /// opens (Q40), so a program can be written for a printer not yet
-    /// taken.
+    /// The tree read from the programs directory (Q41).
+    pub fn from_tree(tree: &Tree) -> Editor {
+        let mut e = Editor {
+            rows: 28,
+            ..Default::default()
+        };
+        for (path, text) in tree {
+            e.files.insert(path.clone(), Doc { text: text.clone() });
+            if let Some((dir, _)) = path.rsplit_once('/') {
+                e.folders.insert(dir.to_string());
+            }
+        }
+        for p in interrupt_paths() {
+            e.files.entry(p).or_default();
+        }
+        e.folders.retain(|f| f != ROBOTS && f != INTERRUPTS);
+        e.recompose();
+        e
+    }
+
+    /// A robot file for every deployment the team holds, and the
+    /// interrupt files, before the tree is drawn.
+    pub fn ensure(&mut self, deployments: &BTreeMap<String, Option<u64>>) {
+        let mut added = false;
+        for path in deployments
+            .keys()
+            .map(|n| robot_path(n))
+            .chain(interrupt_paths())
+        {
+            if let std::collections::btree_map::Entry::Vacant(v) = self.files.entry(path) {
+                v.insert(Doc::default());
+                added = true;
+            }
+        }
+        if added {
+            self.recompose();
+        }
+    }
+
+    pub fn tree(&self) -> Tree {
+        self.files
+            .iter()
+            .map(|(p, d)| (p.clone(), d.text.clone()))
+            .collect()
+    }
+
+    /// Compose every bundle and load each the sim's way.
+    pub fn recompose(&mut self) {
+        let limits = Limits::parse(lang::data::LIMITS_TOML).expect("limits");
+        match compose(&self.tree()) {
+            Ok(bundles) => {
+                self.compose_error = None;
+                self.loaded = bundles
+                    .iter()
+                    .map(|(d, b)| {
+                        let refs: Vec<(&str, &str)> = b
+                            .files
+                            .iter()
+                            .map(|(n, s)| (n.as_str(), s.as_str()))
+                            .collect();
+                        (d.clone(), Program::load(&refs, &limits).map(|p| p.version))
+                    })
+                    .collect();
+                self.bundles = bundles;
+            }
+            Err(e) => {
+                self.compose_error = Some(e);
+                self.bundles.clear();
+                self.loaded.clear();
+            }
+        }
+    }
+
+    /// The deployments a file reaches: a robot file its own, any other
+    /// every composed deployment.
+    pub fn reaches(&self, path: &str) -> Vec<String> {
+        match robot_of(path) {
+            Some(d) => {
+                if self.bundles.contains_key(d) {
+                    vec![d.to_string()]
+                } else {
+                    Vec::new()
+                }
+            }
+            None => self.bundles.keys().cloned().collect(),
+        }
+    }
+
+    /// The tree path a bundle file name of `deployment` came from.
+    pub fn path_of(&self, deployment: &str, bundle_file: &str) -> Option<String> {
+        if bundle_file == "main.py" {
+            return Some(robot_path(deployment));
+        }
+        self.files
+            .keys()
+            .find(|p| !p.starts_with(&format!("{ROBOTS}/")) && bare_name(p) == bundle_file)
+            .cloned()
+    }
+
+    /// The first load error that names `path`, with the deployment it was
+    /// found loading.
+    pub fn error_at(&self, path: &str) -> Option<(String, LoadError)> {
+        for (d, r) in &self.loaded {
+            if let Err(e) = r
+                && self.path_of(d, &e.file).as_deref() == Some(path)
+            {
+                return Some((d.clone(), e.clone()));
+            }
+        }
+        None
+    }
+
+    /// Whether a deployment's composed bundle loads and differs from what
+    /// the team runs; an empty robot file composes nothing and is never
+    /// ahead.
+    pub fn deployment_ahead(&self, deployment: &str, running: Option<u64>) -> bool {
+        matches!(self.loaded.get(deployment), Some(Ok(v)) if running != Some(*v))
+    }
+
+    /// Whether any deployment the file reaches is ahead.
+    pub fn ahead(&self, path: &str, snap: &Snapshot, player: TeamId) -> bool {
+        let Some(team) = snap.teams.iter().find(|t| t.id == player) else {
+            return false;
+        };
+        self.reaches(path)
+            .iter()
+            .any(|d| self.deployment_ahead(d, team.deployments.get(d).copied().flatten()))
+    }
+
+    /// Every deployment that is ahead.
+    pub fn changed(&self, snap: &Snapshot, player: TeamId) -> Vec<String> {
+        let Some(team) = snap.teams.iter().find(|t| t.id == player) else {
+            return Vec::new();
+        };
+        self.bundles
+            .keys()
+            .filter(|d| self.deployment_ahead(d, team.deployments.get(*d).copied().flatten()))
+            .cloned()
+            .collect()
+    }
+
+    /// The number after the highest robot file: what *next* opens (Q40).
     pub fn next_deployment(&self) -> String {
         let max = self
-            .docs
+            .files
             .keys()
-            .filter_map(|n| sim::world::deployment_number(n))
+            .filter_map(|p| robot_of(p))
+            .filter_map(sim::world::deployment_number)
             .max()
             .unwrap_or(0);
         (max + 1).to_string()
     }
 
-    /// Open a working copy for `name` if none exists.
-    pub fn open_doc(&mut self, name: &str) {
-        self.docs.entry(name.to_string()).or_insert_with(|| {
-            let mut d = Doc {
-                files: vec![("main.py".into(), String::new())],
-                ..Default::default()
-            };
-            d.check();
-            d
-        });
-    }
-}
-
-impl Editor {
-    /// Working copies from the opening bundles, one per deployment
-    /// directory (Q33).
-    pub fn from_bundles(bundles: &BTreeMap<String, Bundle>) -> Editor {
-        let docs: BTreeMap<String, Doc> = bundles
-            .iter()
-            .map(|(n, b)| (n.clone(), Doc::from_bundle(b)))
-            .collect();
-        Editor {
-            active: first_tab(&deployment_order(docs.keys().cloned())),
-            docs,
-            rows: 28,
+    /// Add a file at `path` if none exists; `Err` names why not.
+    pub fn add_file(&mut self, path: &str) -> Result<(), String> {
+        let path = path.trim().trim_matches('/').to_string();
+        let bare = bare_name(&path);
+        if !lang_name(bare) {
+            return Err(format!("`{bare}` is not `[a-z_][a-z0-9_]*.py`"));
         }
+        if path.starts_with(&format!("{ROBOTS}/")) || path.starts_with(&format!("{INTERRUPTS}/")) {
+            return Err(format!(
+                "`{ROBOTS}/` and `{INTERRUPTS}/` hold only their fixed files"
+            ));
+        }
+        if self.files.contains_key(&path) {
+            return Err(format!("`{path}` exists"));
+        }
+        if let Some((dir, _)) = path.rsplit_once('/') {
+            self.folders.insert(dir.to_string());
+        }
+        self.files.insert(path, Doc::default());
+        self.recompose();
+        Ok(())
     }
 
-    /// A working copy for every deployment the team holds, empty for one
-    /// no directory seeded.
-    pub fn ensure(&mut self, deployments: &BTreeMap<String, Option<u64>>) {
-        for name in deployments.keys() {
-            self.docs.entry(name.clone()).or_insert_with(|| {
-                let mut d = Doc {
-                    files: vec![("main.py".into(), String::new())],
-                    ..Default::default()
-                };
-                d.check();
-                d
-            });
+    pub fn add_folder(&mut self, path: &str) -> Result<(), String> {
+        let path = path.trim().trim_matches('/').to_string();
+        if path.is_empty() || path == ROBOTS || path == INTERRUPTS {
+            return Err("a folder needs a name of its own".into());
         }
-        if self.active.is_none() {
-            self.active = first_tab(&deployment_order(self.docs.keys().cloned()));
+        if !path.split('/').all(|seg| {
+            !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        }) {
+            return Err("a folder name is letters, digits and `_`".into());
         }
+        self.folders.insert(path);
+        Ok(())
     }
 
-    /// The deployments whose working copy loads and differs from what the
-    /// team runs.
-    pub fn changed(&self, snap: &Snapshot, player: TeamId) -> Vec<String> {
-        let Some(team) = snap.teams.iter().find(|t| t.id == player) else {
-            return Vec::new();
+    /// Rename or move a player file.
+    pub fn rename(&mut self, from: &str, to: &str) -> Result<(), String> {
+        if is_fixed(from) {
+            return Err(format!("`{from}` is fixed"));
+        }
+        let Some(doc) = self.files.get(from).cloned() else {
+            return Err(format!("`{from}` does not exist"));
         };
-        self.docs
-            .iter()
-            .filter(|(name, doc)| doc.ahead(team.deployments.get(*name).copied().flatten()))
-            .map(|(name, _)| name.clone())
-            .collect()
+        self.add_file(to)?;
+        self.files
+            .insert(to.trim().trim_matches('/').to_string(), doc);
+        self.files.remove(from);
+        self.recompose();
+        Ok(())
+    }
+
+    pub fn delete(&mut self, path: &str) -> Result<(), String> {
+        if is_fixed(path) {
+            return Err(format!("`{path}` is fixed"));
+        }
+        if self.files.remove(path).is_none() {
+            if self.folders.remove(path) {
+                let under: Vec<String> = self
+                    .files
+                    .keys()
+                    .filter(|p| p.starts_with(&format!("{path}/")))
+                    .cloned()
+                    .collect();
+                if !under.is_empty() {
+                    self.folders.insert(path.to_string());
+                    return Err(format!("`{path}` is not empty"));
+                }
+                return Ok(());
+            }
+            return Err(format!("`{path}` does not exist"));
+        }
+        self.recompose();
+        Ok(())
     }
 }
 
-/// Deploy one working copy; `true` if the log took it.
-pub fn deploy_doc(driver: &mut Driver, state: &mut ViewState, name: &str) -> bool {
-    let Some(doc) = state.editor.docs.get_mut(name) else {
+/// A file name the language accepts (`01`).
+fn lang_name(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".py") else {
         return false;
     };
-    doc.check();
-    if let Some(e) = &doc.error {
-        state.status = format!("{name}: {e}");
-        return false;
-    }
-    let bundle = doc.bundle();
-    submit(
-        driver,
-        state,
-        CommandKind::Deploy {
-            deployment: name.to_string(),
-            bundle,
-        },
-    )
+    let mut chars = stem.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c == '_')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-/// Write every working copy to the programs directory, one directory per
-/// deployment; files the copy no longer has are left alone.
+/// Deploy every deployment a file reaches that is ahead; `true` if any
+/// was taken.
+pub fn deploy_file(driver: &mut Driver, state: &mut ViewState, path: &str) -> bool {
+    let player = driver.player;
+    let snap = driver.snapshot().clone();
+    let team = snap.teams.iter().find(|t| t.id == player);
+    let mut any = false;
+    for d in state.editor.reaches(path) {
+        let running = team.and_then(|t| t.deployments.get(&d).copied().flatten());
+        match state.editor.loaded.get(&d) {
+            Some(Err(e)) => {
+                state.status = format!("{d}: {e}");
+            }
+            Some(Ok(_)) if state.editor.deployment_ahead(&d, running) => {
+                let bundle = state.editor.bundles[&d].clone();
+                any |= submit(
+                    driver,
+                    state,
+                    CommandKind::Deploy {
+                        deployment: d.clone(),
+                        bundle,
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+    any
+}
+
+/// Deploy every deployment that is ahead (Shift+D).
+pub fn deploy_changed(driver: &mut Driver, state: &mut ViewState) {
+    let names = state.editor.changed(driver.snapshot(), driver.player);
+    if names.is_empty() {
+        state.status = "every deployment runs what the tree composes".into();
+    }
+    for d in names {
+        let bundle = state.editor.bundles[&d].clone();
+        submit(
+            driver,
+            state,
+            CommandKind::Deploy {
+                deployment: d.clone(),
+                bundle,
+            },
+        );
+    }
+}
+
+/// Write the tree to the programs directory, folders included; files the
+/// tree no longer has are left alone.
 pub fn export(state: &mut ViewState) {
     let Some(root) = state.programs.clone() else {
         state.status = "no programs directory (--programs DIR)".into();
         return;
     };
     let mut n = 0;
-    for (name, doc) in &state.editor.docs {
-        let dir = root.join(name);
-        if let Err(e) = std::fs::create_dir_all(&dir) {
+    for f in &state.editor.folders {
+        if let Err(e) = std::fs::create_dir_all(root.join(f)) {
+            state.status = format!("{}: {e}", root.join(f).display());
+            return;
+        }
+    }
+    for (path, doc) in &state.editor.files {
+        let full = root.join(path);
+        if let Some(dir) = full.parent()
+            && let Err(e) = std::fs::create_dir_all(dir)
+        {
             state.status = format!("{}: {e}", dir.display());
             return;
         }
-        for (file, text) in &doc.files {
-            if let Err(e) = std::fs::write(dir.join(file), text) {
-                state.status = format!("{}: {e}", dir.join(file).display());
-                return;
-            }
-            n += 1;
+        if let Err(e) = std::fs::write(&full, &doc.text) {
+            state.status = format!("{}: {e}", full.display());
+            return;
         }
+        n += 1;
     }
     state.status = format!("exported {n} file(s) to {}", root.display());
 }
@@ -413,20 +568,23 @@ pub fn line_range(text: &str, line: u32) -> std::ops::Range<usize> {
         .map_or(0..0, |(b, c)| b..b + c.len_utf8())
 }
 
-// ── the panel ───────────────────────────────────────────────────────────────
+// ── the windows ─────────────────────────────────────────────────────────────
 
-/// A window's title: the deployment's name and its state — `*` ahead of
-/// what runs, `!` a load error.
-pub fn title(state: &ViewState, name: &str, running: Option<u64>) -> String {
-    match state.editor.docs.get(name) {
-        Some(doc) if doc.error.is_some() => format!("{name} !"),
-        Some(doc) if doc.ahead(running) => format!("{name} *"),
-        _ => name.to_string(),
+/// A file window's title: its bare name, `*` when a deployment it reaches
+/// is ahead, `!` when it carries a load error.
+pub fn title(state: &ViewState, path: &str, snap: &Snapshot, player: TeamId) -> String {
+    let bare = bare_name(path);
+    if state.editor.error_at(path).is_some() || state.editor.compose_error.is_some() {
+        format!("{bare} !")
+    } else if state.editor.ahead(path, snap, player) {
+        format!("{bare} *")
+    } else {
+        bare.to_string()
     }
 }
 
-/// Every deployment the team holds has a working copy, before the windows
-/// are drawn.
+/// Every deployment the team holds has a robot file, before the tree is
+/// drawn.
 pub fn sync(driver: &DriverResource, state: &mut ViewState) {
     let snap = driver.0.snapshot();
     if let Some(t) = snap.teams.iter().find(|t| t.id == driver.0.player) {
@@ -434,169 +592,365 @@ pub fn sync(driver: &DriverResource, state: &mut ViewState) {
     }
 }
 
-/// One deployment's window (`docs/07`, Q39): file tabs, the text, the
-/// running version against the working copy, the buttons, and the fault
-/// summary (Q34).
+/// One file's window (`docs/07`, Q41): the text, what it reaches and the
+/// state of each, the buttons, and the faults naming this file (Q34).
 pub fn window_body(
     ui: &mut egui::Ui,
     driver: &mut DriverResource,
     state: &mut ViewState,
-    name: &str,
+    path: &str,
 ) {
     let d = &mut driver.0;
     let snap = d.snapshot().clone();
     let player = d.player;
     let team = snap.teams.iter().find(|t| t.id == player);
-    let name = name.to_string();
-    let running = team.and_then(|t| t.deployments.get(&name).copied().flatten());
     let rows = state.editor.rows;
-    let mut deploy_now = false;
-    let mut export_now = false;
-    let mut deploy_all = false;
-    {
-        let doc = state.editor.docs.get_mut(&name).expect("active doc");
-        // File tabs and a new-file box.
-        ui.horizontal_wrapped(|ui| {
-            for i in 0..doc.files.len() {
-                let f = doc.files[i].0.clone();
-                if ui.selectable_label(doc.file == i, f).clicked() {
-                    doc.file = i;
-                }
-            }
-            let edit = ui.add(
-                egui::TextEdit::singleline(&mut doc.new_name)
-                    .hint_text("new.py")
-                    .desired_width(70.0),
-            );
-            if edit.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                && !doc.new_name.is_empty()
-            {
-                let mut n = doc.new_name.trim().to_string();
-                if !n.ends_with(".py") {
-                    n.push_str(".py");
-                }
-                if !doc.files.iter().any(|(f, _)| *f == n) {
-                    doc.files.push((n, String::new()));
-                    doc.file = doc.files.len() - 1;
-                    doc.check();
-                }
-                doc.new_name.clear();
-            }
-        });
-        doc.file = doc.file.min(doc.files.len().saturating_sub(1));
-        let error = doc.error.clone();
-        let file_name = doc
-            .files
-            .get(doc.file)
-            .map(|f| f.0.clone())
-            .unwrap_or_default();
-        let squiggle_line = error
-            .as_ref()
-            .filter(|e| e.file == file_name)
-            .map(|e| e.line);
-        let font_id = egui::TextStyle::Monospace.resolve(ui.style());
-        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-            let text = buf.as_str();
-            let squiggle = squiggle_line.map(|l| line_range(text, l));
-            let mut job = highlight(text, font_id.clone(), squiggle);
-            job.wrap.max_width = wrap_width;
-            let galley: Arc<egui::Galley> = ui.fonts_mut(|f| f.layout_job(job));
-            galley
-        };
-        if let Some((_, text)) = doc.files.get_mut(doc.file) {
-            let response = egui::ScrollArea::vertical()
-                .max_height((ui.available_height() - 150.0).max(80.0))
-                .show(ui, |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(text)
-                            .code_editor()
-                            .desired_rows(rows)
-                            .desired_width(f32::INFINITY)
-                            .layouter(&mut layouter),
-                    )
-                })
-                .inner;
-            if response.changed() {
-                doc.check();
-            }
-        }
-        match (&doc.error, doc.version, running) {
-            (Some(e), _, _) => {
-                ui.colored_label(egui::Color32::LIGHT_RED, format!("{e}"));
-            }
-            (None, Some(v), Some(r)) if v == r => {
-                ui.small(format!("running {v:016x} — the working copy is what runs"));
-            }
-            (None, Some(v), Some(r)) => {
-                ui.small(format!("running {r:016x} · working {v:016x} (ahead)"));
-            }
-            (None, Some(v), None) => {
-                ui.small(format!("nothing running · working {v:016x}"));
-            }
-            (None, None, _) => {}
-        }
-        ui.horizontal(|ui| {
-            let ready = doc.ahead(running);
-            if ui.add_enabled(ready, egui::Button::new("deploy")).clicked() {
-                deploy_now = true;
-            }
-            if ui.button("deploy all changed (Shift+D)").clicked() {
-                deploy_all = true;
-            }
-            if ui.button("export").clicked() {
-                export_now = true;
-            }
-        });
+    let error = state.editor.error_at(path);
+    let compose_error = state.editor.compose_error.clone();
+    let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+    let squiggle_line = error.as_ref().map(|(_, e)| e.line);
+    let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+        let text = buf.as_str();
+        let squiggle = squiggle_line.map(|l| line_range(text, l));
+        let mut job = highlight(text, font_id.clone(), squiggle);
+        job.wrap.max_width = wrap_width;
+        let galley: Arc<egui::Galley> = ui.fonts_mut(|f| f.layout_job(job));
+        galley
+    };
+    let mut changed = false;
+    if let Some(doc) = state.editor.files.get_mut(path) {
+        let response = egui::ScrollArea::vertical()
+            .max_height((ui.available_height() - 150.0).max(80.0))
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut doc.text)
+                        .code_editor()
+                        .desired_rows(rows)
+                        .desired_width(f32::INFINITY)
+                        .layouter(&mut layouter),
+                )
+            })
+            .inner;
+        changed = response.changed();
     }
+    if changed {
+        state.editor.recompose();
+    }
+    if let Some(e) = &compose_error {
+        ui.colored_label(egui::Color32::LIGHT_RED, e);
+    } else if let Some((dep, e)) = &error {
+        ui.colored_label(egui::Color32::LIGHT_RED, format!("{dep}: {e}"));
+    }
+    // What the file reaches, and each deployment's state.
+    let reaches = state.editor.reaches(path);
+    if reaches.is_empty() {
+        ui.small(if robot_of(path).is_some() {
+            "empty: composes nothing until it has text"
+        } else {
+            "reaches no deployment yet"
+        });
+    } else {
+        let parts: Vec<String> = reaches
+            .iter()
+            .map(|dep| {
+                let running = team.and_then(|t| t.deployments.get(dep).copied().flatten());
+                match state.editor.loaded.get(dep) {
+                    Some(Ok(v)) if running == Some(*v) => format!("{dep} ="),
+                    Some(Ok(_)) => format!("{dep} *"),
+                    _ => format!("{dep} !"),
+                }
+            })
+            .collect();
+        ui.small(format!("reaches {}", parts.join("  ")));
+    }
+    let mut deploy_now = false;
+    let mut deploy_all = false;
+    let mut export_now = false;
+    ui.horizontal(|ui| {
+        let ready = state.editor.ahead(path, &snap, player);
+        if ui.add_enabled(ready, egui::Button::new("deploy")).clicked() {
+            deploy_now = true;
+        }
+        if ui.button("deploy all changed (Shift+D)").clicked() {
+            deploy_all = true;
+        }
+        if ui.button("export").clicked() {
+            export_now = true;
+        }
+    });
     if deploy_now {
-        deploy_doc(d, state, &name);
+        deploy_file(d, state, path);
     }
     if deploy_all {
-        crate::input::deploy(d, state);
+        deploy_changed(d, state);
     }
     if export_now {
         export(state);
     }
 
-    // The fault summary (Q34): this deployment's machines' latest records
-    // by file and line, newest first, with the version each names.
+    // The fault summary (Q34): the latest records naming this file, by
+    // line, across every deployment it reaches, newest first.
     ui.separator();
-    let mut groups: BTreeMap<(String, u32, u64), (usize, u64)> = BTreeMap::new();
+    let mut groups: BTreeMap<(u32, u64), (usize, u64)> = BTreeMap::new();
     for m in &snap.machines {
-        if m.record.team != player || m.record.deployment.as_deref() != Some(name.as_str()) {
+        if m.record.team != player {
             continue;
         }
-        if let Some(f) = &m.fault {
-            let key = (
-                f.file.clone().unwrap_or_else(|| "?".into()),
-                f.line,
-                f.version,
-            );
-            let g = groups.entry(key).or_insert((0, 0));
+        let Some(dep) = m.record.deployment.as_deref() else {
+            continue;
+        };
+        if !reaches.iter().any(|r| r == dep) {
+            continue;
+        }
+        if let Some(f) = &m.fault
+            && let Some(file) = &f.file
+            && state.editor.path_of(dep, file).as_deref() == Some(path)
+        {
+            let g = groups.entry((f.line, f.version)).or_insert((0, 0));
             g.0 += 1;
             g.1 = g.1.max(f.tick);
         }
     }
+    let bare = bare_name(path);
     if groups.is_empty() {
-        ui.small(format!("{name}: no faults"));
+        ui.small(format!("{bare}: no faults"));
     } else {
-        ui.strong(format!("{name}: faults"));
+        ui.strong(format!("{bare}: faults"));
         let mut rows: Vec<_> = groups.into_iter().collect();
         rows.sort_by_key(|(_, (_, tick))| std::cmp::Reverse(*tick));
-        for ((file, line, version), (count, tick)) in rows {
-            let old = if Some(version) != running {
-                " (an earlier version)"
-            } else {
+        let current: BTreeSet<u64> = reaches
+            .iter()
+            .filter_map(|dep| team.and_then(|t| t.deployments.get(dep).copied().flatten()))
+            .collect();
+        for ((line, version), (count, tick)) in rows {
+            let old = if current.contains(&version) {
                 ""
+            } else {
+                " (an earlier version)"
             };
             ui.colored_label(
                 egui::Color32::LIGHT_RED,
-                format!("{count} at {file}:{line}, last tick {tick}{old}"),
+                format!("{count} at line {line}, last tick {tick}{old}"),
             );
         }
     }
     let _ = view::fault_what;
+}
+
+// ── the tree panel ──────────────────────────────────────────────────────────
+
+/// What the tree panel asks of the app: open a file's window.
+pub enum TreeAction {
+    Open(String),
+}
+
+/// The tree (`docs/07`, Q41): `robots`, `interrupts`, then the player's
+/// folders and files; a click opens; new file, new folder, rename and
+/// delete on the player's entries.
+pub fn tree_panel(
+    ui: &mut egui::Ui,
+    state: &mut ViewState,
+    snap: &Snapshot,
+    player: TeamId,
+    open: &BTreeSet<String>,
+) -> Vec<TreeAction> {
+    let mut actions = Vec::new();
+    let mark = |state: &ViewState, path: &str| -> String {
+        let mut s = String::new();
+        if state.editor.error_at(path).is_some() {
+            s.push_str(" !");
+        } else if state.editor.ahead(path, snap, player) {
+            s.push_str(" *");
+        }
+        if open.contains(path) {
+            s.push_str(" •");
+        }
+        s
+    };
+    let files: Vec<String> = state.editor.files.keys().cloned().collect();
+    // Files clicked, gathered by the row closure and merged at the end.
+    let mut opened: Vec<String> = Vec::new();
+    let mut file_row = |ui: &mut egui::Ui, state: &mut ViewState, path: &str| {
+        let label = format!("{}{}", bare_name(path), mark(state, path));
+        let selected = state.editor.selected.as_deref() == Some(path);
+        let r = ui.selectable_label(selected, label);
+        if r.clicked() {
+            state.editor.selected = Some(path.to_string());
+            opened.push(path.to_string());
+        }
+    };
+    ui.heading("Programs");
+    if let Some(e) = &state.editor.compose_error {
+        ui.colored_label(egui::Color32::LIGHT_RED, e);
+    }
+    egui::CollapsingHeader::new(ROBOTS)
+        .default_open(true)
+        .show(ui, |ui| {
+            let mut robots: Vec<String> = files
+                .iter()
+                .filter(|p| robot_of(p).is_some())
+                .cloned()
+                .collect();
+            robots = deployment_order_paths(robots);
+            for p in &robots {
+                file_row(ui, state, p);
+            }
+            let next = state.editor.next_deployment();
+            if ui
+                .small_button("+")
+                .on_hover_text(format!("a file for deployment {next}"))
+                .clicked()
+            {
+                let p = robot_path(&next);
+                state.editor.files.entry(p.clone()).or_default();
+                state.editor.recompose();
+                actions.push(TreeAction::Open(p));
+            }
+        });
+    egui::CollapsingHeader::new(INTERRUPTS)
+        .default_open(true)
+        .show(ui, |ui| {
+            for p in interrupt_paths() {
+                file_row(ui, state, &p);
+            }
+        });
+    // The player's tree: folders nested by path, files at each level.
+    let mut player_files: Vec<String> = files.iter().filter(|p| !is_fixed(p)).cloned().collect();
+    player_files.sort();
+    let folders: Vec<String> = state.editor.folders.iter().cloned().collect();
+    fn level(
+        ui: &mut egui::Ui,
+        state: &mut ViewState,
+        prefix: &str,
+        files: &[String],
+        folders: &[String],
+        file_row: &mut dyn FnMut(&mut egui::Ui, &mut ViewState, &str),
+    ) {
+        let depth = if prefix.is_empty() {
+            0
+        } else {
+            prefix.matches('/').count() + 1
+        };
+        let mut subfolders: Vec<&String> = folders
+            .iter()
+            .filter(|f| {
+                f.starts_with(prefix) && f.matches('/').count() == depth && f.as_str() != prefix
+            })
+            .collect();
+        subfolders.sort();
+        for f in subfolders {
+            let name = f.rsplit('/').next().unwrap_or(f).to_string();
+            let selected = state.editor.selected.as_deref() == Some(f.as_str());
+            let header = egui::CollapsingHeader::new(if selected {
+                format!("{name} ◂")
+            } else {
+                name
+            })
+            .id_salt(f)
+            .default_open(true);
+            let r = header.show(ui, |ui| {
+                level(ui, state, &format!("{f}/"), files, folders, file_row);
+            });
+            if r.header_response.clicked() {
+                state.editor.selected = Some(f.clone());
+            }
+        }
+        for p in files
+            .iter()
+            .filter(|p| p.starts_with(prefix) && p.matches('/').count() == depth)
+        {
+            file_row(ui, state, p);
+        }
+    }
+    level(ui, state, "", &player_files, &folders, &mut file_row);
+    actions.extend(opened.into_iter().map(TreeAction::Open));
+
+    ui.separator();
+    // New file, new folder, rename, delete.
+    ui.horizontal(|ui| {
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut state.editor.new_file)
+                .hint_text("lib/nav.py")
+                .desired_width(140.0),
+        );
+        if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+            || ui.small_button("new file").clicked()
+        {
+            let name = state.editor.new_file.clone();
+            if !name.trim().is_empty() {
+                match state.editor.add_file(&name) {
+                    Ok(()) => {
+                        state.editor.new_file.clear();
+                        actions.push(TreeAction::Open(name.trim().trim_matches('/').to_string()));
+                    }
+                    Err(e) => state.status = e,
+                }
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut state.editor.new_folder)
+                .hint_text("lib")
+                .desired_width(140.0),
+        );
+        if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+            || ui.small_button("new folder").clicked()
+        {
+            let name = state.editor.new_folder.clone();
+            if !name.trim().is_empty() {
+                match state.editor.add_folder(&name) {
+                    Ok(()) => state.editor.new_folder.clear(),
+                    Err(e) => state.status = e,
+                }
+            }
+        }
+    });
+    if let Some(sel) = state.editor.selected.clone()
+        && !is_fixed(&sel)
+    {
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut state.editor.rename_to)
+                    .hint_text(format!("rename {}", bare_name(&sel)))
+                    .desired_width(140.0),
+            );
+            if ui.small_button("rename").clicked() {
+                let to = state.editor.rename_to.clone();
+                match state.editor.rename(&sel, &to) {
+                    Ok(()) => {
+                        state.editor.rename_to.clear();
+                        state.editor.selected = Some(to.trim().trim_matches('/').to_string());
+                    }
+                    Err(e) => state.status = e,
+                }
+            }
+            if ui.small_button("delete").clicked() {
+                match state.editor.delete(&sel) {
+                    Ok(()) => state.editor.selected = None,
+                    Err(e) => state.status = e,
+                }
+            }
+        });
+    }
+    actions
+}
+
+/// Robot files in deployment order: printer, depot, then the numbers.
+fn deployment_order_paths(mut paths: Vec<String>) -> Vec<String> {
+    let rank = |p: &str| -> (u64, u64) {
+        match robot_of(p) {
+            Some("printer") => (0, 0),
+            Some("depot") => (1, 0),
+            Some(d) => match sim::world::deployment_number(d) {
+                Some(k) => (2, k),
+                None => (3, 0),
+            },
+            None => (4, 0),
+        }
+    };
+    paths.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.cmp(b)));
+    paths
 }
 
 #[cfg(test)]
@@ -650,20 +1004,42 @@ mod tests {
     }
 
     #[test]
-    fn a_load_error_names_a_line_the_editor_can_squiggle() {
-        let mut doc = Doc {
-            files: vec![("main.py".into(), "x = 1\nif x\n    y = 2\n".into())],
-            ..Default::default()
-        };
-        doc.check();
-        let e = doc.error.clone().expect("a load error");
-        assert_eq!(e.file, "main.py");
-        assert!(e.line >= 1);
-        let r = line_range(&doc.files[0].1, e.line);
-        assert!(!r.is_empty());
-        doc.files[0].1 = "x = 1\nif x:\n    y = 2\n".into();
-        doc.check();
-        assert!(doc.error.is_none() && doc.version.is_some());
+    fn a_tree_composes_reaches_and_reports_errors_at_the_file() {
+        let mut t = Tree::new();
+        t.insert("robots/1.py".into(), "import nav\nx = 1\nif x\n".into());
+        t.insert("robots/printer.py".into(), "print(1)\n".into());
+        t.insert("lib/nav.py".into(), "y = 2\n".into());
+        let mut e = Editor::from_tree(&t);
+        assert!(e.files.contains_key("interrupts/on_fault.py"));
+        assert_eq!(e.reaches("robots/1.py"), ["1"]);
+        assert_eq!(e.reaches("lib/nav.py"), ["1", "printer"]);
+        let (dep, err) = e
+            .error_at("robots/1.py")
+            .expect("a load error at the robot file");
+        assert_eq!(dep, "1");
+        assert!(err.line >= 1);
+        assert!(!line_range(&e.files["robots/1.py"].text, err.line).is_empty());
+        e.files.get_mut("robots/1.py").unwrap().text = "import nav\nx = 1\n".into();
+        e.recompose();
+        assert!(e.error_at("robots/1.py").is_none());
+        assert!(matches!(e.loaded.get("1"), Some(Ok(_))));
+        assert_eq!(e.next_deployment(), "2");
+        assert!(e.add_file("robots/3.py").is_err());
+        assert!(e.add_file("lib/Nav.py").is_err());
+        e.add_file("util/nav.py").unwrap();
+        assert!(
+            e.compose_error
+                .as_deref()
+                .is_some_and(|m| m.contains("share the name"))
+        );
+        e.delete("util/nav.py").unwrap();
+        assert!(e.compose_error.is_none());
+        assert!(e.delete("interrupts/on_fault.py").is_err());
+        e.rename("lib/nav.py", "lib/path.py").unwrap();
+        assert!(
+            e.error_at("robots/1.py").is_some(),
+            "the import of nav now fails"
+        );
         assert_eq!(line_range("ab\ncd", 7), 4..5);
     }
 }

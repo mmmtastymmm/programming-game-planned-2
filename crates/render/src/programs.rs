@@ -1,30 +1,17 @@
-//! The player's programs on disk: one directory per deployment under a
-//! root, each holding the bundle's `.py` files. The renderer reads them and
-//! submits a `Deploy` for each; nothing else about a program lives in the
-//! game (docs/05: programs live in the player's editor).
+//! The player's programs on disk: one tree (`docs/07`, Q41) — `robots/`,
+//! `interrupts/`, and the player's own files — read at start and written
+//! on export; the game never watches it.
 
+use sim::script::{Tree, compose, read_tree_files};
 use sim::{Bundle, CommandKind};
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// Every bundle under `root`, by deployment name, in name order.
-pub fn read_all(root: &Path) -> Result<BTreeMap<String, Bundle>, String> {
-    let mut out = BTreeMap::new();
-    let entries = std::fs::read_dir(root).map_err(|e| format!("{}: {e}", root.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        match sim::script::read_bundle(&entry.path()) {
-            Ok(b) => {
-                out.insert(name, b);
-            }
-            Err(_) => continue,
-        }
-    }
-    Ok(out)
+/// The tree under `root` and the bundles it composes.
+pub fn read_all(root: &Path) -> Result<(Tree, BTreeMap<String, Bundle>), String> {
+    let tree = read_tree_files(root)?;
+    let bundles = compose(&tree)?;
+    Ok((tree, bundles))
 }
 
 /// The deploys for every bundle whose files differ from `deployed`.

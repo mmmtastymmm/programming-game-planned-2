@@ -78,16 +78,10 @@ pub fn step_speed(driver: &mut crate::driver::Driver, state: &mut ViewState, up:
     }
 }
 
-/// Deploy every working copy that is ahead of its running version
-/// (`docs/07`, Q33).
+/// Deploy every deployment the tree composes ahead of what runs
+/// (`docs/07`, Q41).
 pub fn deploy(driver: &mut crate::driver::Driver, state: &mut ViewState) {
-    let names = state.editor.changed(driver.snapshot(), driver.player);
-    if names.is_empty() {
-        state.status = "every working copy is what its deployment runs".into();
-    }
-    for name in names {
-        crate::editor::deploy_doc(driver, state, &name);
-    }
+    crate::editor::deploy_changed(driver, state);
 }
 
 /// Submit and report; `true` if the log took it.
