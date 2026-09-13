@@ -49,7 +49,7 @@ pub fn keys(
         state.tool = Tool::Unmark(PlanKind::Building);
     }
     if keys.just_pressed(KeyCode::KeyL) {
-        state.show_log = !state.show_log;
+        crate::ui::toggle(&mut state, "log");
     }
     if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::Equal) {
         step_speed(&mut driver.0, &mut state, keys.just_pressed(KeyCode::Equal));
