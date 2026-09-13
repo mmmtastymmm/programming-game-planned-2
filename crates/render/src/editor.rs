@@ -392,39 +392,39 @@ pub fn line_range(text: &str, line: u32) -> std::ops::Range<usize> {
 
 // ── the panel ───────────────────────────────────────────────────────────────
 
-/// The editor panel's contents: deployment tabs, file tabs, the text, the
-/// buttons, and the fault summary (Q34).
-pub fn panel(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState) {
+/// A window's title: the deployment's name and its state — `*` ahead of
+/// what runs, `!` a load error.
+pub fn title(state: &ViewState, name: &str, running: Option<u64>) -> String {
+    match state.editor.docs.get(name) {
+        Some(doc) if doc.error.is_some() => format!("{name} !"),
+        Some(doc) if doc.ahead(running) => format!("{name} *"),
+        _ => name.to_string(),
+    }
+}
+
+/// Every deployment the team holds has a working copy, before the windows
+/// are drawn.
+pub fn sync(driver: &DriverResource, state: &mut ViewState) {
+    let snap = driver.0.snapshot();
+    if let Some(t) = snap.teams.iter().find(|t| t.id == driver.0.player) {
+        state.editor.ensure(&t.deployments);
+    }
+}
+
+/// One deployment's window (`docs/07`, Q39): file tabs, the text, the
+/// running version against the working copy, the buttons, and the fault
+/// summary (Q34).
+pub fn window_body(
+    ui: &mut egui::Ui,
+    driver: &mut DriverResource,
+    state: &mut ViewState,
+    name: &str,
+) {
     let d = &mut driver.0;
     let snap = d.snapshot().clone();
     let player = d.player;
     let team = snap.teams.iter().find(|t| t.id == player);
-    if let Some(t) = team {
-        state.editor.ensure(&t.deployments);
-    }
-    ui.heading("Programs");
-    ui.horizontal_wrapped(|ui| {
-        let names = deployment_order(state.editor.docs.keys().cloned());
-        for name in names {
-            let running = team.and_then(|t| t.deployments.get(&name).copied().flatten());
-            let doc = &state.editor.docs[&name];
-            let label = if doc.error.is_some() {
-                format!("{name} !")
-            } else if doc.ahead(running) {
-                format!("{name} *")
-            } else {
-                name.clone()
-            };
-            let active = state.editor.active.as_deref() == Some(name.as_str());
-            if ui.selectable_label(active, label).clicked() {
-                state.editor.active = Some(name.clone());
-            }
-        }
-    });
-    let Some(name) = state.editor.active.clone() else {
-        ui.small("no deployments");
-        return;
-    };
+    let name = name.to_string();
     let running = team.and_then(|t| t.deployments.get(&name).copied().flatten());
     let rows = state.editor.rows;
     let mut deploy_now = false;
@@ -483,7 +483,7 @@ pub fn panel(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewSta
         };
         if let Some((_, text)) = doc.files.get_mut(doc.file) {
             let response = egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - 180.0)
+                .max_height((ui.available_height() - 150.0).max(80.0))
                 .show(ui, |ui| {
                     ui.add(
                         egui::TextEdit::multiline(text)

@@ -32,6 +32,7 @@ pub mod camera;
 pub mod driver;
 pub mod editor;
 pub mod input;
+pub mod layout;
 pub mod palette;
 pub mod programs;
 pub mod ui;
