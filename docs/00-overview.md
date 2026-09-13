@@ -78,10 +78,10 @@ pass.
   interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
   that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9, Q23, Q24, Q25, Q30 and Q31 (production, health,
-  the cap, combat and the printer), and Q22 (the economy,
-  which `docs/03` will cite) are its Decided entries, and they are not
-  repeated here.
+  (sensing and memory), Q9, Q23, Q24, Q25, Q30, Q31 and Q40 (production,
+  health, the cap, combat, the printer and the numbered deployments), and
+  Q22 (the economy, which `docs/03` will cite) are its Decided entries, and
+  they are not repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling), Q15 (the renderer) and Q32 (the paused driver) are its

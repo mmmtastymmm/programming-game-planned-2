@@ -45,11 +45,14 @@ here changes a hash; a peer with a different renderer sees the same match.
   faults by file and line in the programs panel, the full record in the
   inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
-- **A bot's body is its deployment's color, and its team is a ring (Q35).**
-  A `red` bot is red on every team. The team shows as a ring under every
-  machine, the player's own in white and each other team's in a color from
-  `data/interface.toml`. Printers, depots and sites, which have no color
-  deployment, wear the team's ring color on their body.
+- **A bot's body is its deployment's color, and its team is a ring (Q35,
+  as Q40 amended).** Deployment `n`'s bots wear the `n`-th paint color,
+  cycling through the list, and every bot wears its number over its body,
+  so deployment `9` is the first color again with a `9` on it. The team
+  shows as a ring under every machine, the player's own in white and each
+  other team's in a color from `data/interface.toml`. Printers, depots and
+  sites, which have no numbered deployment, wear the team's ring color on
+  their body.
 
 ## The screen
 
@@ -116,9 +119,11 @@ clears only when those machines fault again or die.
 
 ## Machines on the map
 
-- **Body:** a bot is an atlas cube in its deployment's color, from the same
-  eight-color list the deployments are named from (`02`); a printer, a
-  depot and a site are their own shapes in the team's ring color.
+- **Body:** a bot is an atlas cube in the color its deployment's number
+  selects from the paint list, cycling (Q40); a printer, a depot and a site
+  are their own shapes in the team's ring color.
+- **Number:** every bot wears its deployment's number over its body,
+  always, drawn by the renderer (Q40).
 - **Ring:** every machine stands on a ring in its team's color, the
   player's own team white.
 - **Health:** a bar over the machine for a few seconds after any change.
