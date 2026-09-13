@@ -115,7 +115,7 @@ pub fn panels(
         }
     });
 
-    // The tree (Q41), fixed down the right; its foot opens the other
+    // The tree (Q41), fixed down the left; its foot opens the other
     // windows.
     let snap = driver.0.snapshot().clone();
     let player = driver.0.player;
@@ -127,7 +127,7 @@ pub fn panels(
         .map(|(k, _)| k.clone())
         .collect();
     let mut to_open: Vec<String> = Vec::new();
-    egui::Panel::right("tree")
+    egui::Panel::left("tree")
         .exact_size(280.0)
         .show(&mut root, |ui| {
             egui::ScrollArea::vertical()
