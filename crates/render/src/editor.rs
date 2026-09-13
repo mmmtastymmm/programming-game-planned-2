@@ -262,7 +262,12 @@ impl Editor {
         }) {
             return Err("a folder name is letters, digits and `_`".into());
         }
-        self.folders.insert(path);
+        // Every folder on the way exists too.
+        let mut so_far = String::new();
+        for seg in path.split('/') {
+            so_far = Editor::join(&so_far, seg);
+            self.folders.insert(so_far.clone());
+        }
         Ok(())
     }
 
@@ -304,6 +309,63 @@ impl Editor {
         }
         self.recompose();
         Ok(())
+    }
+}
+
+impl Editor {
+    /// The folder new entries go into: the selected folder, the selected
+    /// file's folder, or the root (`""`).
+    pub fn selected_folder(&self) -> String {
+        match &self.selected {
+            Some(sel) if self.folders.contains(sel) => sel.clone(),
+            Some(sel) if sel == ROBOTS || sel == INTERRUPTS || is_fixed(sel) => String::new(),
+            Some(sel) => sel
+                .rsplit_once('/')
+                .map(|(d, _)| d.to_string())
+                .unwrap_or_default(),
+            None => String::new(),
+        }
+    }
+
+    /// `base/leaf`, or `leaf` at the root.
+    pub fn join(base: &str, leaf: &str) -> String {
+        if base.is_empty() {
+            leaf.to_string()
+        } else {
+            format!("{base}/{leaf}")
+        }
+    }
+
+    /// A folder name not yet taken under `base`: `folder`, `folder_2`, …
+    pub fn suggest_folder(&self, base: &str) -> String {
+        (1..)
+            .map(|i| {
+                if i == 1 {
+                    "folder".to_string()
+                } else {
+                    format!("folder_{i}")
+                }
+            })
+            .find(|n| {
+                let p = Editor::join(base, n);
+                !self.folders.contains(&p) && p != ROBOTS && p != INTERRUPTS
+            })
+            .unwrap_or_default()
+    }
+
+    /// A module name not yet taken anywhere in the tree: `module.py`,
+    /// `module_2.py`, … — anywhere, since stems are unique across it.
+    pub fn suggest_file(&self) -> String {
+        (1..)
+            .map(|i| {
+                if i == 1 {
+                    "module.py".to_string()
+                } else {
+                    format!("module_{i}.py")
+                }
+            })
+            .find(|n| !self.files.keys().any(|p| bare_name(p) == n))
+            .unwrap_or_default()
     }
 }
 
@@ -779,7 +841,15 @@ pub fn tree_panel(
             opened.push(path.to_string());
         }
     };
-    ui.heading("Programs");
+    if ui
+        .add(
+            egui::Label::new(egui::RichText::new("Programs").heading()).sense(egui::Sense::click()),
+        )
+        .on_hover_text("click to make the root the place for new files and folders")
+        .clicked()
+    {
+        state.editor.selected = None;
+    }
     if let Some(e) = &state.editor.compose_error {
         ui.colored_label(egui::Color32::LIGHT_RED, e);
     }
@@ -866,22 +936,37 @@ pub fn tree_panel(
     actions.extend(opened.into_iter().map(TreeAction::Open));
 
     ui.separator();
-    // New file, new folder, rename, delete.
+    // New file and new folder go into the selected folder (or the selected
+    // file's), each with a free name filled in; rename and delete act on
+    // the player's selection.
+    let base = state.editor.selected_folder();
+    if state.editor.new_file.is_empty() {
+        state.editor.new_file = state.editor.suggest_file();
+    }
+    if state.editor.new_folder.is_empty() {
+        state.editor.new_folder = state.editor.suggest_folder(&base);
+    }
+    let prefix = if base.is_empty() {
+        String::new()
+    } else {
+        format!("{base}/")
+    };
     ui.horizontal(|ui| {
-        let r = ui.add(
-            egui::TextEdit::singleline(&mut state.editor.new_file)
-                .hint_text("lib/nav.py")
-                .desired_width(140.0),
-        );
+        if !prefix.is_empty() {
+            ui.small(&prefix);
+        }
+        let r = ui.add(egui::TextEdit::singleline(&mut state.editor.new_file).desired_width(120.0));
         if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             || ui.small_button("new file").clicked()
         {
-            let name = state.editor.new_file.clone();
-            if !name.trim().is_empty() {
-                match state.editor.add_file(&name) {
+            let leaf = state.editor.new_file.trim().to_string();
+            if !leaf.is_empty() {
+                let path = Editor::join(&base, &leaf);
+                match state.editor.add_file(&path) {
                     Ok(()) => {
                         state.editor.new_file.clear();
-                        actions.push(TreeAction::Open(name.trim().trim_matches('/').to_string()));
+                        state.editor.selected = Some(path.clone());
+                        actions.push(TreeAction::Open(path));
                     }
                     Err(e) => state.status = e,
                 }
@@ -889,18 +974,22 @@ pub fn tree_panel(
         }
     });
     ui.horizontal(|ui| {
-        let r = ui.add(
-            egui::TextEdit::singleline(&mut state.editor.new_folder)
-                .hint_text("lib")
-                .desired_width(140.0),
-        );
+        if !prefix.is_empty() {
+            ui.small(&prefix);
+        }
+        let r =
+            ui.add(egui::TextEdit::singleline(&mut state.editor.new_folder).desired_width(120.0));
         if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             || ui.small_button("new folder").clicked()
         {
-            let name = state.editor.new_folder.clone();
-            if !name.trim().is_empty() {
-                match state.editor.add_folder(&name) {
-                    Ok(()) => state.editor.new_folder.clear(),
+            let leaf = state.editor.new_folder.trim().to_string();
+            if !leaf.is_empty() {
+                let path = Editor::join(&base, &leaf);
+                match state.editor.add_folder(&path) {
+                    Ok(()) => {
+                        state.editor.new_folder.clear();
+                        state.editor.selected = Some(path);
+                    }
                     Err(e) => state.status = e,
                 }
             }
@@ -1040,6 +1129,22 @@ mod tests {
             e.error_at("robots/1.py").is_some(),
             "the import of nav now fails"
         );
+        // Suggestions: a free name under the selected folder, the root when
+        // a fixed entry or nothing is selected.
+        e.selected = Some("lib".into());
+        assert_eq!(e.selected_folder(), "lib");
+        assert_eq!(e.suggest_folder("lib"), "folder");
+        e.add_folder("lib/folder").unwrap();
+        assert_eq!(e.suggest_folder("lib"), "folder_2");
+        e.selected = Some("lib/path.py".into());
+        assert_eq!(e.selected_folder(), "lib");
+        e.selected = Some("robots/1.py".into());
+        assert_eq!(e.selected_folder(), "");
+        assert_eq!(e.suggest_file(), "module.py");
+        e.add_file("module.py").unwrap();
+        assert_eq!(e.suggest_file(), "module_2.py");
+        e.add_folder("a/b/c").unwrap();
+        assert!(e.folders.contains("a") && e.folders.contains("a/b"));
         assert_eq!(line_range("ab\ncd", 7), 4..5);
     }
 }
