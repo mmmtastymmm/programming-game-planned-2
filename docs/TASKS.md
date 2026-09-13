@@ -31,13 +31,4 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M5 — Interface
-
-**T18 — Floating windows over the map in `render`**
-
-Q39: the map fills the window; one `egui` window per deployment's program
-holding what T17's panel held, plus inspector, tools and log windows, each
-dragged, resized, collapsed and closed; the time bar stays fixed and is the
-dock; the layout saved to `windows.toml` beside the programs whenever it
-changes and restored at start, the default layout when the file is missing
-or malformed. Nothing touches a hash.
+No task is open. The next one starts a new milestone.
