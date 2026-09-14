@@ -46,6 +46,9 @@ pub struct Editor {
     pub new_file: String,
     pub new_folder: String,
     pub rename_to: String,
+    /// The rename field takes focus on the next frame: a menu just made
+    /// an entry under a suggested name.
+    pub focus_rename: bool,
     /// Rows a window's text box shows.
     pub rows: usize,
 }
@@ -334,6 +337,72 @@ impl Editor {
         } else {
             format!("{base}/{leaf}")
         }
+    }
+
+    /// Rename or move a folder: every file and folder under it moves too.
+    pub fn rename_folder(&mut self, from: &str, to: &str) -> Result<(), String> {
+        let to = to.trim().trim_matches('/').to_string();
+        if !self.folders.contains(from) {
+            return Err(format!("`{from}` is not a folder"));
+        }
+        if to.is_empty() || to == ROBOTS || to == INTERRUPTS || self.folders.contains(&to) {
+            return Err(format!("`{to}` is taken"));
+        }
+        if to.starts_with(&format!("{from}/")) {
+            return Err("a folder cannot move into itself".into());
+        }
+        let prefix = format!("{from}/");
+        let moved: Vec<(String, Doc)> = self
+            .files
+            .iter()
+            .filter(|(p, _)| p.starts_with(&prefix))
+            .map(|(p, d)| (format!("{to}/{}", &p[prefix.len()..]), d.clone()))
+            .collect();
+        self.files.retain(|p, _| !p.starts_with(&prefix));
+        self.files.extend(moved);
+        let folders: Vec<String> = self.folders.iter().cloned().collect();
+        self.folders.clear();
+        for f in folders {
+            if f == from {
+                self.folders.insert(to.clone());
+            } else if let Some(rest) = f.strip_prefix(&prefix) {
+                self.folders.insert(format!("{to}/{rest}"));
+            } else {
+                self.folders.insert(f);
+            }
+        }
+        self.add_folder(&to)?;
+        self.recompose();
+        Ok(())
+    }
+
+    /// Rename a file or a folder to a leaf name in the same parent.
+    pub fn rename_leaf(&mut self, path: &str, leaf: &str) -> Result<String, String> {
+        let parent = path
+            .rsplit_once('/')
+            .map(|(d, _)| d.to_string())
+            .unwrap_or_default();
+        let to = Editor::join(&parent, leaf.trim());
+        if self.folders.contains(path) {
+            self.rename_folder(path, &to)?;
+        } else {
+            self.rename(path, &to)?;
+        }
+        Ok(to)
+    }
+
+    /// A new folder under `base` with a free name; its path.
+    pub fn create_folder_in(&mut self, base: &str) -> Result<String, String> {
+        let path = Editor::join(base, &self.suggest_folder(base));
+        self.add_folder(&path)?;
+        Ok(path)
+    }
+
+    /// A new file under `base` with a free name; its path.
+    pub fn create_file_in(&mut self, base: &str) -> Result<String, String> {
+        let path = Editor::join(base, &self.suggest_file());
+        self.add_file(&path)?;
+        Ok(path)
     }
 
     /// A folder name not yet taken under `base`: `folder`, `folder_2`, …
@@ -806,6 +875,15 @@ pub enum TreeAction {
     Open(String),
 }
 
+/// What a context menu asked for, applied after the tree is drawn.
+enum Menu {
+    NewFile(String),
+    NewFolder(String),
+    Rename(String),
+    Delete(String),
+    NextRobot,
+}
+
 /// The tree (`docs/07`, Q41): `robots`, `interrupts`, then the player's
 /// folders and files; a click opens; new file, new folder, rename and
 /// delete on the player's entries.
@@ -830,26 +908,57 @@ pub fn tree_panel(
         s
     };
     let files: Vec<String> = state.editor.files.keys().cloned().collect();
-    // Files clicked, gathered by the row closure and merged at the end.
+    // Files clicked, gathered by the row closure and merged at the end;
+    // what the context menus asked for, applied after the tree is drawn.
     let mut opened: Vec<String> = Vec::new();
-    let mut file_row = |ui: &mut egui::Ui, state: &mut ViewState, path: &str| {
-        let label = format!("{}{}", bare_name(path), mark(state, path));
-        let selected = state.editor.selected.as_deref() == Some(path);
-        let r = ui.selectable_label(selected, label);
-        if r.clicked() {
-            state.editor.selected = Some(path.to_string());
-            opened.push(path.to_string());
-        }
-    };
-    if ui
+    let mut menus: Vec<Menu> = Vec::new();
+    let mut file_row =
+        |ui: &mut egui::Ui, state: &mut ViewState, path: &str, menus: &mut Vec<Menu>| {
+            let label = format!("{}{}", bare_name(path), mark(state, path));
+            let selected = state.editor.selected.as_deref() == Some(path);
+            let r = ui.selectable_label(selected, label);
+            if r.clicked() {
+                state.editor.selected = Some(path.to_string());
+                opened.push(path.to_string());
+            }
+            let fixed = is_fixed(path);
+            r.context_menu(|ui| {
+                if ui.button("open").clicked() {
+                    opened.push(path.to_string());
+                    ui.close();
+                }
+                if !fixed {
+                    if ui.button("rename").clicked() {
+                        menus.push(Menu::Rename(path.to_string()));
+                        ui.close();
+                    }
+                    if ui.button("delete").clicked() {
+                        menus.push(Menu::Delete(path.to_string()));
+                        ui.close();
+                    }
+                }
+            });
+        };
+    let root = ui
         .add(
             egui::Label::new(egui::RichText::new("Programs").heading()).sense(egui::Sense::click()),
         )
-        .on_hover_text("click to make the root the place for new files and folders")
-        .clicked()
-    {
+        .on_hover_text(
+            "click to make the root the place for new files and folders; right-click to add",
+        );
+    if root.clicked() {
         state.editor.selected = None;
     }
+    root.context_menu(|ui| {
+        if ui.button("new file").clicked() {
+            menus.push(Menu::NewFile(String::new()));
+            ui.close();
+        }
+        if ui.button("new folder").clicked() {
+            menus.push(Menu::NewFolder(String::new()));
+            ui.close();
+        }
+    });
     if let Some(e) = &state.editor.compose_error {
         ui.colored_label(egui::Color32::LIGHT_RED, e);
     }
@@ -863,7 +972,7 @@ pub fn tree_panel(
                 .collect();
             robots = deployment_order_paths(robots);
             for p in &robots {
-                file_row(ui, state, p);
+                file_row(ui, state, p, &mut menus);
             }
             let next = state.editor.next_deployment();
             if ui
@@ -871,17 +980,21 @@ pub fn tree_panel(
                 .on_hover_text(format!("a file for deployment {next}"))
                 .clicked()
             {
-                let p = robot_path(&next);
-                state.editor.files.entry(p.clone()).or_default();
-                state.editor.recompose();
-                actions.push(TreeAction::Open(p));
+                menus.push(Menu::NextRobot);
+            }
+        })
+        .header_response
+        .context_menu(|ui| {
+            if ui.button("new robot file").clicked() {
+                menus.push(Menu::NextRobot);
+                ui.close();
             }
         });
     egui::CollapsingHeader::new(INTERRUPTS)
         .default_open(true)
         .show(ui, |ui| {
             for p in interrupt_paths() {
-                file_row(ui, state, &p);
+                file_row(ui, state, &p, &mut menus);
             }
         });
     // The player's tree: folders nested by path, files at each level.
@@ -894,7 +1007,8 @@ pub fn tree_panel(
         prefix: &str,
         files: &[String],
         folders: &[String],
-        file_row: &mut dyn FnMut(&mut egui::Ui, &mut ViewState, &str),
+        file_row: &mut dyn FnMut(&mut egui::Ui, &mut ViewState, &str, &mut Vec<Menu>),
+        menus: &mut Vec<Menu>,
     ) {
         let depth = if prefix.is_empty() {
             0
@@ -919,21 +1033,86 @@ pub fn tree_panel(
             .id_salt(f)
             .default_open(true);
             let r = header.show(ui, |ui| {
-                level(ui, state, &format!("{f}/"), files, folders, file_row);
+                level(ui, state, &format!("{f}/"), files, folders, file_row, menus);
             });
             if r.header_response.clicked() {
                 state.editor.selected = Some(f.clone());
             }
+            r.header_response.context_menu(|ui| {
+                if ui.button("new file here").clicked() {
+                    menus.push(Menu::NewFile(f.clone()));
+                    ui.close();
+                }
+                if ui.button("new folder here").clicked() {
+                    menus.push(Menu::NewFolder(f.clone()));
+                    ui.close();
+                }
+                if ui.button("rename").clicked() {
+                    menus.push(Menu::Rename(f.clone()));
+                    ui.close();
+                }
+                if ui.button("delete").clicked() {
+                    menus.push(Menu::Delete(f.clone()));
+                    ui.close();
+                }
+            });
         }
         for p in files
             .iter()
             .filter(|p| p.starts_with(prefix) && p.matches('/').count() == depth)
         {
-            file_row(ui, state, p);
+            file_row(ui, state, p, menus);
         }
     }
-    level(ui, state, "", &player_files, &folders, &mut file_row);
+    level(
+        ui,
+        state,
+        "",
+        &player_files,
+        &folders,
+        &mut file_row,
+        &mut menus,
+    );
     actions.extend(opened.into_iter().map(TreeAction::Open));
+
+    // What the menus asked for: a new entry is made under a free name and
+    // left in rename mode, so the real name is one Enter away.
+    for m in menus {
+        match m {
+            Menu::NewFile(base) => match state.editor.create_file_in(&base) {
+                Ok(p) => {
+                    state.editor.rename_to = bare_name(&p).to_string();
+                    state.editor.selected = Some(p.clone());
+                    state.editor.focus_rename = true;
+                    actions.push(TreeAction::Open(p));
+                }
+                Err(e) => state.status = e,
+            },
+            Menu::NewFolder(base) => match state.editor.create_folder_in(&base) {
+                Ok(p) => {
+                    state.editor.rename_to = bare_name(&p).to_string();
+                    state.editor.selected = Some(p);
+                    state.editor.focus_rename = true;
+                }
+                Err(e) => state.status = e,
+            },
+            Menu::Rename(p) => {
+                state.editor.rename_to = bare_name(&p).to_string();
+                state.editor.selected = Some(p);
+                state.editor.focus_rename = true;
+            }
+            Menu::Delete(p) => match state.editor.delete(&p) {
+                Ok(()) => state.editor.selected = None,
+                Err(e) => state.status = e,
+            },
+            Menu::NextRobot => {
+                let p = robot_path(&state.editor.next_deployment());
+                state.editor.files.entry(p.clone()).or_default();
+                state.editor.recompose();
+                actions.push(TreeAction::Open(p));
+            }
+        }
+    }
 
     ui.separator();
     // New file and new folder go into the selected folder (or the selected
@@ -997,21 +1176,33 @@ pub fn tree_panel(
     });
     if let Some(sel) = state.editor.selected.clone()
         && !is_fixed(&sel)
+        && sel != ROBOTS
+        && sel != INTERRUPTS
     {
         ui.horizontal(|ui| {
-            ui.add(
+            let id = egui::Id::new("tree-rename");
+            let r = ui.add(
                 egui::TextEdit::singleline(&mut state.editor.rename_to)
+                    .id(id)
                     .hint_text(format!("rename {}", bare_name(&sel)))
                     .desired_width(140.0),
             );
-            if ui.small_button("rename").clicked() {
-                let to = state.editor.rename_to.clone();
-                match state.editor.rename(&sel, &to) {
-                    Ok(()) => {
-                        state.editor.rename_to.clear();
-                        state.editor.selected = Some(to.trim().trim_matches('/').to_string());
+            if state.editor.focus_rename {
+                state.editor.focus_rename = false;
+                ui.memory_mut(|m| m.request_focus(id));
+            }
+            if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                || ui.small_button("rename").clicked()
+            {
+                let leaf = state.editor.rename_to.clone();
+                if !leaf.trim().is_empty() && leaf.trim() != bare_name(&sel) {
+                    match state.editor.rename_leaf(&sel, &leaf) {
+                        Ok(to) => {
+                            state.editor.rename_to.clear();
+                            state.editor.selected = Some(to);
+                        }
+                        Err(e) => state.status = e,
                     }
-                    Err(e) => state.status = e,
                 }
             }
             if ui.small_button("delete").clicked() {
@@ -1145,6 +1336,16 @@ mod tests {
         assert_eq!(e.suggest_file(), "module_2.py");
         e.add_folder("a/b/c").unwrap();
         assert!(e.folders.contains("a") && e.folders.contains("a/b"));
+        // Menus: a new entry under a free name, then a leaf rename that
+        // moves a folder's contents with it.
+        let f = e.create_folder_in("a").unwrap();
+        assert_eq!(f, "a/folder");
+        let file = e.create_file_in(&f).unwrap();
+        assert_eq!(file, "a/folder/module_2.py");
+        let moved = e.rename_leaf("a/folder", "tools").unwrap();
+        assert_eq!(moved, "a/tools");
+        assert!(e.files.contains_key("a/tools/module_2.py") && !e.folders.contains("a/folder"));
+        assert!(e.rename_leaf("robots/1.py", "x.py").is_err());
         assert_eq!(line_range("ab\ncd", 7), 4..5);
     }
 }
