@@ -321,7 +321,9 @@ impl Editor {
     pub fn selected_folder(&self) -> String {
         match &self.selected {
             Some(sel) if self.folders.contains(sel) => sel.clone(),
-            Some(sel) if sel == ROBOTS || sel == INTERRUPTS || is_fixed(sel) => String::new(),
+            Some(sel) if sel.is_empty() || sel == ROBOTS || sel == INTERRUPTS || is_fixed(sel) => {
+                String::new()
+            }
             Some(sel) => sel
                 .rsplit_once('/')
                 .map(|(d, _)| d.to_string())
@@ -939,68 +941,11 @@ pub fn tree_panel(
                 }
             });
         };
-    let root = ui
-        .add(
-            egui::Label::new(egui::RichText::new("Programs").heading()).sense(egui::Sense::click()),
-        )
-        .on_hover_text(
-            "click to make the root the place for new files and folders; right-click to add",
-        );
-    if root.clicked() {
-        state.editor.selected = None;
-    }
-    root.context_menu(|ui| {
-        if ui.button("new file").clicked() {
-            menus.push(Menu::NewFile(String::new()));
-            ui.close();
-        }
-        if ui.button("new folder").clicked() {
-            menus.push(Menu::NewFolder(String::new()));
-            ui.close();
-        }
-    });
+    ui.heading("Programs");
     if let Some(e) = &state.editor.compose_error {
         ui.colored_label(egui::Color32::LIGHT_RED, e);
     }
-    egui::CollapsingHeader::new(ROBOTS)
-        .default_open(true)
-        .show(ui, |ui| {
-            let mut robots: Vec<String> = files
-                .iter()
-                .filter(|p| robot_of(p).is_some())
-                .cloned()
-                .collect();
-            robots = deployment_order_paths(robots);
-            for p in &robots {
-                file_row(ui, state, p, &mut menus);
-            }
-            let next = state.editor.next_deployment();
-            if ui
-                .small_button("+")
-                .on_hover_text(format!("a file for deployment {next}"))
-                .clicked()
-            {
-                menus.push(Menu::NextRobot);
-            }
-        })
-        .header_response
-        .context_menu(|ui| {
-            if ui.button("new robot file").clicked() {
-                menus.push(Menu::NextRobot);
-                ui.close();
-            }
-        });
-    egui::CollapsingHeader::new(INTERRUPTS)
-        .default_open(true)
-        .show(ui, |ui| {
-            for p in interrupt_paths() {
-                file_row(ui, state, &p, &mut menus);
-            }
-        });
-    // The player's tree: folders nested by path, files at each level.
-    let mut player_files: Vec<String> = files.iter().filter(|p| !is_fixed(p)).cloned().collect();
-    player_files.sort();
-    let folders: Vec<String> = state.editor.folders.iter().cloned().collect();
+    // The player's folders, nested by path, with the files at each level.
     fn level(
         ui: &mut egui::Ui,
         state: &mut ViewState,
@@ -1064,15 +1009,79 @@ pub fn tree_panel(
             file_row(ui, state, p, menus);
         }
     }
-    level(
-        ui,
-        state,
-        "",
-        &player_files,
-        &folders,
-        &mut file_row,
-        &mut menus,
-    );
+    let mut player_files: Vec<String> = files.iter().filter(|p| !is_fixed(p)).cloned().collect();
+    player_files.sort();
+    let folders: Vec<String> = state.editor.folders.iter().cloned().collect();
+    // The root, `/`: a folder like any other — collapsed, selected, or
+    // right-clicked to add to it — holding the two fixed folders and then
+    // the player's.
+    let root_selected = state.editor.selected.as_deref() == Some("");
+    let root = egui::CollapsingHeader::new(if root_selected { "/ ◂" } else { "/" })
+        .id_salt("root")
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::CollapsingHeader::new(ROBOTS)
+                .default_open(true)
+                .show(ui, |ui| {
+                    let mut robots: Vec<String> = files
+                        .iter()
+                        .filter(|p| robot_of(p).is_some())
+                        .cloned()
+                        .collect();
+                    robots = deployment_order_paths(robots);
+                    for p in &robots {
+                        file_row(ui, state, p, &mut menus);
+                    }
+                    let next = state.editor.next_deployment();
+                    if ui
+                        .small_button("+")
+                        .on_hover_text(format!("a file for deployment {next}"))
+                        .clicked()
+                    {
+                        menus.push(Menu::NextRobot);
+                    }
+                })
+                .header_response
+                .context_menu(|ui| {
+                    if ui.button("new robot file").clicked() {
+                        menus.push(Menu::NextRobot);
+                        ui.close();
+                    }
+                });
+            // The handlers are fixed: a lock says nothing can be added here.
+            egui::CollapsingHeader::new(format!("{INTERRUPTS} \u{1F512}"))
+                .id_salt(INTERRUPTS)
+                .default_open(true)
+                .show(ui, |ui| {
+                    for p in interrupt_paths() {
+                        file_row(ui, state, &p, &mut menus);
+                    }
+                })
+                .header_response
+                .on_hover_text("the two handler files are fixed; nothing can be added here");
+            level(
+                ui,
+                state,
+                "",
+                &player_files,
+                &folders,
+                &mut file_row,
+                &mut menus,
+            );
+        });
+    if root.header_response.clicked() {
+        state.editor.selected = Some(String::new());
+    }
+    root.header_response.context_menu(|ui| {
+        if ui.button("new file").clicked() {
+            menus.push(Menu::NewFile(String::new()));
+            ui.close();
+        }
+        if ui.button("new folder").clicked() {
+            menus.push(Menu::NewFolder(String::new()));
+            ui.close();
+        }
+    });
     actions.extend(opened.into_iter().map(TreeAction::Open));
 
     // What the menus asked for: a new entry is made under a free name and
@@ -1175,6 +1184,7 @@ pub fn tree_panel(
         }
     });
     if let Some(sel) = state.editor.selected.clone()
+        && !sel.is_empty()
         && !is_fixed(&sel)
         && sel != ROBOTS
         && sel != INTERRUPTS
