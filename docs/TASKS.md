@@ -60,35 +60,3 @@ tick and the wait, with a resign beside it and a note of when the resign
 lands; on a desync, a red banner with the report and the replay's path,
 the replay written at once (T19's writer), and *leave* to the end screen.
 Nothing touches a hash.
-
-## M7 — Numbered deployments
-
-**T22 — Bot deployments become numbers, the color derived, the badge on the bot**
-
-⚠HASH — Q40. In `sim`: a team's bot deployments are `"1"`, `"2"`, …, one
-per printer without bound, created on unlock or on a deploy to any
-positive number; `print` takes a `num`; the `deployment` attribute is a
-`num` for a bot; a bot is named `<n>-<id>`; the snapshot lists the
-unlocked deployments and any holding or awaiting a bundle. The shipped
-programs (`data/starter`, the Fool, the golden player bundles) move from
-`red` to `1` and `print("red")` to `print(1)`; the golden replay fixture
-regenerates, and the PR says so. In `render`: the atlas by number through
-the paint list, cycling; the number drawn over every bot; the editor's
-tabs in numeric order with a *next* tab.
-
-## M8 — The program tree
-
-**T23 — The program tree: composition, the hook files, the tree panel**
-
-⚠HASH — Q41. In `lang`: `on_fault` and `on_dying` bind from `main.py`'s
-top-level `def`, else from the bundle file of that name. In `sim`'s
-loaders: a programs tree composes one bundle per deployment (`robots/d.py`
-as `main.py`, the interrupt files, the player's files by bare name, stems
-unique), and a card's `bundle = "1"` names a deployment of its tree; the
-starter, the Fool and the golden player move to the layout, and the
-golden replay fixture regenerates since every bundle gains the interrupt
-files. In `render`: the fixed tree panel on the right with the fixed and
-the player's entries, new file and folder, rename and delete; a click
-opens a file window; deploy fans out to every deployment a file reaches;
-the top bar keeps the status alone; the layout file keys windows by path.
-
