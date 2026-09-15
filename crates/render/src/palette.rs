@@ -270,8 +270,11 @@ pub struct Palette {
     pub ore_mats: Vec<Handle<StandardMaterial>>,
     pub ore_frames: Vec<Vec<Handle<Image>>>,
     pub rock_mats: Vec<Handle<StandardMaterial>>,
-    /// Bot atlases by deployment color name (Q35), `white` for none.
+    /// Bot atlases by color name (Q35), `white` for a deployment that is
+    /// not a number.
     pub bot_mats: HashMap<String, Handle<StandardMaterial>>,
+    /// The paint list a deployment's number picks its color from (Q40).
+    pub colors: Vec<String>,
     /// The white printer atlas, tinted per team on demand.
     pub printer_mat: Handle<StandardMaterial>,
     pub printer_ruined_mat: Handle<StandardMaterial>,
@@ -445,6 +448,9 @@ impl Palette {
             ore_frames,
             rock_mats,
             bot_mats,
+            colors: sim::Data::load()
+                .map(|d| d.machines.colors)
+                .unwrap_or_default(),
             printer_mat,
             printer_ruined_mat: atlas(materials, assets.load("textures/printer_atlas_ruined.png")),
             lens_barrel_mat: materials.add(StandardMaterial {
@@ -494,6 +500,19 @@ impl Palette {
             bar_fill_mat: plain(materials, Color::srgb(0.9, 0.2, 0.15), true),
             dim: HashMap::new(),
         }
+    }
+
+    /// The atlas a bot wears: deployment `n`'s is the `n`-th paint color,
+    /// cycling (Q40); a deployment that is not a number is white.
+    pub fn bot_color(&self, deployment: Option<&str>) -> &str {
+        deployment
+            .and_then(sim::world::deployment_number)
+            .and_then(|n| {
+                let len = self.colors.len() as u64;
+                (len > 0).then(|| self.colors[((n - 1) % len) as usize].as_str())
+            })
+            .filter(|c| self.bot_mats.contains_key(*c))
+            .unwrap_or("white")
     }
 
     /// A copy of `base` in the team's color: the base color, and the

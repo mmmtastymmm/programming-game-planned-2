@@ -63,7 +63,17 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
         ("kind", Value::str(r.kind)),
         ("model", Value::str(r.model.name())),
         ("team", int(i128::from(r.team.0))),
-        ("deployment", opt_str(r.deployment.as_deref())),
+        // A bot's deployment is its number (Q40); a building's its model.
+        (
+            "deployment",
+            match r.deployment.as_deref() {
+                Some(d) => match crate::world::deployment_number(d) {
+                    Some(n) => int(i128::from(n)),
+                    None => Value::str(d),
+                },
+                None => Value::None,
+            },
+        ),
         ("pos", pos_value(r.pos)),
         ("health", Value::Num(r.health)),
         ("busy", opt_str(r.busy)),

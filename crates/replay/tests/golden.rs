@@ -10,7 +10,7 @@
 //! and the PR explains the hash change. The scenario: the first map, a
 //! player team running the bundles under `tests/golden/player/`, and the
 //! Fool as the opposition, with a **mid-match redeploy** of the player's
-//! `red` color (T7: the hash-affecting path most likely to differ between
+//! deployment `1` (T7: the hash-affecting path most likely to differ between
 //! peers), a speed change, and marks. The alive test asserts on what the
 //! match must have done, so a run that did nothing cannot score green.
 
@@ -55,8 +55,8 @@ fn golden_replay() -> Replay {
         player,
         1,
         CommandKind::Deploy {
-            deployment: "red".into(),
-            bundle: bundle(&p.join("red")),
+            deployment: "1".into(),
+            bundle: bundle(&p.join("1")),
         },
     ));
     // A paint plan and an overlay plan beside the start, for the marks path.
@@ -85,7 +85,7 @@ fn golden_replay() -> Replay {
     let script =
         sim::script::Script::load(&data_dir().join("opposition/fool")).expect("the Fool's script");
     commands.extend(script.resolve(fool, map.teams[1][0]));
-    // Mid-match: a speed change, an unmark, and the redeploy of `red`.
+    // Mid-match: a speed change, an unmark, and the redeploy of `1`.
     commands.push(Command::new(40, player, 0, CommandKind::SetSpeed(2)));
     commands.push(Command::new(
         55,
@@ -101,7 +101,7 @@ fn golden_replay() -> Replay {
         player,
         0,
         CommandKind::Deploy {
-            deployment: "red".into(),
+            deployment: "1".into(),
             bundle: bundle(&p.join("red2")),
         },
     ));
@@ -111,8 +111,8 @@ fn golden_replay() -> Replay {
         player,
         0,
         CommandKind::Deploy {
-            deployment: "blue".into(),
-            bundle: bundle(&p.join("red")),
+            deployment: "2".into(),
+            bundle: bundle(&p.join("1")),
         },
     ));
     Replay {
@@ -192,7 +192,7 @@ fn golden_scenario_is_alive() {
     );
     assert!(
         w.machines.values().any(|m| m.team == TeamId(0)
-            && m.deployment.as_deref() == Some("red")
+            && m.deployment.as_deref() == Some("1")
             && m.program
                 .as_ref()
                 .is_some_and(|p| p.global("guard").is_some())),
@@ -209,10 +209,10 @@ fn golden_scenario_is_alive() {
     assert!(ore_moved, "no ore was ever picked");
     assert_eq!(w.speed, 2, "the SetSpeed did not land");
     assert!(
-        w.teams[&TeamId(0)].deployments["blue"].pending.is_some(),
+        w.teams[&TeamId(0)].deployments["2"].pending.is_some(),
         "the deploy to the locked color did not wait"
     );
-    assert!(w.teams[&TeamId(0)].deployments["blue"].bundle.is_none());
+    assert!(w.teams[&TeamId(0)].deployments["2"].bundle.is_none());
     let remembered = w.teams[&TeamId(0)]
         .memory
         .iter()

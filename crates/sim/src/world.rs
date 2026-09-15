@@ -291,6 +291,24 @@ pub struct TileMemory {
     pub building: Option<MachineRecord>,
 }
 
+/// A bot deployment's number, if `name` is one: decimal, positive, no
+/// leading zero, within `u32` (Q40). `"printer"` and `"depot"` are not.
+pub fn deployment_number(name: &str) -> Option<u64> {
+    if name.is_empty() || name.len() > 9 || name.starts_with('0') {
+        return None;
+    }
+    if !name.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    name.parse::<u64>().ok().filter(|n| *n >= 1)
+}
+
+/// Whether `name` is a deployment a team can hold: a building's, or a
+/// bot number.
+pub fn is_deployment_name(name: &str) -> bool {
+    name == "printer" || name == "depot" || deployment_number(name).is_some()
+}
+
 pub struct Team {
     pub id: TeamId,
     pub deployments: BTreeMap<String, Deployment>,
@@ -379,10 +397,9 @@ impl World {
         let team_starts: Vec<Vec<TilePos>> = world.map.teams.clone();
         for (i, starts) in team_starts.iter().enumerate() {
             let id = TeamId(i as u32);
+            // Bot deployments are numbered and created on demand (Q40);
+            // the building deployments exist from the start.
             let mut deployments = BTreeMap::new();
-            for c in &world.data.machines.colors {
-                deployments.insert(c.clone(), Deployment::default());
-            }
             deployments.insert("printer".to_string(), Deployment::default());
             deployments.insert("depot".to_string(), Deployment::default());
             let memory = world
@@ -500,17 +517,18 @@ impl World {
         (self.printers_of(team) as u64).saturating_mul(self.data.machines.bots_per_printer) as usize
     }
 
-    /// The colors a team may print and deploy to: one per printer, in
-    /// order (Q24).
-    pub fn unlocked_colors(&self, team: TeamId) -> Vec<String> {
-        let n = self.printers_of(team).min(self.data.machines.colors.len());
-        self.data.machines.colors[..n].to_vec()
+    /// The bot deployments a team may print and deploy to: `"1"` through
+    /// its printer count, in order (Q24, Q40).
+    pub fn unlocked_deployments(&self, team: TeamId) -> Vec<String> {
+        (1..=self.printers_of(team) as u64)
+            .map(|n| n.to_string())
+            .collect()
     }
 
     pub fn is_unlocked(&self, team: TeamId, deployment: &str) -> bool {
         deployment == "printer"
             || deployment == "depot"
-            || self.unlocked_colors(team).iter().any(|c| c == deployment)
+            || deployment_number(deployment).is_some_and(|n| n <= self.printers_of(team) as u64)
     }
 
     /// The program a deployment currently runs.
@@ -542,7 +560,11 @@ impl World {
             .iter()
             .map(|k| (k.clone(), md.store.get(k).copied().unwrap_or(Num::ZERO)))
             .collect();
-        let name = format!("{}{}", deployment.as_deref().unwrap_or(model.name()), id.0);
+        // A bot is `<deployment>-<id>`, a building `<model><id>` (Q40).
+        let name = match (&deployment, model) {
+            (Some(d), Model::Bot) => format!("{d}-{}", id.0),
+            _ => format!("{}{}", model.name(), id.0),
+        };
         let program = deployment.as_ref().map(|d| {
             let p = self.program_of(team, d);
             let mut m = lang::Machine::new(&p, self.costs.clone(), self.limits.clone());

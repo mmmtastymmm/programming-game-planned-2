@@ -57,8 +57,10 @@ impl Sim {
         }
         match &c.kind {
             CommandKind::Deploy { deployment, bundle } => {
-                if !w.teams[&c.sender].deployments.contains_key(deployment) {
-                    return Err(format!("no deployment `{deployment}`"));
+                if !crate::world::is_deployment_name(deployment) {
+                    return Err(format!(
+                        "no deployment `{deployment}`: a bot deployment is a positive number (Q40)"
+                    ));
                 }
                 load_bundle(bundle, &w.limits).map(|_| ())
             }
@@ -164,13 +166,20 @@ impl Sim {
         match &c.kind {
             CommandKind::Deploy { deployment, bundle } => {
                 let loaded = load_bundle(bundle, &w.limits).map_err(|_| ())?;
-                if !w.teams[&c.sender].deployments.contains_key(deployment) {
+                if !crate::world::is_deployment_name(deployment) {
                     return Err(());
                 }
+                // The slot exists once something is deployed to it (Q40).
+                w.teams
+                    .get_mut(&c.sender)
+                    .expect("team")
+                    .deployments
+                    .entry(deployment.clone())
+                    .or_default();
                 if w.is_unlocked(c.sender, deployment) {
                     self.deploy(c.sender, deployment, loaded);
                 } else {
-                    // Waits in the slot until the color unlocks (docs/02).
+                    // Waits in the slot until the deployment unlocks (docs/02).
                     let slot = w
                         .teams
                         .get_mut(&c.sender)
@@ -244,10 +253,10 @@ impl Sim {
         }
     }
 
-    /// Colors that unlocked with a pending deploy take it now (docs/02,
-    /// Locking).
+    /// Deployments that unlocked with a pending deploy take it now
+    /// (docs/02, Locking).
     fn apply_pending_deploys(&mut self, team: TeamId) {
-        let unlocked = self.world.unlocked_colors(team);
+        let unlocked = self.world.unlocked_deployments(team);
         for color in unlocked {
             let pending = self
                 .world
