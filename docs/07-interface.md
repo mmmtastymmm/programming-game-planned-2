@@ -22,6 +22,24 @@ here changes a hash; a peer with a different renderer sees the same match.
   closed by the player; the time bar is the only fixed strip and is the
   dock that opens each; the layout is remembered in `windows.toml` beside
   the programs.
+- **A start screen, an end screen, and the replay always saved (Q36).**
+  The map, the cards, the programs directory and play, host or join are
+  picked in the game; the end names the winner or the draw, the tick, the
+  hash and the replay's path; the replay is written as
+  `replays/<map>-<tick>-<hash>.ron` inside the programs directory whenever
+  a match ends or desyncs; every option is also a command-line flag, which
+  skips the screen.
+- **The mark tools are a strip, a tool stays armed, a drag marks, and a
+  plan previews (Q37).** Rows of building models, paint colors and overlay
+  labels each ending in a clear, `B`/`P`/`O` and `1`–`9` to pick, `Esc` to
+  disarm; a drag marks every tile it crosses once, `Shift`+click withdraws
+  the armed kind; the player's own plans show as a translucent version of
+  their effect, and the armed tool as a ghost under the cursor.
+- **A stall is a banner with a resign; a desync freezes the match with
+  the report and the replay saved (Q38).** The banner names the peer, the
+  tick and the wait; everything else keeps working. A desync's banner
+  carries the report and the replay's path, and *leave* goes to the end
+  screen.
 - **A fault reaches the player on every channel (Q34).** A mark over the
   machine while its fault record is fresh, a line per deployment counting
   faults by file and line in the programs panel, the full record in the
@@ -42,7 +60,7 @@ The map fills the window; everything else floats over it (Q39):
 | **the time bar** — the one fixed strip, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end; and the dock: a toggle per window below | Q6, Q12, `06`, Q39 |
 | **one per deployment** | the file being edited, its running version against its working copy, the deploy and export buttons; the deployment's fault summary | Q33, Q34, Q39 |
 | **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions | Q34 |
-| **tools** | the mark tools and resign | open — `Q37` |
+| **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 
 Every window drags, resizes, collapses and closes, and several programs may
@@ -110,17 +128,52 @@ clears only when those machines fault again or die.
 
 ## Marks
 
-The mark tools — a building model, one of the eight paint colors, one of
-the overlay labels in data, a clear, a withdrawal — become `Mark` and
-`Unmark` commands on the tile clicked (Q10, Q26, Q27). How the tools are
-picked and how the team's own plans read on the map is open — `Q37`.
+The tools window is a strip (Q37): a row of the building models a plan may
+name (`printer` excluded, Q31), a row of the eight paint colors, a row of
+the overlay labels in data (Q10, Q26, Q27), each row ending in a *clear* —
+the plan to empty that slot. `B`, `P` and `O` pick a row and `1`–`9` an
+entry; a click arms a tool, `Esc` or a second click disarms it.
+
+With a tool armed, a left click on a tile is a `Mark` of that kind and
+value; a left drag marks every tile the cursor crosses, once per drag,
+and does not pan the camera; `Shift`+click is an `Unmark` of the armed
+kind. With none armed, a click selects and a drag pans. The renderer
+submits and forgets (Q15): what the player sees is the plan the sim
+reports, `delay` ticks later.
+
+A tile carrying the player's team's plan shows it as a translucent version
+of its effect — the color at half alpha, the overlay's label, a ghost of
+the building; a clear plan hatches the slot — and the armed tool shows the
+same ghost under the cursor. Only the player's team's plans are drawn,
+since plans are private (`03`), and the snapshot carries that team's plan
+values per tile for it: a read, in no hash.
 
 ## The match
 
-What the screen shows before the first tick and after the last — picking a
-map and an opposition, hosting or joining, the winner, saving the replay —
-is open — `Q36`. What the player may do while stalled on a peer or after a
-desync is open — `Q38`.
+**Before the first tick** (Q36) the start screen lists the maps in
+`data/maps` and the cards in `data/opposition` (`04`), takes the programs
+directory (Q33), and offers *play* alone against the cards, *host* on an
+address, or *join* one (`06`). Starting reads the programs in and builds
+the driver as the command line does; every choice is also a flag, and a
+flag skips the screen, so a headless run and CI need none.
+
+**After the last** the end screen names the winner or the draw (`04`), the
+ending tick, the final hash and the replay's path; *again* returns to the
+start, *quit* leaves. **The replay is always saved** when a match ends or
+desyncs: `(map, command log)` in `crates/replay`'s RON, as
+`replays/<map>-<tick>-<hash>.ron` inside the programs directory, named by
+the tick and hash so two peers that agree write the same name.
+
+**Stalled** (Q38) — past `stall_report_ticks`, `06` — a banner over the
+map names the peer awaited, the tick and the seconds waited, with a resign
+button beside it; the windows, the editor and the marks keep working, and a
+submission lands on the first tick still open. The banner clears when the
+set arrives. **Desynced**, the match is frozen where the driver stopped it:
+a red banner with the report — the tick, this peer's hash, the other's —
+the replay written at once with the desync tick and this peer's hash in its
+name, the path in the banner, and *leave* to the end screen, which says the
+match ended in a desync. A lost peer is neither: its sets stop being
+awaited and the match continues, with a line in the log.
 
 ## Costs
 
@@ -129,6 +182,5 @@ Every number this doc names is a tuning constant in `data/interface.toml`:
 
 ## What this doc leaves open
 
-- **The match's start and end screens** — `Q36`.
-- **The mark tools' ergonomics** — `Q37`.
-- **The stall and the desync in the interface** — `Q38`.
+Nothing, for now. Dropping a late peer on a timeout, if PvP wants it, is
+a `docs/06` rule under a new number, not an interface one (Q38).

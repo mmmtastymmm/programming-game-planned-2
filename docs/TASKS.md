@@ -31,4 +31,32 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-No task is open. The next one starts a new milestone.
+## M6 — The match's edges
+
+**T19 — The start and end screens, and the saved replay**
+
+Q36: a start screen listing `data/maps` and `data/opposition`, taking the
+programs directory, offering play, host or join, and building the driver
+as `main.rs` does; an end screen with the winner or draw, the tick, the
+hash and the replay's path, *again* and *quit*; the replay written as
+`replays/<map>-<tick>-<hash>.ron` inside the programs directory whenever a
+match ends or desyncs (T21 saves on a desync too). Every command-line flag
+stays and skips the screen. Nothing touches a hash.
+
+**T20 — The mark strip, drag marking, the armed tool and the plan preview**
+
+Q37: the tools window as three rows from data, each ending in a clear,
+with `B`/`P`/`O` and `1`–`9`; a tool armed until `Esc`; a drag marking
+every tile it crosses once and not panning; `Shift`+click an `Unmark` of
+the armed kind; the player's own plans drawn as a translucent version of
+their effect and the armed tool as a ghost under the cursor. The snapshot
+gains the player's team's plan values per tile — a read the renderer
+makes, in no hash — replacing the driver's `snapshot_plan` peek.
+
+**T21 — The stall banner with resign, and the desync freeze**
+
+Q38: a banner over the map past `stall_report_ticks` naming the peer, the
+tick and the wait, with a resign beside it and a note of when the resign
+lands; on a desync, a red banner with the report and the replay's path,
+the replay written at once (T19's writer), and *leave* to the end screen.
+Nothing touches a hash.
