@@ -75,8 +75,8 @@ pass.
   which byte-exact program version a machine runs is part of the state hash.
 - **The language's rulings live in [01-language](01-language.md)** — Q5
   and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
-  interrupts) and Q14 and Q19 (numbers) are the Decided entries of the parts
-  that elaborate them, and they are not repeated here.
+  interrupts), Q14 and Q19 (numbers) and Q41's hook sources are the Decided
+  entries of the parts that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
   (sensing and memory), Q9, Q23, Q24, Q25, Q30, Q31 and Q40 (production,
   health, the cap, combat, the printer and the numbered deployments), and
@@ -89,9 +89,9 @@ pass.
   [01-language](01-language.md)'s.
 - **The interface's rulings live in [07-interface](07-interface.md)** —
   Q33 (the editor), Q34 (faults), Q35 (a bot's color), Q36 (the start and
-  end screens), Q37 (the mark tools), Q38 (the stall and the desync) and
-  Q39 (windows, amending Q33) are its Decided entries, and they are not
-  repeated here.
+  end screens), Q37 (the mark tools), Q38 (the stall and the desync), Q39
+  (windows, amending Q33) and Q41 (the program tree, amending Q33 and Q39)
+  are its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in

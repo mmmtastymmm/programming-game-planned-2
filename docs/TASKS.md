@@ -75,3 +75,20 @@ programs (`data/starter`, the Fool, the golden player bundles) move from
 regenerates, and the PR says so. In `render`: the atlas by number through
 the paint list, cycling; the number drawn over every bot; the editor's
 tabs in numeric order with a *next* tab.
+
+## M8 — The program tree
+
+**T23 — The program tree: composition, the hook files, the tree panel**
+
+⚠HASH — Q41. In `lang`: `on_fault` and `on_dying` bind from `main.py`'s
+top-level `def`, else from the bundle file of that name. In `sim`'s
+loaders: a programs tree composes one bundle per deployment (`robots/d.py`
+as `main.py`, the interrupt files, the player's files by bare name, stems
+unique), and a card's `bundle = "1"` names a deployment of its tree; the
+starter, the Fool and the golden player move to the layout, and the
+golden replay fixture regenerates since every bundle gains the interrupt
+files. In `render`: the fixed tree panel on the right with the fixed and
+the player's entries, new file and folder, rename and delete; a click
+opens a file window; deploy fans out to every deployment a file reaches;
+the top bar keeps the status alone; the layout file keys windows by path.
+

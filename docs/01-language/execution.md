@@ -56,8 +56,11 @@ bound all of it. Every rule here is hash-affecting.
   end of `main.py` starts again from the top with all variables cleared, with
   no interrupt involved, so there is no idle state either: a machine is always in
   main flow or in a handler. Hooks are bound at load, before any statement
-  runs, and the binding survives every variable clear; rebinding the name at
-  runtime changes a global, not the hook.
+  runs — `on_fault` to a top-level `def on_fault` in `main.py` if there is
+  one, else to one in the bundle file `on_fault.py`, else to nothing;
+  `on_dying` and `on_dying.py` the same (Q41) — and the binding survives
+  every variable clear; rebinding the name at runtime changes a global, not
+  the hook.
 - **No events: the world reaches a program only through the queries it polls,
   and the interrupt kinds stay four (Q16).** Vision and sound are queries
   (Q7), and so is anything else `docs/02` gives a machine; a program that wants

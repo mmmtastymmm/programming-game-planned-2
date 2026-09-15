@@ -48,7 +48,11 @@ same bundle once a redeploy has reached it; until then, the one it had.
 
 - **File names** match `[a-z_][a-z0-9_]*\.py` and are unique within the bundle.
   The entry file is **`main.py`**, which every bundle must contain. The name
-  without `.py` is the module name `import` sees.
+  without `.py` is the module name `import` sees. Two names are also hook
+  sources: a top-level `def on_fault` in `on_fault.py` binds the `on_fault`
+  hook when `main.py` defines none, and `on_dying.py` the `on_dying` hook
+  ([execution](execution.md), Q41); both are ordinary modules otherwise.
+  How a player's tree of files becomes a bundle is `07`'s.
 - **Source is UTF-8 bytes, stored byte-exact** — no whitespace normalisation, no
   line-ending translation, no BOM stripping. A file that is not valid UTF-8 is
   rejected at load.
