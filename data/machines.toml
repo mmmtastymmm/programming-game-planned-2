@@ -10,6 +10,9 @@ kinds = ["ore"]
 
 [deployment]
 # bot deployments, unlocked one per printer, in this order (Q24)
+# the paint colors a plan may name (Q10), and the cycle a bot's drawn color is
+# read from by its deployment's number (Q40); deployments themselves are
+# numbered, not named
 colors = ["red", "blue", "green", "yellow", "purple", "orange", "cyan", "magenta"]
 bots_per_printer = 10
 # scalars a name may hold (docs/02, A machine)

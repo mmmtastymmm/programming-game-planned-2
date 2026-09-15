@@ -60,3 +60,18 @@ tick and the wait, with a resign beside it and a note of when the resign
 lands; on a desync, a red banner with the report and the replay's path,
 the replay written at once (T19's writer), and *leave* to the end screen.
 Nothing touches a hash.
+
+## M7 — Numbered deployments
+
+**T22 — Bot deployments become numbers, the color derived, the badge on the bot**
+
+⚠HASH — Q40. In `sim`: a team's bot deployments are `"1"`, `"2"`, …, one
+per printer without bound, created on unlock or on a deploy to any
+positive number; `print` takes a `num`; the `deployment` attribute is a
+`num` for a bot; a bot is named `<n>-<id>`; the snapshot lists the
+unlocked deployments and any holding or awaiting a bundle. The shipped
+programs (`data/starter`, the Fool, the golden player bundles) move from
+`red` to `1` and `print("red")` to `print(1)`; the golden replay fixture
+regenerates, and the PR says so. In `render`: the atlas by number through
+the paint list, cycling; the number drawn over every bot; the editor's
+tabs in numeric order with a *next* tab.

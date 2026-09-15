@@ -37,7 +37,7 @@ Every tile holds exactly:
 |---|---|
 | `terrain` | one of the three terrain kinds below, fixed for the match |
 | `deposit` | a `dict` of resource kind to amount, or `None`; on any passable tile the map puts one on |
-| `paint` | the tile's one paint, a deployment color or `None`; influences nothing |
+| `paint` | the tile's one paint, a color from `deployment.colors` in data or `None`; influences nothing |
 | `overlay` | the tile's one overlay, a label from `mark.overlays` in data or `None`; influences bots through the programs that read it |
 | `plans` | **per team**, three plans — paint, overlay, building — each `None` or a value (a color, a label, a model; or a plan to clear); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27), read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
