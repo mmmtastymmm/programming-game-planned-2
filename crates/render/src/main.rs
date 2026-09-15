@@ -62,18 +62,19 @@ fn main() {
         eprintln!("{}: {e}", map.display());
         std::process::exit(1);
     });
-    let (opening, deployed) = match &programs {
+    let (opening, tree, deployed) = match &programs {
         Some(dir) => match render::programs::read_all(dir) {
-            Ok(bundles) => (
+            Ok((tree, bundles)) => (
                 render::programs::deploys_for(&bundles, &Default::default()),
+                tree,
                 bundles,
             ),
             Err(e) => {
                 eprintln!("{e}");
-                (Vec::new(), Default::default())
+                (Vec::new(), Default::default(), Default::default())
             }
         },
-        None => (Vec::new(), Default::default()),
+        None => (Vec::new(), Default::default(), Default::default()),
     };
     let dirs: Vec<&std::path::Path> = opposition.iter().map(PathBuf::as_path).collect();
     let driver = match (&host, &join) {
@@ -87,5 +88,5 @@ fn main() {
         eprintln!("{e}");
         std::process::exit(1);
     });
-    render::app::run(driver, programs, deployed);
+    render::app::run(driver, programs, tree, deployed);
 }

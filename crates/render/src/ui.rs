@@ -15,6 +15,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use sim::world::TileState;
 use sim::{CommandKind, PlanKind};
+use std::collections::BTreeSet;
 
 /// Seconds between saves of a changed layout.
 const SAVE_EVERY: f32 = 1.0;
@@ -27,13 +28,8 @@ pub fn toggle(state: &mut ViewState, name: &str) {
     }
 }
 
-/// The windows in dock order: the deployments as the editor orders them,
-/// then the inspector, the tools and the log.
-fn window_names(state: &ViewState) -> Vec<String> {
-    let mut names = editor::deployment_order(state.editor.docs.keys().cloned());
-    names.extend(["inspector", "tools", "log"].map(String::from));
-    names
-}
+/// The three windows that are not files.
+const FIXED_WINDOWS: [&str; 3] = ["inspector", "tools", "log"];
 
 pub fn panels(
     mut contexts: EguiContexts,
@@ -55,22 +51,6 @@ pub fn panels(
             .max_rect(ctx.viewport_rect()),
     );
     editor::sync(&driver, &mut state);
-    let names = window_names(&state);
-    // The first color deployment opens by default: it is what the player
-    // edits most.
-    let first_color = names
-        .iter()
-        .find(|n| {
-            n.as_str() != "printer" && n.as_str() != "depot" && state.editor.docs.contains_key(*n)
-        })
-        .cloned();
-    // Where a window may go: the viewport under the bar. The bar's height
-    // is known only after it is drawn; the defaults, seeded once, use a
-    // guess, and the constraint below uses the measured rect.
-    let guess = {
-        let r = ctx.viewport_rect();
-        egui::Rect::from_min_max(egui::pos2(r.min.x, r.min.y + 52.0), r.max)
-    };
 
     egui::Panel::top("time").show(&mut root, |ui| {
         let d = &mut driver.0;
@@ -130,70 +110,91 @@ pub fn panels(
                 );
             }
         });
-        // The dock: a toggle per window.
-        ui.horizontal_wrapped(|ui| {
-            let snap = d.snapshot().clone();
-            let team = snap.teams.iter().find(|t| t.id == d.player);
-            let screen = guess;
-            for (i, name) in names.iter().enumerate() {
-                let open = state
-                    .layout
-                    .placement(name, || {
-                        default_placement(name, i, screen, Some(name) == first_color.as_ref())
-                    })
-                    .open;
-                let label = if editor::deployment_order([name.clone()].into_iter()).len() == 1
-                    && state.editor.docs.contains_key(name)
-                {
-                    let running = team.and_then(|t| t.deployments.get(name).copied().flatten());
-                    editor::title(&state, name, running)
-                } else {
-                    name.clone()
-                };
-                if ui.selectable_label(open, label).clicked() {
-                    toggle(&mut state, name);
-                }
-            }
-            // The next number (Q40): a program for a printer not yet taken.
-            let next = state.editor.next_deployment();
-            if ui
-                .small_button("+")
-                .on_hover_text(format!("open deployment {next}"))
-                .clicked()
-            {
-                state.editor.open_doc(&next);
-                let p = state.layout.placement(&next, || {
-                    default_placement(&next, names.len(), screen, true)
-                });
-                p.open = true;
-                state.layout_dirty = true;
-            }
-            if !state.status.is_empty() {
-                ui.separator();
-                ui.small(&state.status);
-            }
-        });
+        if !state.status.is_empty() {
+            ui.small(&state.status);
+        }
     });
 
-    // The windows, constrained to what the bar leaves.
-    let screen = root.available_rect_before_wrap();
-    for (i, name) in names.iter().enumerate() {
-        let placement = *state.layout.placement(name, || {
-            default_placement(name, i, screen, Some(name) == first_color.as_ref())
+    // The tree (Q41), fixed down the left; its foot opens the other
+    // windows.
+    let snap = driver.0.snapshot().clone();
+    let player = driver.0.player;
+    let open_now: BTreeSet<String> = state
+        .layout
+        .windows
+        .iter()
+        .filter(|(_, p)| p.open)
+        .map(|(k, _)| k.clone())
+        .collect();
+    let mut to_open: Vec<String> = Vec::new();
+    egui::Panel::left("tree")
+        .exact_size(280.0)
+        .show(&mut root, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height() - 40.0)
+                .show(ui, |ui| {
+                    for a in editor::tree_panel(ui, &mut state, &snap, player, &open_now) {
+                        match a {
+                            editor::TreeAction::Open(p) => to_open.push(p),
+                        }
+                    }
+                });
+            ui.separator();
+            ui.horizontal(|ui| {
+                for name in FIXED_WINDOWS {
+                    let open = open_now.contains(name);
+                    if ui.selectable_label(open, name).clicked() {
+                        to_open.push(name.to_string());
+                    }
+                }
+            });
         });
-        if !placement.open {
-            continue;
-        }
+    // The first run opens the first robot file and the fixed windows.
+    if state.layout.windows.is_empty() {
+        let first = state
+            .editor
+            .files
+            .keys()
+            .filter(|p| {
+                editor::robot_of(p)
+                    .and_then(sim::world::deployment_number)
+                    .is_some()
+            })
+            .min_by_key(|p| editor::robot_of(p).and_then(sim::world::deployment_number))
+            .cloned();
+        to_open.extend(first);
+        to_open.extend(FIXED_WINDOWS.iter().map(|s| s.to_string()));
+    }
+    // A file clicked in the tree opens; a fixed window's label toggles.
+    let screen = root.available_rect_before_wrap();
+    let count = state.layout.windows.len();
+    for (i, name) in to_open.iter().enumerate() {
+        let fixed = FIXED_WINDOWS.contains(&name.as_str());
+        let existed = state.layout.windows.contains_key(name);
+        let p = state
+            .layout
+            .placement(name, || default_placement(name, count + i, screen, true));
+        p.open = if fixed && existed { !p.open } else { true };
+        state.layout_dirty = true;
+    }
+
+    // The windows, constrained to what the bars leave: every open file,
+    // and the three fixed ones.
+    let names: Vec<String> = state
+        .layout
+        .windows
+        .iter()
+        .filter(|(k, p)| {
+            p.open && (state.editor.files.contains_key(*k) || FIXED_WINDOWS.contains(&k.as_str()))
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
+    for name in &names {
+        let placement = state.layout.windows[name];
         let mut open = true;
-        let is_deployment = state.editor.docs.contains_key(name);
-        let title = if is_deployment {
-            let snap = driver.0.snapshot();
-            let running = snap
-                .teams
-                .iter()
-                .find(|t| t.id == driver.0.player)
-                .and_then(|t| t.deployments.get(name).copied().flatten());
-            editor::title(&state, name, running)
+        let is_file = state.editor.files.contains_key(name);
+        let title = if is_file {
+            editor::title(&state, name, &snap, player)
         } else {
             name.clone()
         };
@@ -205,7 +206,7 @@ pub fn panels(
             .resizable(true)
             .collapsible(true)
             .show(&ctx, |ui| {
-                if is_deployment {
+                if is_file {
                     editor::window_body(ui, &mut driver, &mut state, name);
                 } else {
                     match name.as_str() {
@@ -261,6 +262,10 @@ pub fn panels(
                 continue;
             };
             let pos = egui::pos2(at.x, at.y);
+            // Under the tree or the bar, not over them.
+            if !screen.contains(pos) {
+                continue;
+            }
             let text = n.to_string();
             for d in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
                 painter.text(

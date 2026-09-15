@@ -18,7 +18,7 @@ here changes a hash; a peer with a different renderer sees the same match.
 - **The programs are one tree, shown as a file tree (Q41).** `robots/`
   with a file per deployment, `interrupts/` with `on_fault.py` and
   `on_dying.py`, both fixed, and the player's own files and folders,
-  shared by every robot; a fixed panel on the right shows it and a click
+  shared by every robot; a fixed panel down the left shows it and a click
   opens a file as a window; the top bar keeps the status alone. A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
@@ -68,7 +68,7 @@ floats over it (Q39, Q41):
 | Window | Holds | Ruled in |
 |---|---|---|
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end; nothing else | Q6, Q12, `06`, Q41 |
-| **the tree** — fixed, down the right | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools and the log | Q41 |
+| **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools and the log | Q41 |
 | **one per open file** | the file being edited, the versions it is deployed as, the deploy and export buttons; the faults naming this file | Q33, Q34, Q39, Q41 |
 | **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions | Q34 |
 | **tools** | the mark strip and resign | Q37 |

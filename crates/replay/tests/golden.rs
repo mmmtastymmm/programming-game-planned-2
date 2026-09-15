@@ -27,8 +27,14 @@ fn data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data")
 }
 
+/// A raw bundle directory, for the redeploy's second version.
 fn bundle(dir: &Path) -> sim::Bundle {
     sim::script::read_bundle(dir).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The player's tree (Q41), composed: one bundle per robot file.
+fn tree(dir: &Path) -> std::collections::BTreeMap<String, sim::Bundle> {
+    sim::script::read_tree(dir).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// The canonical golden scenario.
@@ -41,13 +47,14 @@ fn golden_replay() -> Replay {
     let mut commands = Vec::new();
     // The player's opening set: one deploy per deployment, agreed for tick 0.
     let p = fixture_dir().join("player");
+    let composed = tree(&p);
     commands.push(Command::new(
         0,
         player,
         0,
         CommandKind::Deploy {
             deployment: "printer".into(),
-            bundle: bundle(&p.join("printer")),
+            bundle: composed["printer"].clone(),
         },
     ));
     commands.push(Command::new(
@@ -56,7 +63,7 @@ fn golden_replay() -> Replay {
         1,
         CommandKind::Deploy {
             deployment: "1".into(),
-            bundle: bundle(&p.join("1")),
+            bundle: composed["1"].clone(),
         },
     ));
     // A paint plan and an overlay plan beside the start, for the marks path.
@@ -102,7 +109,7 @@ fn golden_replay() -> Replay {
         0,
         CommandKind::Deploy {
             deployment: "1".into(),
-            bundle: bundle(&p.join("red2")),
+            bundle: bundle(&fixture_dir().join("red2")),
         },
     ));
     // A deploy to a locked color waits in its slot and never applies here.
@@ -112,7 +119,7 @@ fn golden_replay() -> Replay {
         0,
         CommandKind::Deploy {
             deployment: "2".into(),
-            bundle: bundle(&p.join("1")),
+            bundle: composed["1"].clone(),
         },
     ));
     Replay {

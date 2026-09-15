@@ -14,13 +14,17 @@
 // real problem.
 //
 // ONE FIXTURE, RESTORED BETWEEN CASES. The doc half copies the tree per
-// mutation because a copy is cheap; a Rust fixture is a cargo workspace, and
-// cargo fingerprints by path, so the copy lives at a stable path under target/
-// (rebuilt incrementally across runs, and cached by CI with the rest of
-// target/) and shares the repo's target directory. Every mutation names the
-// files it touches, which are backed up before and restored after — a
-// mutation that touched an unlisted file would leak into the next case, so the
-// runner also refuses one whose named file it cannot find.
+// mutation because a copy is cheap; a Rust fixture is a cargo workspace, so
+// the copy lives at a stable path under target/ (rebuilt incrementally across
+// runs, and cached by CI with the rest of target/). It builds into a target
+// directory OF ITS OWN, target/check-checks/target: it shared the repo's for a
+// while, and cargo keyed the fixture's crates to the same unit hashes as the
+// real ones, so a fixture build left the real workspace with a stale lang
+// whose tests then failed to compile against the source on disk — twice, an
+// hour apart, until the two were separated. Every mutation names the files it
+// touches, which are backed up before and restored after — a mutation that
+// touched an unlisted file would leak into the next case, so the runner also
+// refuses one whose named file it cannot find.
 
 import { spawnSync } from "node:child_process";
 import {
@@ -76,7 +80,7 @@ export function runRustGates(repo) {
   const fixture = join(root, "target", "check-checks", "tree");
   const env = {
     ...process.env,
-    CARGO_TARGET_DIR: join(root, "target"),
+    CARGO_TARGET_DIR: join(root, "target", "check-checks", "target"),
     // A leaked UPDATE_GOLDEN would turn every drift into a regeneration.
     UPDATE_GOLDEN: undefined,
   };

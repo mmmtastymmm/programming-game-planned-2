@@ -446,3 +446,83 @@ fn the_record_survives_restart_and_redeploy_and_carries_the_version() {
     assert_eq!(rec.version, load("x = {}['k']\n").version);
     assert_eq!(rec.tick, 3, "the latest fault's tick");
 }
+
+/// Q41: a hook `main.py` does not define binds from the interrupt file of
+/// its name, whose body runs first, once per main-flow run, in its own
+/// globals; a hook in `main.py` wins over the file's.
+#[test]
+fn a_hook_binds_from_the_interrupt_file_when_main_lacks_it() {
+    let (costs, limits) = tables();
+    let files = [
+        ("main.py", "log('main')\nx = 1 / 0\n"),
+        (
+            "on_fault.py",
+            "log('module ran')\nseen = [0]\ndef on_fault(e):\n    seen[0] = seen[0] + 1\n    log('hook', seen[0], e)\n",
+        ),
+    ];
+    let program = Program::load(&files, &limits).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        program
+            .hooks
+            .on_fault
+            .as_ref()
+            .is_some_and(|h| h.module.as_deref() == Some("on_fault"))
+    );
+    assert!(program.hooks.on_dying.is_none());
+    let mut host = ScriptHost::default();
+    let mut m = Machine::new(&program, costs, limits);
+    for tick in 1..=3 {
+        m.tick = tick;
+        m.run_slice(&mut host);
+        m.take_events();
+    }
+    // The module body runs before the hook, once per main-flow run — a
+    // fault restarts main flow and clears the modules, as an imported
+    // module is re-run after a restart — so every hook sees a fresh
+    // `seen`, and the body never runs twice within one run.
+    let first = host
+        .log
+        .iter()
+        .position(|l| l == "module ran")
+        .expect("the interrupt module ran");
+    let hooks: Vec<&String> = host.log.iter().filter(|l| l.starts_with("hook ")).collect();
+    assert!(hooks.len() >= 2, "{:?}", host.log);
+    assert!(host.log[first + 1].starts_with("hook 1 "), "{:?}", host.log);
+    assert_eq!(
+        host.log.iter().filter(|l| *l == "module ran").count(),
+        hooks.len(),
+        "{:?}",
+        host.log
+    );
+    assert!(
+        hooks.iter().all(|h| h.starts_with("hook 1 ")),
+        "{:?}",
+        host.log
+    );
+
+    // main.py's own def wins; a file with a hook of the other name is
+    // ignored for this one; the arity is checked in the file too.
+    let files = [
+        ("main.py", "def on_fault(e):\n    log('mine')\nx = 1 / 0\n"),
+        ("on_fault.py", "def on_fault(e):\n    log('theirs')\n"),
+    ];
+    let program = Program::load(&files, &limits_of()).unwrap();
+    assert!(
+        program
+            .hooks
+            .on_fault
+            .as_ref()
+            .is_some_and(|h| h.module.is_none())
+    );
+    let bad = [
+        ("main.py", "x = 1\n"),
+        ("on_dying.py", "def on_dying(a):\n    pass\n"),
+    ];
+    let e = Program::load(&bad, &limits_of()).unwrap_err();
+    assert_eq!(e.file, "on_dying.py");
+    assert!(e.message.contains("exactly 0 parameters"), "{e}");
+}
+
+fn limits_of() -> Rc<Limits> {
+    tables().1
+}

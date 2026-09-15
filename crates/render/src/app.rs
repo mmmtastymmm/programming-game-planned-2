@@ -123,6 +123,7 @@ fn drive(time: Res<Time>, mut driver: NonSendMut<DriverResource>, mut state: Res
 pub fn run(
     driver: Driver,
     programs: Option<PathBuf>,
+    tree: sim::script::Tree,
     deployed: std::collections::BTreeMap<String, sim::Bundle>,
 ) {
     let title = format!("programming game — {}", driver.map_name);
@@ -134,7 +135,7 @@ pub fn run(
         eprintln!("{e}");
         std::process::exit(1);
     });
-    let editor = Editor::from_bundles(&deployed);
+    let editor = Editor::from_tree(&tree);
     let layout_path = Layout::path(programs.as_deref());
     let layout = Layout::load(layout_path.as_deref());
     let mut app = App::new();
