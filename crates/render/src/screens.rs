@@ -302,35 +302,132 @@ pub fn teardown(world: &mut World) {
     world.remove_non_send::<DriverResource>();
     world.remove_resource::<EndReport>();
     world.remove_resource::<MatchInfo>();
+    world.remove_resource::<Frozen>();
 }
 
-/// The match is over — it ended, or two peers disagreed: save the replay
-/// (Q36) and go to the end screen.
-pub fn check_end(
-    mut commands: Commands,
-    driver: NonSend<DriverResource>,
-    state: Res<ViewState>,
-    info: Res<MatchInfo>,
-    mut next: ResMut<NextState<Screen>>,
-) {
-    let d = &driver.0;
-    if d.ended.is_none() && d.desync.is_none() {
-        return;
-    }
+/// A desynced match's replay, written the moment the driver froze (Q38).
+#[derive(Resource)]
+pub struct Frozen {
+    pub replay: Result<PathBuf, String>,
+}
+
+fn save(d: &crate::driver::Driver, state: &ViewState, info: &MatchInfo) -> Result<PathBuf, String> {
     let replay = launch::save_replay(d, state.programs.as_deref(), &info.map_stem);
     match &replay {
         Ok(p) => eprintln!("replay saved to {}", p.display()),
         Err(e) => eprintln!("replay not saved: {e}"),
     }
-    commands.insert_resource(EndReport {
+    replay
+}
+
+fn end_report(d: &crate::driver::Driver, replay: Result<PathBuf, String>) -> EndReport {
+    let (tick, hash) = d.replay_point();
+    EndReport {
         ended: d.ended,
-        desync: d.desync.clone(),
+        desync: d.desync.as_ref().map(|x| x.report.clone()),
         player: d.player,
-        tick: d.tick,
-        hash: d.state_hash(),
+        tick,
+        hash,
         replay,
+    }
+}
+
+/// The match ended: save the replay (Q36) and go to the end screen. Two
+/// peers disagreed: save it at once and freeze where the driver stopped,
+/// until the player leaves through the banner (Q38).
+pub fn check_end(
+    mut commands: Commands,
+    driver: NonSend<DriverResource>,
+    state: Res<ViewState>,
+    info: Res<MatchInfo>,
+    frozen: Option<Res<Frozen>>,
+    mut next: ResMut<NextState<Screen>>,
+) {
+    let d = &driver.0;
+    if d.ended.is_some() {
+        commands.insert_resource(end_report(d, save(d, &state, &info)));
+        next.set(Screen::End);
+    } else if d.desync.is_some() && frozen.is_none() {
+        commands.insert_resource(Frozen {
+            replay: save(d, &state, &info),
+        });
+    }
+}
+
+/// A strip over the map, under the time bar.
+fn banner(ctx: &egui::Context, id: &str, fill: egui::Color32, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Area::new(egui::Id::new(("banner", id)))
+        .anchor(egui::Align2::CENTER_TOP, [0.0, 44.0])
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            egui::Frame::new()
+                .fill(fill)
+                .inner_margin(10)
+                .corner_radius(6)
+                .show(ui, add);
+        });
+}
+
+/// The stall and desync banners (Q38). A stall names the peers awaited,
+/// the tick and the wait, beside a resign that says where it lands; the
+/// rest of the screen keeps working. A desync carries the report and the
+/// replay's path, and *leave* is the only way on to the end screen.
+pub fn banners(
+    mut contexts: EguiContexts,
+    mut commands: Commands,
+    mut driver: NonSendMut<DriverResource>,
+    mut state: ResMut<ViewState>,
+    frozen: Option<Res<Frozen>>,
+    mut next: ResMut<NextState<Screen>>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    let d = &mut driver.0;
+    if let Some(desync) = d.desync.clone() {
+        let replay = frozen.map(|f| f.replay.clone());
+        banner(ctx, "desync", egui::Color32::from_rgb(110, 24, 24), |ui| {
+            ui.strong("Desync — the match is frozen");
+            ui.label(&desync.report);
+            match &replay {
+                Some(Ok(p)) => ui.label(format!("replay saved to {}", p.display())),
+                Some(Err(e)) => ui.label(format!("replay not saved: {e}")),
+                None => ui.label("saving the replay…"),
+            };
+            if ui.button("leave").clicked() {
+                let replay = replay.unwrap_or_else(|| Err("not saved".into()));
+                commands.insert_resource(end_report(d, replay));
+                next.set(Screen::End);
+            }
+        });
+        return;
+    }
+    let Some(stall) = d.stall.clone() else { return };
+    let resigned = d
+        .submitted
+        .iter()
+        .find(|c| c.kind == sim::CommandKind::Resign)
+        .map(|c| c.tick);
+    banner(ctx, "stall", egui::Color32::from_rgb(96, 72, 16), |ui| {
+        ui.strong(format!(
+            "Waiting for {} — tick {}'s set, {:.0}s",
+            stall.peers(),
+            stall.tick,
+            stall.waited
+        ));
+        ui.horizontal(|ui| match resigned {
+            Some(t) => {
+                ui.label(format!(
+                    "You resigned; it lands on tick {t}, once the match moves again."
+                ));
+            }
+            None => {
+                let lands = d.next_open_tick();
+                if ui.button("resign").clicked() {
+                    crate::input::submit(d, &mut state, sim::CommandKind::Resign);
+                }
+                ui.label(format!("lands on tick {lands}, once the match moves again"));
+            }
+        });
     });
-    next.set(Screen::End);
 }
 
 pub fn end_screen(

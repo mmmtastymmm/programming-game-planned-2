@@ -304,7 +304,8 @@ pub fn save_replay(
     programs: Option<&Path>,
     map_stem: &str,
 ) -> Result<PathBuf, String> {
-    let path = replay_path(programs, map_stem, driver.tick, driver.state_hash());
+    let (tick, hash) = driver.replay_point();
+    let path = replay_path(programs, map_stem, tick, hash);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }

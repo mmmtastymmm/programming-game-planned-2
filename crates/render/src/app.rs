@@ -208,6 +208,7 @@ pub fn run(setup: Setup, autostart: bool) {
         (
             screens::start_screen.run_if(in_state(Screen::Start)),
             ui::panels.run_if(shown),
+            screens::banners.run_if(in_state(Screen::Match)),
             screens::end_screen.run_if(in_state(Screen::End)),
         )
             .chain(),

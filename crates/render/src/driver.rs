@@ -38,6 +38,41 @@ impl Snapshots {
     }
 }
 
+/// A tick whose sets have not all arrived, past `stall_report_ticks`
+/// (Q12, Q38): the peers awaited and how long this driver has waited.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stall {
+    /// The tick the driver cannot run yet.
+    pub tick: u64,
+    pub awaited: Vec<TeamId>,
+    /// Real seconds waited so far.
+    pub waited: f64,
+}
+
+impl Stall {
+    /// The awaited peers as a list for the screen: `team 1, team 2`.
+    pub fn peers(&self) -> String {
+        self.awaited
+            .iter()
+            .map(|t| format!("team {}", t.0))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// Two peers disagree about the match (`docs/06`, The state hash): the
+/// driver runs no further tick.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Desync {
+    /// The tick the peers disagree on.
+    pub tick: u64,
+    /// This peer's hash for that tick, when the disagreement is over a
+    /// hash; a refused set disagrees before any hash exists.
+    pub own: Option<u64>,
+    /// The report, naming the tick, the peer and both hashes.
+    pub report: String,
+}
+
 pub struct Driver {
     sim: Sim,
     pub log: CommandLog,
@@ -55,7 +90,7 @@ pub struct Driver {
     accumulated: f64,
     /// Real seconds spent waiting on a missing set.
     stalled: f64,
-    pub stall_report: Option<String>,
+    pub stall: Option<Stall>,
     pub snapshots: Snapshots,
     pub last_report: StepReport,
     pub ended: Option<Option<TeamId>>,
@@ -78,7 +113,7 @@ pub struct Driver {
     peer_hashes: BTreeMap<(u64, TeamId), u64>,
     /// Two peers hashed a tick differently: the report, and the driver
     /// runs no further tick (`docs/06`, The state hash).
-    pub desync: Option<String>,
+    pub desync: Option<Desync>,
     /// What happened on the exchange, for the log view; drained by it.
     pub events: Vec<String>,
     /// Peer hashes compared against this driver's own, so a test can tell
@@ -281,7 +316,7 @@ impl Driver {
             local_peers,
             accumulated: 0.0,
             stalled: 0.0,
-            stall_report: None,
+            stall: None,
             snapshots: Snapshots {
                 prev: None,
                 cur,
@@ -310,13 +345,20 @@ impl Driver {
     /// already sent to the peers is final, so a submission during a stall
     /// lands on the first tick still open.
     pub fn submit(&mut self, kind: CommandKind) -> Result<u64, String> {
-        let open = self.sent_through.map_or(0, |t| t.saturating_add(1));
-        let tick = self.tick.saturating_add(self.delay).max(open);
+        let tick = self.next_open_tick();
         let c = Command::new(tick, self.player, 0, kind);
         self.sim.validate(&c)?;
         self.submitted.push(c.clone());
         self.log.push(c);
         Ok(tick)
+    }
+
+    /// The tick a submission made now is agreed for: `delay` ticks on, or
+    /// the first tick whose set has not been sent, whichever is later — so
+    /// a resign during a stall can say where it lands (Q38).
+    pub fn next_open_tick(&self) -> u64 {
+        let open = self.sent_through.map_or(0, |t| t.saturating_add(1));
+        self.tick.saturating_add(self.delay).max(open)
     }
 
     /// The player's own state hash, for the display.
@@ -377,7 +419,11 @@ impl Driver {
                                 sender.0
                             );
                             self.events.push(report.clone());
-                            self.desync.get_or_insert(report);
+                            self.desync.get_or_insert(Desync {
+                                tick,
+                                own: None,
+                                report,
+                            });
                             return;
                         }
                     }
@@ -416,7 +462,11 @@ impl Driver {
                 peer.0
             );
             self.events.push(report.clone());
-            self.desync.get_or_insert(report);
+            self.desync.get_or_insert(Desync {
+                tick,
+                own: Some(own),
+                report,
+            });
         }
     }
 
@@ -445,7 +495,7 @@ impl Driver {
         // A tick ran, so whatever set was awaited has arrived: the stall
         // clock restarts from here, not from the last frame that ran no tick.
         self.stalled = 0.0;
-        self.stall_report = None;
+        self.stall = None;
         let hash = self.sim.state_hash();
         self.own_hashes.insert(t, hash);
         if let Some(old) = t.checked_sub(HASHES_KEPT) {
@@ -502,7 +552,7 @@ impl Driver {
                 self.run_tick();
             }
             self.stalled = 0.0;
-            self.stall_report = None;
+            self.stall = None;
             return;
         }
         self.accumulated += dt;
@@ -524,7 +574,7 @@ impl Driver {
             }
         }
         self.stalled = 0.0;
-        self.stall_report = None;
+        self.stall = None;
     }
 
     fn stall(&mut self, dt: f64) {
@@ -535,17 +585,12 @@ impl Driver {
             self.stall_report_ticks as f64 / self.speed as f64
         };
         if self.stalled >= threshold {
-            let waiting: Vec<String> = self
-                .log_missing(self.tick.saturating_add(1))
-                .into_iter()
-                .map(|t| format!("team {}", t.0))
-                .collect();
-            self.stall_report = Some(format!(
-                "waiting {:.0}s for tick {}'s set from {}",
-                self.stalled,
-                self.tick.saturating_add(1),
-                waiting.join(", ")
-            ));
+            let tick = self.tick.saturating_add(1);
+            self.stall = Some(Stall {
+                tick,
+                awaited: self.log_missing(tick),
+                waited: self.stalled,
+            });
         }
     }
 
@@ -561,7 +606,22 @@ impl Driver {
         replay::Replay {
             map: self.map_text.clone(),
             commands: self.log.commands().cloned().collect(),
-            ticks: self.tick,
+            ticks: self.replay_point().0,
+        }
+    }
+
+    /// The tick the replay runs to and this peer's hash there, which name
+    /// its file (Q36): the last tick run — or, on a desync over a hash,
+    /// the tick the peers disagree on, though the driver may have run past
+    /// it before the other's hash arrived (Q38).
+    pub fn replay_point(&self) -> (u64, u64) {
+        match &self.desync {
+            Some(Desync {
+                tick,
+                own: Some(own),
+                ..
+            }) => (*tick, *own),
+            _ => (self.tick, self.state_hash()),
         }
     }
 
@@ -626,7 +686,7 @@ mod tests {
         assert_eq!(d.tick, 11);
         assert!(d.snapshots.prev.is_some());
         assert_eq!(d.snapshots.cur.tick, 11);
-        assert!(d.stall_report.is_none());
+        assert!(d.stall.is_none());
     }
 
     #[test]
@@ -665,15 +725,18 @@ mod tests {
         };
         d.advance(1.0);
         assert_eq!(d.tick, 0, "a tick ran without every peer's set");
-        assert!(d.stall_report.is_none(), "reported too early");
+        assert!(d.stall.is_none(), "reported too early");
         for _ in 0..30 {
             d.advance(0.11);
         }
-        let report = d
-            .stall_report
+        let stall = d
+            .stall
             .clone()
             .expect("a stall report after stall_report_ticks");
-        assert!(report.contains("team 7"), "{report}");
+        assert_eq!(stall.tick, 1);
+        assert_eq!(stall.awaited, vec![TeamId(7)]);
+        assert_eq!(stall.peers(), "team 7");
+        assert!(stall.waited >= 3.0, "waited {}", stall.waited);
         // The sets arrive: the ticks run (a bounded burst per frame, so the
         // stalled seconds catch up) and the report clears.
         for t in 0..=100 {
@@ -681,7 +744,33 @@ mod tests {
         }
         d.advance(0.1);
         assert!(d.tick >= 30, "tick {}", d.tick);
-        assert!(d.stall_report.is_none());
+        assert!(d.stall.is_none());
+    }
+
+    #[test]
+    fn a_resign_during_a_stall_lands_on_the_tick_it_was_told() {
+        let mut d = driver();
+        d.log = {
+            let mut log = CommandLog::new([TeamId(0), TeamId(1), TeamId(7)]);
+            for c in d.log.commands() {
+                log.push(c.clone());
+            }
+            log
+        };
+        for _ in 0..40 {
+            d.advance(0.11);
+        }
+        let stall = d.stall.clone().expect("stalled");
+        let lands = d.next_open_tick();
+        assert!(lands > stall.tick, "{lands}");
+        assert_eq!(d.submit(CommandKind::Resign).unwrap(), lands);
+        for t in 0..=100 {
+            d.log.submit_set(TeamId(7), t, vec![]);
+        }
+        d.advance(1.0);
+        assert!(d.stall.is_none());
+        assert_eq!(d.tick, lands, "the match ended on the resign's tick");
+        assert_eq!(d.ended, Some(Some(TeamId(1))), "the Fool stands alone");
     }
 
     fn map_text() -> String {
@@ -722,7 +811,7 @@ mod tests {
         assert!(a.tick.abs_diff(b.tick) <= 1, "{} {}", a.tick, b.tick);
         assert!(a.desync.is_none() && b.desync.is_none());
         assert!(a.hashes_compared >= 20 && b.hashes_compared >= 20);
-        assert!(a.stall_report.is_none() && b.stall_report.is_none());
+        assert!(a.stall.is_none() && b.stall.is_none());
         // A's command lands on B on the agreed tick.
         let agreed = a.submit(CommandKind::SetSpeed(2)).unwrap();
         assert!(agreed > a.tick);
@@ -748,15 +837,15 @@ mod tests {
             a.advance(0.11);
         }
         assert!(a.tick <= at + 1, "A ran on without B's sets");
-        let report = a.stall_report.clone().expect("a stall report");
-        assert!(report.contains("team 1"), "{report}");
+        let stall = a.stall.clone().expect("a stall report");
+        assert_eq!(stall.awaited, vec![TeamId(1)]);
         // A submission during the stall lands on a tick not yet sent.
         let agreed = a.submit(CommandKind::SetSpeed(5)).unwrap();
         for _ in 0..40 {
             b.advance(0.1);
             a.advance(0.1);
         }
-        assert!(a.stall_report.is_none());
+        assert!(a.stall.is_none());
         assert!(a.tick > agreed && b.tick > agreed);
         assert_eq!(b.speed, 5);
         assert!(a.desync.is_none() && b.desync.is_none());
@@ -805,8 +894,16 @@ mod tests {
                 }
             }
         }
-        let report = a.desync.clone().expect("a desync report");
-        assert!(report.contains("desync at tick 3"), "{report}");
+        let desync = a.desync.clone().expect("a desync report");
+        assert_eq!(desync.tick, 3);
+        assert!(desync.report.contains("desync at tick 3"), "{desync:?}");
+        // The replay stops at the tick the peers disagree on and reproduces
+        // this peer's hash there, whatever the driver ran past it (Q38).
+        let own = desync.own.expect("a hash desync carries this peer's hash");
+        assert_eq!(a.replay_point(), (3, own));
+        let replay = a.replay();
+        assert_eq!(replay.ticks, 3);
+        assert_eq!(replay.run().last().copied(), Some(own));
         assert!(
             a.tick < 10,
             "the driver ran on after the desync: {}",
@@ -825,7 +922,9 @@ mod tests {
         });
         a.advance(0.1);
         assert!(
-            a.desync.as_deref().is_some_and(|d| d.contains("refuses")),
+            a.desync
+                .as_ref()
+                .is_some_and(|d| d.report.contains("refuses") && d.own.is_none()),
             "{:?}",
             a.desync
         );

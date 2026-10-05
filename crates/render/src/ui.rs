@@ -91,13 +91,17 @@ pub fn panels(
                     }
                 ));
             }
+            // The banners over the map carry the detail (Q38).
             if let Some(r) = &d.desync {
                 ui.separator();
-                ui.colored_label(egui::Color32::LIGHT_RED, r);
+                ui.colored_label(
+                    egui::Color32::LIGHT_RED,
+                    format!("desync at tick {}", r.tick),
+                );
             }
-            if let Some(r) = &d.stall_report {
+            if let Some(s) = &d.stall {
                 ui.separator();
-                ui.colored_label(egui::Color32::YELLOW, format!("stalled: {r}"));
+                ui.colored_label(egui::Color32::YELLOW, format!("stalled on tick {}", s.tick));
             }
             if let Some(ended) = d.ended {
                 ui.separator();
