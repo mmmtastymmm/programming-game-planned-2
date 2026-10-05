@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 sim = { path = "../sim" }
 net = { path = "../net" }
+replay = { path = "../replay" }
 lang = { path = "../lang" }
 bevy = "0.19"
 bevy_egui = "0.41"

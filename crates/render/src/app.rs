@@ -4,12 +4,25 @@
 use crate::camera::{LmbGesture, orbit_camera};
 use crate::driver::Driver;
 use crate::editor::Editor;
+use crate::launch::Setup;
 use crate::layout::Layout;
-use crate::palette::{CLEAR, Frame, Interface};
+use crate::palette::{CLEAR, Interface};
+use crate::screens::{self, StartScreen};
 use crate::{input, ui, view};
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::path::PathBuf;
+
+/// Which screen is up (Q36): the start screen, the match, or the end
+/// screen over the frozen map. *Again* returns to the start, and entering
+/// it despawns the last match's entities.
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Screen {
+    #[default]
+    Start,
+    Match,
+    End,
+}
 
 /// What the player is doing with the mouse (`docs/06`, Q10): nothing, or
 /// one of the mark tools.
@@ -85,7 +98,7 @@ pub struct DriverResource(pub Driver);
 /// person at the window.
 fn screenshot(
     mut commands: Commands,
-    driver: NonSend<DriverResource>,
+    driver: Option<NonSend<DriverResource>>,
     mut frames: Local<u32>,
     mut taken: Local<Option<u32>>,
     mut exit: MessageWriter<AppExit>,
@@ -96,7 +109,7 @@ fn screenshot(
     let var = |name: &str| std::env::var(name).ok().and_then(|f| f.parse::<u64>().ok());
     *frames += 1;
     let due = match var("RENDER_SCREENSHOT_TICK") {
-        Some(tick) => driver.0.tick >= tick,
+        Some(tick) => driver.is_some_and(|d| d.0.tick >= tick),
         None => u64::from(*frames) >= var("RENDER_SCREENSHOT_FRAME").unwrap_or(90),
     };
     if due && taken.is_none() {
@@ -120,30 +133,27 @@ fn drive(time: Res<Time>, mut driver: NonSendMut<DriverResource>, mut state: Res
     }
 }
 
-pub fn run(
-    driver: Driver,
-    programs: Option<PathBuf>,
-    tree: sim::script::Tree,
-    deployed: std::collections::BTreeMap<String, sim::Bundle>,
-) {
-    let title = format!("programming game — {}", driver.map_name);
-    let frame = Frame {
-        min: driver.bounds.0,
-        max: driver.bounds.1,
-    };
+/// The one camera, spawned once: the start screen draws through it before
+/// any match exists, and each match points it with its `OrbitCam`.
+fn camera(mut commands: Commands) {
+    commands.spawn(Camera3d::default());
+}
+
+/// Open the window on the start screen, prefilled from `setup`; with
+/// `autostart` the match begins at once, as a command-line flag asks.
+pub fn run(setup: Setup, autostart: bool) {
     let interface = Interface::load().unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });
-    let editor = Editor::from_tree(&tree);
-    let layout_path = Layout::path(programs.as_deref());
-    let layout = Layout::load(layout_path.as_deref());
+    let shown = in_state(Screen::Match).or_else(in_state(Screen::End));
+    let in_match = in_state(Screen::Match);
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title,
+                    title: "programming game".into(),
                     resolution: (1400, 900).into(),
                     ..default()
                 }),
@@ -157,26 +167,25 @@ pub fn run(
             }),
     )
     .add_plugins(EguiPlugin::default())
+    .init_state::<Screen>()
     .insert_resource(ClearColor(CLEAR))
-    .insert_resource(ViewState {
-        programs,
-        deployed,
-        editor,
-        layout,
-        layout_path,
-        ..Default::default()
-    })
-    .insert_resource(frame)
     .insert_resource(interface)
     .insert_resource(view::Tuning::load())
     .insert_resource(view::Entities::default())
     .insert_resource(LmbGesture::default())
-    .insert_non_send(DriverResource(driver))
-    .add_systems(Startup, view::setup)
+    .insert_non_send(StartScreen::new(setup, autostart))
+    .add_systems(Startup, camera)
+    .add_systems(Last, screenshot)
+    .add_systems(OnEnter(Screen::Start), screens::teardown)
+    .add_systems(
+        OnEnter(Screen::Match),
+        (screens::install, view::setup).chain(),
+    )
     .add_systems(
         Update,
         (
-            drive,
+            drive.run_if(in_match.clone()),
+            screens::check_end.run_if(in_match.clone()),
             view::sync_tiles,
             view::sync_machines,
             view::interpolate,
@@ -185,15 +194,23 @@ pub fn run(
             view::sounds,
             view::animate,
             orbit_camera,
-            input::keys,
-            input::click,
+            input::keys.run_if(in_match.clone()),
+            input::click.run_if(in_match),
             view::markers,
             view::billboard_bars,
             view::level_rings,
-            screenshot,
+        )
+            .chain()
+            .run_if(shown.clone()),
+    )
+    .add_systems(
+        EguiPrimaryContextPass,
+        (
+            screens::start_screen.run_if(in_state(Screen::Start)),
+            ui::panels.run_if(shown),
+            screens::end_screen.run_if(in_state(Screen::End)),
         )
             .chain(),
-    )
-    .add_systems(EguiPrimaryContextPass, ui::panels);
+    );
     app.run();
 }

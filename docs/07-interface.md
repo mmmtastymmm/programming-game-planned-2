@@ -182,7 +182,8 @@ values per tile for it: a read, in no hash.
 directory (Q33), and offers *play* alone against the cards, *host* on an
 address, or *join* one (`06`). Starting reads the programs in and builds
 the driver as the command line does; every choice is also a flag, and a
-flag skips the screen, so a headless run and CI need none.
+flag skips the screen, so a headless run and CI need none — `--play`, which
+chooses nothing, starts the defaults at once.
 
 **After the last** the end screen names the winner or the draw (`04`), the
 ending tick, the final hash and the replay's path; *again* returns to the
