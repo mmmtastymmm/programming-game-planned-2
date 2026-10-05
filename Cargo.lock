@@ -4842,6 +4842,7 @@ dependencies = [
  "bevy_egui",
  "lang",
  "net",
+ "replay",
  "resvg",
  "serde",
  "sim",

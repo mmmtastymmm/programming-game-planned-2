@@ -10,7 +10,7 @@
 
 use net::CommandLog;
 use net::exchange::{Event, Exchange};
-use net::tcp::MatchIdentity;
+use net::tcp::{MatchIdentity, Session};
 use net::wire::Message;
 use sim::snapshot::Snapshot;
 use sim::{Command, CommandKind, Data, Map, Sim, StepReport, TeamId, TilePos};
@@ -62,6 +62,8 @@ pub struct Driver {
     /// Commands the player submitted, for the log view.
     pub submitted: Vec<Command>,
     pub map_name: String,
+    /// The map's bytes, which with the log are the replay (Q36).
+    map_text: String,
     /// The map's south-west and north-east corners, for the view's frame.
     pub bounds: (TilePos, TilePos),
     /// The other peers, if this is a match; none in single-player.
@@ -138,15 +140,7 @@ impl Driver {
         addr: &str,
         progress: impl FnMut(&str),
     ) -> Result<Driver, String> {
-        let remote = Driver::remote_teams(map_text, opposition.len())?;
-        if remote.is_empty() {
-            return Err(format!(
-                "the map has no team left for a peer once the player and {} scripted team(s) are seated",
-                opposition.len()
-            ));
-        }
-        let identity = Driver::identity(map_text)?;
-        let (session, _) = net::tcp::host(addr, TeamId(0), &remote, identity, progress)?;
+        let session = Driver::host_handshake(map_text, opposition.len(), addr, progress)?;
         Driver::with_exchange(
             map_text,
             opposition,
@@ -156,25 +150,52 @@ impl Driver {
         )
     }
 
+    /// The host's half of [`Driver::host`] that blocks: listen on `addr`
+    /// until a peer has joined for every remote team. It holds no sim, so
+    /// it can run off the main thread while the window stays live.
+    pub fn host_handshake(
+        map_text: &str,
+        opposition_count: usize,
+        addr: &str,
+        progress: impl FnMut(&str),
+    ) -> Result<Session, String> {
+        let remote = Driver::remote_teams(map_text, opposition_count)?;
+        if remote.is_empty() {
+            return Err(format!(
+                "the map has no team left for a peer once the player and {opposition_count} scripted team(s) are seated"
+            ));
+        }
+        let identity = Driver::identity(map_text)?;
+        let (session, _) = net::tcp::host(addr, TeamId(0), &remote, identity, progress)?;
+        Ok(session)
+    }
+
     /// Join a match at `addr` as whichever team the host assigns.
     pub fn join(
         map_text: &str,
         player_opening: Vec<CommandKind>,
         addr: &str,
     ) -> Result<Driver, String> {
+        let session = Driver::join_handshake(map_text, addr)?;
+        let me = session.me;
+        Driver::with_exchange(map_text, &[], me, player_opening, Box::new(session))
+    }
+
+    /// The joiner's half of [`Driver::join`] that blocks: connect, offer
+    /// the map, and take a team the map has.
+    pub fn join_handshake(map_text: &str, addr: &str) -> Result<Session, String> {
         let data = Data::load().map_err(|e| e.to_string())?;
         let map = Map::parse(map_text, &data).map_err(|e| e.to_string())?;
         let teams: Vec<TeamId> = (0..map.teams.len() as u32).map(TeamId).collect();
         let identity = Driver::identity(map_text)?;
         let session = net::tcp::join(addr, identity, &teams)?;
-        let me = session.me;
-        if !teams.contains(&me) {
+        if !teams.contains(&session.me) {
             return Err(format!(
                 "the host seated this peer as team {}, which the map lacks",
-                me.0
+                session.me.0
             ));
         }
-        Driver::with_exchange(map_text, &[], me, player_opening, Box::new(session))
+        Ok(session)
     }
 
     fn build(
@@ -270,6 +291,7 @@ impl Driver {
             ended: None,
             submitted: Vec::new(),
             map_name,
+            map_text: map_text.to_string(),
             bounds,
             exchange,
             remote_peers,
@@ -530,6 +552,17 @@ impl Driver {
     /// The peers whose set for `tick` is missing.
     fn log_missing(&self, tick: u64) -> Vec<TeamId> {
         self.log.missing_for(tick)
+    }
+
+    /// The match so far as a replay (Q36): the map's bytes, every command
+    /// in the log, and the ticks run. The headless driver reproduces this
+    /// peer's hash stream from it.
+    pub fn replay(&self) -> replay::Replay {
+        replay::Replay {
+            map: self.map_text.clone(),
+            commands: self.log.commands().cloned().collect(),
+            ticks: self.tick,
+        }
     }
 
     /// The last completed-tick snapshot.
@@ -842,6 +875,21 @@ mod tests {
             Ok(_) => panic!("seated team 1 nowhere and started anyway"),
         };
         assert!(e.contains("no peer for team(s) 1"), "{e}");
+    }
+
+    #[test]
+    fn the_replay_of_a_match_reproduces_its_hash() {
+        let mut d = driver();
+        d.advance(1.0);
+        let agreed = d.submit(CommandKind::SetSpeed(20)).unwrap();
+        d.advance(1.0);
+        assert!(d.tick > agreed, "ran past the command's tick: {}", d.tick);
+        let replay = d.replay();
+        assert_eq!(replay.ticks, d.tick);
+        let back = replay::Replay::from_ron(&replay.to_ron()).unwrap();
+        let hashes = back.run();
+        assert_eq!(hashes.len() as u64, d.tick);
+        assert_eq!(hashes.last().copied(), Some(d.state_hash()));
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! The look is the predecessor's: fog as an opaque cover over the unknown
 //! and a cold, unlit twin of every material for the remembered.
 
-use crate::app::{DriverResource, ViewState};
+use crate::app::{DriverResource, Screen, ViewState};
 use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
 use crate::palette::{
@@ -159,6 +159,7 @@ pub fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     assets: Res<AssetServer>,
+    cameras: Query<Entity, With<Camera3d>>,
 ) {
     let palette = Palette::build(&mut meshes, &mut materials, &assets);
     let snap = driver.0.snapshot();
@@ -168,6 +169,7 @@ pub fn setup(
             let e = commands
                 .spawn((
                     FogCover,
+                    DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.cover_quad.clone()),
                     MeshMaterial3d(palette.unknown_mat.clone()),
                     Transform::from_translation(frame.tile_xyz(*p, 0.04)),
@@ -181,6 +183,7 @@ pub fn setup(
         (false, palette.hover_mat.clone()),
     ] {
         let mut e = commands.spawn((
+            DespawnOnEnter(Screen::Start),
             Mesh3d(palette.mark_quad.clone()),
             MeshMaterial3d(mat),
             Transform::from_xyz(0.0, 0.0, 0.0),
@@ -198,6 +201,7 @@ pub fn setup(
         ..default()
     });
     commands.spawn((
+        DespawnOnEnter(Screen::Start),
         DirectionalLight {
             illuminance: 10_000.0,
             shadow_maps_enabled: true,
@@ -218,7 +222,9 @@ pub fn setup(
         yaw: 0.0,
         pitch: 0.85,
     };
-    commands.spawn((Camera3d::default(), orbit_transform(&cam), cam));
+    if let Ok(e) = cameras.single() {
+        commands.entity(e).insert((orbit_transform(&cam), cam));
+    }
     commands.insert_resource(palette);
 }
 
@@ -371,6 +377,7 @@ fn spawn_tile(
     out.push(
         commands
             .spawn((
+                DespawnOnEnter(Screen::Start),
                 Mesh3d(mesh),
                 MeshMaterial3d(material),
                 Transform::from_translation(frame.tile_xyz(p, y)),
@@ -388,6 +395,7 @@ fn spawn_tile(
         out.push(
             commands
                 .spawn((
+                    DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.mark_quad.clone()),
                     MeshMaterial3d(material),
                     Transform::from_translation(frame.tile_xyz(p, top + 0.03)),
@@ -400,6 +408,7 @@ fn spawn_tile(
         out.push(
             commands
                 .spawn((
+                    DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.overlay_cube.clone()),
                     MeshMaterial3d(material),
                     Transform::from_translation(frame.tile_xyz(p, top + 0.16))
@@ -417,6 +426,7 @@ fn spawn_tile(
         out.push(
             commands
                 .spawn((
+                    DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.mark_quad.clone()),
                     MeshMaterial3d(m),
                     Transform::from_translation(frame.tile_xyz(p, top + 0.05))
@@ -594,6 +604,7 @@ fn spawn_machine(
     let body = commands
         .spawn((
             MachineBody(m.record.id),
+            DespawnOnEnter(Screen::Start),
             Mesh3d(mesh),
             MeshMaterial3d(mat),
             Transform::from_translation(start).with_rotation(Quat::from_rotation_y(yaw)),
@@ -890,6 +901,7 @@ pub fn sounds(
         for s in &snap.sounds {
             commands.spawn((
                 SoundRing { age: 0.0 },
+                DespawnOnEnter(Screen::Start),
                 Mesh3d(palette.ring.clone()),
                 MeshMaterial3d(palette.ring_mats[0].clone()),
                 Transform::from_translation(frame.tile_xyz(s.pos, ents.top(s.pos) + 0.06))
