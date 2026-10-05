@@ -42,11 +42,3 @@ the armed kind; the player's own plans drawn as a translucent version of
 their effect and the armed tool as a ghost under the cursor. The snapshot
 gains the player's team's plan values per tile — a read the renderer
 makes, in no hash — replacing the driver's `snapshot_plan` peek.
-
-**T21 — The stall banner with resign, and the desync freeze**
-
-Q38: a banner over the map past `stall_report_ticks` naming the peer, the
-tick and the wait, with a resign beside it and a note of when the resign
-lands; on a desync, a red banner with the report and the replay's path,
-the replay written at once (T19's writer), and *leave* to the end screen.
-Nothing touches a hash.
