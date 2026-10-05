@@ -48,6 +48,22 @@ impl Sim {
         self.ended
     }
 
+    /// The values a `Mark` of `plan` may name, in the data's order: the
+    /// building models a plan may name, the paint colors, or the overlay
+    /// labels (Q10, Q42). [`Sim::validate`] accepts every one of them, and
+    /// the renderer's mark strip lists exactly these (Q37).
+    pub fn markable(data: &Data, plan: PlanKind) -> Vec<String> {
+        match plan {
+            PlanKind::Building => Model::ALL
+                .into_iter()
+                .filter(|m| !matches!(m, Model::Site | Model::Bot))
+                .map(|m| m.name().to_string())
+                .collect(),
+            PlanKind::Paint => data.machines.colors.clone(),
+            PlanKind::Overlay => data.world.overlays.clone(),
+        }
+    }
+
     /// Whether a command can ever apply (`docs/06`, Validation at
     /// submission): checked before it enters the log.
     pub fn validate(&self, c: &Command) -> Result<(), String> {

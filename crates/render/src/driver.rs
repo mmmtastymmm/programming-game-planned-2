@@ -629,23 +629,6 @@ impl Driver {
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshots.cur
     }
-
-    /// The kind of plan `team` holds on `p`, for drawing the player's own
-    /// marks: `building`, `paint` or `overlay`, the first set. A read of
-    /// world state the snapshot does not carry per tile; nothing is
-    /// written.
-    pub fn snapshot_plan(&self, team: TeamId, p: sim::TilePos) -> Option<String> {
-        let plans = self.sim.world.plans(team, p)?;
-        if plans.building.is_some() {
-            Some("building".into())
-        } else if plans.paint.is_some() {
-            Some("paint".into())
-        } else if plans.overlay.is_some() {
-            Some("overlay".into())
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]

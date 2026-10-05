@@ -34,6 +34,7 @@ pub mod editor;
 pub mod input;
 pub mod launch;
 pub mod layout;
+pub mod marks;
 pub mod palette;
 pub mod programs;
 pub mod screens;

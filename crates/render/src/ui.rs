@@ -9,8 +9,9 @@ use crate::app::{DriverResource, Tool, ViewState};
 use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
-use crate::palette::Interface;
-use crate::view;
+use crate::marks::{self, MarkRows, ROWS};
+use crate::palette::{Frame, Interface, paint_color};
+use crate::view::{self, Entities};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use sim::world::TileState;
@@ -35,6 +36,10 @@ pub fn panels(
     mut contexts: EguiContexts,
     time: Res<Time>,
     interface: Res<Interface>,
+    ents: Res<Entities>,
+    rows: Res<MarkRows>,
+    frame: Res<Frame>,
+    cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
@@ -204,7 +209,7 @@ pub fn panels(
                 } else {
                     match name.as_str() {
                         "inspector" => inspector(ui, &interface, &driver, &mut state),
-                        "tools" => tools(ui, &mut driver, &mut state),
+                        "tools" => tools(ui, &mut driver, &mut state, &rows),
                         _ => log(ui, &state),
                     }
                 }
@@ -227,6 +232,47 @@ pub fn panels(
         }
     }
 
+    // A planned overlay's label, faint over its ghost (Q37), drawn on the
+    // background layer under the windows.
+    if let Ok((camera, cam_tf)) = cams.single() {
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let snap = driver.0.snapshot();
+        let mut labels: Vec<(sim::TilePos, String)> = snap
+            .teams
+            .iter()
+            .find(|t| t.id == player)
+            .map(|t| {
+                t.plans
+                    .iter()
+                    .filter_map(|(p, plans)| match &plans.overlay {
+                        Some(sim::world::Plan::Set(l)) => Some((*p, l.clone())),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let (Tool::Mark(PlanKind::Overlay, Some(l)), Some(p)) = (&state.tool, state.hover) {
+            labels.push((p, l.clone()));
+        }
+        let font = egui::FontId::proportional(14.0);
+        for (p, label) in labels {
+            let Ok(at) = camera.world_to_viewport(cam_tf, frame.tile_xyz(p, ents.top(p) + 0.4))
+            else {
+                continue;
+            };
+            let pos = egui::pos2(at.x, at.y);
+            if screen.contains(pos) {
+                painter.text(
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    font.clone(),
+                    egui::Color32::from_white_alpha(150),
+                );
+            }
+        }
+    }
+
     // A changed layout is saved once a second, never on every drag frame.
     let now = time.elapsed_secs();
     if state.layout_dirty
@@ -241,39 +287,53 @@ pub fn panels(
     }
 }
 
-fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState) {
+fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, rows: &MarkRows) {
     let d = &mut driver.0;
-    let mut tool = state.tool.clone();
-    ui.radio_value(&mut tool, Tool::Select, "select (Esc)");
-    ui.radio_value(
-        &mut tool,
-        Tool::Building("depot".into()),
-        "plan a depot (1)",
-    );
-    ui.radio_value(
-        &mut tool,
-        Tool::Building("printer".into()),
-        "plan a printer (6)",
-    );
-    ui.radio_value(&mut tool, Tool::Paint("red".into()), "plan red paint (2)");
-    ui.radio_value(&mut tool, Tool::Overlay("a".into()), "plan overlay a (3)");
-    ui.radio_value(
-        &mut tool,
-        Tool::Clear(PlanKind::Paint),
-        "plan to clear paint (4)",
-    );
-    ui.radio_value(
-        &mut tool,
-        Tool::Unmark(PlanKind::Building),
-        "withdraw building plan (5)",
-    );
-    state.tool = tool;
+    if ui
+        .selectable_label(state.tool == Tool::Select, "select (Esc)")
+        .clicked()
+    {
+        state.tool = Tool::Select;
+    }
+    // The strip (Q37): a row per kind from data, each ending in clear;
+    // `B`/`P`/`O` pick the row the digits index.
+    for plan in ROWS {
+        ui.horizontal_wrapped(|ui| {
+            let head = format!("{} {}", marks::row_key(plan), plan.name());
+            if ui.selectable_label(state.row == Some(plan), head).clicked() {
+                state.row = Some(plan);
+            }
+            for (i, entry) in rows.entries(plan).into_iter().enumerate() {
+                let tool = Tool::Mark(plan, entry.clone());
+                let mut text = egui::RichText::new(format!(
+                    "{} {}",
+                    i + 1,
+                    entry.as_deref().unwrap_or("clear")
+                ));
+                if plan == PlanKind::Paint
+                    && let Some(c) = &entry
+                {
+                    let c = paint_color(c).to_srgba();
+                    text = text.color(egui::Color32::from_rgb(
+                        (c.red * 255.0) as u8,
+                        (c.green * 255.0) as u8,
+                        (c.blue * 255.0) as u8,
+                    ));
+                }
+                if ui.selectable_label(state.tool == tool, text).clicked() {
+                    state.tool = marks::toggle(&state.tool, tool);
+                    state.row = Some(plan);
+                }
+            }
+        });
+    }
+    ui.small("drag: mark every tile crossed · Shift+click: withdraw the armed kind");
     ui.separator();
     if ui.button("resign (Shift+R)").clicked() {
         submit(d, state, CommandKind::Resign);
     }
     ui.separator();
-    ui.small("left drag / middle / Shift+right: pan");
+    ui.small("left drag / middle / Shift+right: pan (unarmed)");
     ui.small("right drag: orbit · wheel: zoom");
     ui.small("WASD: pan · L: log · -/=: speed");
 }
@@ -387,8 +447,13 @@ fn inspector(
                         if let Some(b) = &mem.building {
                             ui.small(format!("{} of team {}", b.name, b.team.0));
                         }
-                        if let Some(plan) = d.snapshot_plan(player, p) {
-                            ui.small(format!("your plan: {plan}"));
+                        let plans = snap
+                            .teams
+                            .iter()
+                            .find(|t| t.id == player)
+                            .and_then(|t| t.plans.iter().find(|(at, _)| *at == p));
+                        if let Some((_, plans)) = plans {
+                            ui.small(format!("your plan: {}", marks::describe(plans)));
                         }
                     }
                     _ => {

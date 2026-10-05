@@ -4,7 +4,7 @@
 use crate::command::TeamId;
 use crate::map::TilePos;
 use crate::tick::Sim;
-use crate::world::{LogEntry, MachineRecord, Sound, TileMemory};
+use crate::world::{LogEntry, MachineRecord, Plans, Sound, TileMemory};
 use lang::FaultRecord;
 use std::collections::BTreeMap;
 
@@ -25,6 +25,10 @@ pub struct TeamSnapshot {
     pub bots: usize,
     /// Every tile as this team sees it, in row-then-column order.
     pub tiles: Vec<(TilePos, TileMemory)>,
+    /// This team's own plans, on the tiles that carry any, in the same
+    /// order (Q37). Plans are private (`docs/03`), so a renderer reads only
+    /// its own team's; nothing here is in the state hash.
+    pub plans: Vec<(TilePos, Plans)>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +70,16 @@ impl Sim {
                     .positions()
                     .into_iter()
                     .map(|p| (p, t.memory[w.tile_index(p).expect("in bounds")].clone()))
+                    .collect(),
+                plans: w
+                    .map
+                    .positions()
+                    .into_iter()
+                    .filter_map(|p| {
+                        w.plans(t.id, p)
+                            .filter(|plans| !plans.is_empty())
+                            .map(|plans| (p, plans.clone()))
+                    })
                     .collect(),
             })
             .collect();
