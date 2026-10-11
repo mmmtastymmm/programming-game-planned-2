@@ -40,6 +40,17 @@ pub fn to_color(rgb: [u8; 3]) -> Color {
     Color::srgb_u8(rgb[0], rgb[1], rgb[2])
 }
 
+/// The materials a team's machines share, recolored in place.
+#[derive(Clone)]
+pub struct TeamMats {
+    /// A building's outline (Q43).
+    pub outline: Handle<StandardMaterial>,
+    /// A bot's 3D lens glass (Q45).
+    pub glass: Handle<StandardMaterial>,
+    /// A lit segment of a bot's number (Q46).
+    pub segment: Handle<StandardMaterial>,
+}
+
 /// The player's outline choices for this match, and the materials every
 /// team's outline and lens glass share, recolored in place when a choice
 /// changes.
@@ -47,8 +58,8 @@ pub fn to_color(rgb: [u8; 3]) -> Color {
 pub struct TeamColors {
     chosen: BTreeMap<u32, [u8; 3]>,
     path: Option<PathBuf>,
-    /// Each team's (outline, lens glass) materials, made on first use.
-    pub mats: BTreeMap<u32, (Handle<StandardMaterial>, Handle<StandardMaterial>)>,
+    /// Each team's shared materials, made on first use.
+    pub mats: BTreeMap<u32, TeamMats>,
     /// Each bot body by (team, paint atlas), its lights glowing in the
     /// team's color (Q45), made on first use.
     pub bodies: BTreeMap<(u32, String), Handle<StandardMaterial>>,

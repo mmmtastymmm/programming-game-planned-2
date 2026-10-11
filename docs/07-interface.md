@@ -65,8 +65,12 @@ here changes a hash; a peer with a different renderer sees the same match.
   `data/interface.toml` in team order, skipping the player's — blue first,
   so a default one-on-one is green against blue. The player may change
   any team's color, their own included, from the inspector; the choice is
-  saved in `colors.toml` beside the programs and never reaches a peer. No
-  bot wears a number.
+  saved in `colors.toml` beside the programs and never reaches a peer.
+- **Every bot wears its entity id on top (Q46, amending Q42 and Q43).**
+  The id's last three digits, in a seven-segment display set into the top
+  face, lit in the team's color and turned to face the camera; the
+  chevron, the trim and the light around it keep the heading, the paint
+  and the team readable from above.
 
 ## The screen
 
@@ -163,7 +167,9 @@ clears only when those machines fault again or die.
   color while it is `None`; a printer, a depot and a site are their own
   shapes in the neutral body color (Q43).
 - **Team:** a bot's lights glow in its team's color (Q45); a building is
-  outlined in it (Q43). The player's own team is green unless changed,
+  outlined in it (Q43).
+- **Number:** a bot's entity id, its last three digits, in seven segments
+  on its top face, lit in its team's color and facing the camera (Q46). The player's own team is green unless changed,
   each other team's from the list in data unless changed, so friend and
   foe read at a glance and three teams stay three.
 - **Health:** a bar over the machine for a few seconds after any change.

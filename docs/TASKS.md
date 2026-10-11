@@ -50,15 +50,15 @@ Finishing it fixes [P4](PROBLEMS.md).
 
 **T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
 
-Q43, ruled in `02` and `07`, amended by Q45. The sim: a `color` attribute on bots, `None`
-when printed, kept across redeploy and fault, settable while `dying`, in
-sightings and the hash; the zero-tick `set_color(color)` action, refusing
-anything not in the paint list or `None`, with its row in
-`data/language/costs.toml`. The renderer: a bot's body in its color or the
-neutral body color with its lights glowing in its team's color,
-buildings in the neutral color outlined in it, replacing the ring
-(Q45), the player's own green by
-default and the others from a list in `data/interface.toml`, changed from
-the inspector and saved in `colors.toml` beside the programs. The golden
-fixtures, regenerated with the reason in the PR. Finishing it fixes
-[P2](PROBLEMS.md).
+Q43, ruled in `02` and `07`, amended by Q45 and Q46. The sim: a `color`
+attribute on bots, `None` when printed, kept across redeploy and fault,
+settable while `dying`, in sightings and the hash; the zero-tick
+`set_color(color)` action, refusing anything not in the paint list or
+`None`, with its row in `data/language/costs.toml`. The renderer: a bot's
+body in its color or the neutral body color with its lights glowing in its
+team's color, buildings in the neutral color outlined in it, replacing the
+ring (Q45), its entity id in seven segments on its top face lit in the
+team's color (Q46), the player's own green by default and the others from
+a list in `data/interface.toml`, changed from the inspector and saved in
+`colors.toml` beside the programs. The golden fixtures, regenerated with
+the reason in the PR. Finishing it fixes [P2](PROBLEMS.md).

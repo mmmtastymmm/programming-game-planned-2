@@ -316,6 +316,8 @@ pub struct Palette {
     pub bar: Handle<Mesh>,
     pub lens_barrel: Handle<Mesh>,
     pub lens_glass: Handle<Mesh>,
+    /// A unit cube, scaled into each segment of a bot's number (Q46).
+    pub segment: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
@@ -353,6 +355,8 @@ pub struct Palette {
     /// Plan ghosts: the live material's id to its translucent copy.
     pub ghosts: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     pub lens_glass_mat: Handle<StandardMaterial>,
+    /// An unlit segment of a bot's number (Q46).
+    pub segment_off_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -488,6 +492,7 @@ impl Palette {
             bar: meshes.add(Cuboid::new(0.9, 0.12, 0.01)),
             lens_barrel: meshes.add(Cylinder::new(LENS_BARREL_RADIUS, LENS_BARREL_LEN)),
             lens_glass: meshes.add(Cylinder::new(LENS_GLASS_RADIUS, LENS_GLASS_LEN)),
+            segment: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
             ground_frames,
             water_mats,
@@ -506,6 +511,11 @@ impl Palette {
                 ..default()
             }),
             scribble_mats,
+            segment_off_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.13, 0.15, 0.18),
+                perceptual_roughness: 0.8,
+                ..default()
+            }),
             lens_glass_mat: materials.add(StandardMaterial {
                 base_color: Color::srgb(0.08, 0.1, 0.12),
                 emissive: LinearRgba::new(1.6, 1.6, 1.6, 1.0),
