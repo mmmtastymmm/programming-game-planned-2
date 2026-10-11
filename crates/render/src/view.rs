@@ -8,9 +8,10 @@
 use crate::app::{DriverResource, Screen, Tool, ViewState};
 use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
+use crate::outlines::{TeamColors, TeamMats};
 use crate::palette::{
     BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, MARK_HALF, Palette,
-    ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off,
+    ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off, body_half, tint,
 };
 use bevy::prelude::*;
 use sim::map::Terrain;
@@ -77,6 +78,8 @@ pub struct MachineView {
     pub yaw: f32,
     pub yaw_prev: f32,
     pub pos_seen: TilePos,
+    /// The bot's `color` as last drawn (Q43); `None` on a building.
+    pub color_seen: Option<Option<String>>,
 }
 
 /// The renderer's own index from snapshot ids to its entities.
@@ -601,6 +604,7 @@ pub fn sync_machines(
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
     interface: Res<Interface>,
+    mut colors: ResMut<TeamColors>,
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
@@ -616,6 +620,18 @@ pub fn sync_machines(
         let id = m.record.id;
         if let Some(view) = ents.machines.get_mut(&id) {
             if let Ok((mut vis, mut mat)) = bodies.get_mut(view.body) {
+                // A bot repainted by its program (Q43) wears its new color.
+                if m.record.color != view.color_seen {
+                    view.live_mat =
+                        body_mat(&palette, &interface, &mut colors, &mut materials, player, m);
+                    view.color_seen = m.record.color.clone();
+                    mat.0 = if dimmed {
+                        palette.dim(&mut materials, &view.live_mat)
+                    } else {
+                        view.live_mat.clone()
+                    };
+                    view.dimmed = dimmed;
+                }
                 if view.shown != shown {
                     *vis = if shown {
                         Visibility::Inherited
@@ -652,6 +668,7 @@ pub fn sync_machines(
             &mut commands,
             &frame,
             &interface,
+            &mut colors,
             player,
             &mut palette,
             &mut materials,
@@ -675,10 +692,271 @@ pub fn sync_machines(
     }
 }
 
+/// A machine's body material, its lights glowing in its team's color: a
+/// bot's atlas in its `color`, or the neutral one while it has none (Q43,
+/// Q45); a printer's and a depot's own neutral art (Q47). A site, which
+/// has no lights, is its own translucent material, outlined instead.
+fn body_mat(
+    palette: &Palette,
+    interface: &Interface,
+    colors: &mut TeamColors,
+    materials: &mut Assets<StandardMaterial>,
+    player: sim::TeamId,
+    m: &MachineSnapshot,
+) -> Handle<StandardMaterial> {
+    let (key, base, lights, rough) = match m.record.model {
+        Model::Bot => {
+            let color = m.record.color.as_ref().and_then(|c| c.as_deref());
+            let atlas = color
+                .filter(|c| palette.bot_textures.contains_key(*c))
+                .unwrap_or(&interface.bodies.neutral)
+                .to_string();
+            let base = palette.bot_textures[&atlas].clone();
+            (
+                format!("bot_{atlas}"),
+                base,
+                palette.bot_lights.clone(),
+                0.5,
+            )
+        }
+        Model::Printer => (
+            "printer".to_string(),
+            palette.printer_texture.clone(),
+            palette.printer_lights.clone(),
+            0.5,
+        ),
+        Model::Depot => (
+            "depot".to_string(),
+            palette.crate_texture.clone(),
+            palette.crate_lights.clone(),
+            0.9,
+        ),
+        Model::Site => return palette.site_mat.clone(),
+    };
+    let team = m.record.team;
+    if let Some(h) = colors.bodies.get(&(team.0, key.clone())) {
+        return h.clone();
+    }
+    let glow = colors.color(interface, player, team);
+    let h = materials.add(StandardMaterial {
+        base_color_texture: Some(base),
+        emissive: glow_of(glow),
+        emissive_texture: Some(lights),
+        metallic: 0.1,
+        perceptual_roughness: rough,
+        ..default()
+    });
+    colors.bodies.insert((team.0, key), h.clone());
+    h
+}
+
+/// How brightly a team's lights glow: its color, past white so it reads as
+/// lit under any light.
+fn glow_of(color: Color) -> LinearRgba {
+    color.to_linear() * GLOW
+}
+
+const GLOW: f32 = 2.0;
+
+/// The team's outline, lens-glass and lit-segment materials, shared by
+/// all its machines and recolored in place when the player changes its
+/// color.
+fn team_mats(
+    colors: &mut TeamColors,
+    interface: &Interface,
+    player: sim::TeamId,
+    team: sim::TeamId,
+    palette: &Palette,
+    materials: &mut Assets<StandardMaterial>,
+) -> TeamMats {
+    if let Some(m) = colors.mats.get(&team.0) {
+        return m.clone();
+    }
+    let color = colors.color(interface, player, team);
+    let glass = match materials.get(&palette.lens_glass_mat) {
+        Some(base) => materials.add(tint(base, color)),
+        None => palette.lens_glass_mat.clone(),
+    };
+    let m = TeamMats {
+        outline: materials.add(outline_material(color)),
+        glass,
+        segment: materials.add(segment_material(color)),
+    };
+    colors.mats.insert(team.0, m.clone());
+    m
+}
+
+/// A lit segment: the team's color, glowing like the bot's lights.
+fn segment_material(color: Color) -> StandardMaterial {
+    StandardMaterial {
+        base_color: color,
+        emissive: glow_of(color),
+        ..default()
+    }
+}
+
+/// Where the number's display sits on a bot's top face, in the art's
+/// 64-unit square (`assets/art/bot_face_top.svg`, image up = the bot's
+/// front): the bezel's center, and its cell, so the lattice's five cells
+/// fill the bezel's forty units (Q46).
+const DISPLAY_AT: (f32, f32) = (32.0, 41.0);
+const CELL: f32 = 8.0;
+/// A segment's thickness, and how much shorter than its cell it is so
+/// neighbours do not touch, in art units.
+const SEGMENT: (f32, f32) = (2.0, 2.6);
+
+/// A bot's number: the fixed segments on its lid, and which turn of the
+/// number they last showed (Q46).
+#[derive(Component)]
+pub struct BotDigits {
+    pub id: u32,
+    pub lit: Handle<StandardMaterial>,
+    /// One per `digits::lattice()` edge, in its order.
+    pub segments: Vec<Entity>,
+    pub quarter: Option<u8>,
+}
+
+fn spawn_digits(
+    parent: &mut bevy::ecs::relationship::RelatedSpawnerCommands<ChildOf>,
+    palette: &Palette,
+    lit: &Handle<StandardMaterial>,
+    id: u32,
+) {
+    let unit = 2.0 * BOT_HALF / 64.0;
+    let (t, short) = SEGMENT;
+    let at = Vec3::new(
+        (DISPLAY_AT.0 - 32.0) * unit,
+        BOT_HALF + 0.003,
+        (DISPLAY_AT.1 - 32.0) * unit,
+    );
+    let mut segments = Vec::new();
+    parent
+        .spawn((Transform::from_translation(at), Visibility::Inherited))
+        .with_children(|display| {
+            for ((x0, y0), (x1, y1)) in crate::digits::lattice() {
+                // Cells to art units about the display's center; the
+                // lattice's y is the bot's front, which is -Z.
+                let mid = |a: i32, b: i32, c: f32| ((a + b) as f32 / 2.0 - c) * CELL;
+                let x = mid(x0, x1, crate::digits::CENTER.0);
+                let y = mid(y0, y1, crate::digits::CENTER.1);
+                let (sx, sz) = if y0 == y1 {
+                    (CELL - short, t)
+                } else {
+                    (t, CELL - short)
+                };
+                segments.push(
+                    display
+                        .spawn((
+                            Mesh3d(palette.segment.clone()),
+                            MeshMaterial3d(palette.segment_off_mat.clone()),
+                            Transform::from_xyz(x * unit, 0.0, -y * unit).with_scale(Vec3::new(
+                                sx * unit,
+                                0.004,
+                                sz * unit,
+                            )),
+                        ))
+                        .id(),
+                );
+            }
+        })
+        .insert(BotDigits {
+            id,
+            lit: lit.clone(),
+            segments,
+            quarter: None,
+        });
+}
+
+/// Light each bot's number for the turn that reads upright from the
+/// camera: the segments stay where they are on the lid and only switch on
+/// and off, as the bot turns or the camera orbits past halfway (Q46).
+pub fn light_digits(
+    cams: Query<&OrbitCam>,
+    palette: Res<Palette>,
+    bodies: Query<&Transform, With<MachineBody>>,
+    mut displays: Query<(&mut BotDigits, &ChildOf)>,
+    mut segments: Query<&mut MeshMaterial3d<StandardMaterial>>,
+) {
+    let Ok(cam) = cams.single() else { return };
+    let lattice = crate::digits::lattice();
+    for (mut d, child_of) in &mut displays {
+        let Ok(body) = bodies.get(child_of.parent()) else {
+            continue;
+        };
+        let (bot_yaw, _, _) = body.rotation.to_euler(EulerRot::YXZ);
+        let quarter = crate::digits::quarter_for(cam.yaw - bot_yaw);
+        if d.quarter == Some(quarter) {
+            continue;
+        }
+        d.quarter = Some(quarter);
+        let on = crate::digits::lit(&lattice, d.id, quarter);
+        for (e, lit_here) in d.segments.iter().zip(on) {
+            if let Ok(mut m) = segments.get_mut(*e) {
+                m.0 = if lit_here {
+                    d.lit.clone()
+                } else {
+                    palette.segment_off_mat.clone()
+                };
+            }
+        }
+    }
+}
+
+/// An inverted hull: drawn only from behind and a little larger than the
+/// body, so it shows as a rim round the body's silhouette.
+fn outline_material(color: Color) -> StandardMaterial {
+    StandardMaterial {
+        base_color: color,
+        unlit: true,
+        cull_mode: Some(bevy::render::render_resource::Face::Front),
+        ..default()
+    }
+}
+
+/// The outline's thickness, in tiles, round every side of a body.
+const OUTLINE: f32 = 0.05;
+
+/// Recolor every team's lights, outline and lens glass after the player
+/// changes a color (Q43, Q45).
+pub fn recolor_teams(
+    driver: NonSend<DriverResource>,
+    interface: Res<Interface>,
+    palette: Res<Palette>,
+    mut colors: ResMut<TeamColors>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !colors.dirty {
+        return;
+    }
+    colors.dirty = false;
+    let player = driver.0.player;
+    let base = materials.get(&palette.lens_glass_mat).cloned();
+    for ((team, _), body) in &colors.bodies {
+        let color = colors.color(&interface, player, sim::TeamId(*team));
+        if let Some(mut m) = materials.get_mut(body) {
+            m.emissive = glow_of(color);
+        }
+    }
+    for (team, m) in &colors.mats {
+        let color = colors.color(&interface, player, sim::TeamId(*team));
+        if let Some(mut o) = materials.get_mut(&m.outline) {
+            o.base_color = color;
+        }
+        if let (Some(base), Some(mut g)) = (&base, materials.get_mut(&m.glass)) {
+            *g = tint(base, color);
+        }
+        if let Some(mut seg) = materials.get_mut(&m.segment) {
+            *seg = segment_material(color);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn spawn_machine(
     commands: &mut Commands,
     frame: &Frame,
     interface: &Interface,
+    colors: &mut TeamColors,
     player: sim::TeamId,
     palette: &mut Palette,
     materials: &mut Assets<StandardMaterial>,
@@ -689,41 +967,20 @@ fn spawn_machine(
 ) -> MachineView {
     let model = m.record.model;
     let team = m.record.team;
-    let team_color = interface.team_color(player, team);
-    // A bot's body is the neutral one until T25 draws its `color` (Q43); a
-    // building wears the team's. The tint of a white base by white is the
-    // base itself.
-    let (mesh, live_mat) = match model {
-        Model::Bot => {
-            let base = palette.bot_mats[crate::palette::NEUTRAL_BOT].clone();
-            (palette.bot_cube.clone(), base)
-        }
-        Model::Printer => {
-            let base = palette.printer_mat.clone();
-            (
-                palette.printer_box.clone(),
-                palette.tinted(materials, &base, team, team_color),
-            )
-        }
-        Model::Depot => {
-            let base = palette.crate_mat.clone();
-            (
-                palette.crate_box.clone(),
-                palette.tinted(materials, &base, team, team_color),
-            )
-        }
-        Model::Site => {
-            let base = palette.site_mat.clone();
-            (
-                palette.site_cube.clone(),
-                palette.tinted(materials, &base, team, team_color),
-            )
-        }
+    let mesh = match model {
+        Model::Bot => palette.bot_cube.clone(),
+        Model::Printer => palette.printer_box.clone(),
+        Model::Depot => palette.crate_box.clone(),
+        Model::Site => palette.site_cube.clone(),
     };
-    let ring_base = palette.ring_mat.clone();
-    let ring_mat = palette.tinted(materials, &ring_base, team, team_color);
-    let glass_base = palette.lens_glass_mat.clone();
-    let glass_mat = palette.tinted(materials, &glass_base, team, team_color);
+    let live_mat = body_mat(palette, interface, colors, materials, player, m);
+    let TeamMats {
+        outline: outline_mat,
+        glass: glass_mat,
+        segment: segment_mat,
+    } = team_mats(colors, interface, player, team, palette, materials);
+    let half = body_half(model);
+    let outline_scale = (half + Vec3::splat(OUTLINE)) / half;
     let mat = if dimmed {
         palette.dim(materials, &live_mat)
     } else {
@@ -735,7 +992,7 @@ fn spawn_machine(
     let mut bar_root = Entity::PLACEHOLDER;
     let mut bar_fill = Entity::PLACEHOLDER;
     let mut mark = Entity::PLACEHOLDER;
-    let lift = body_lift(model);
+    let mesh_for_outline = mesh.clone();
     let body = commands
         .spawn((
             MachineBody(m.record.id),
@@ -765,6 +1022,7 @@ fn spawn_machine(
                         MeshMaterial3d(glass_mat),
                         Transform::from_xyz(0.0, LENS_Y, LENS_GLASS_Z).with_rotation(tip),
                     ));
+                    spawn_digits(parent, palette, &segment_mat, m.record.id.0);
                 }
                 Model::Printer => {
                     parent.spawn((
@@ -776,15 +1034,15 @@ fn spawn_machine(
                 }
                 Model::Depot | Model::Site => {}
             }
-            // The team's ring, flat on the tile under the body (Q35); it
-            // does not turn with the body, since a ring has no front.
-            parent.spawn((
-                TeamRing,
-                Mesh3d(palette.team_ring.clone()),
-                MeshMaterial3d(ring_mat),
-                Transform::from_xyz(0.0, 0.03 - lift, 0.0)
-                    .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
-            ));
+            // A site's team is its outline (Q43): the body's own mesh, a
+            // little larger. Every other machine's is its lights (Q45, Q47).
+            if model == Model::Site {
+                parent.spawn((
+                    Mesh3d(mesh_for_outline),
+                    MeshMaterial3d(outline_mat),
+                    Transform::from_scale(outline_scale),
+                ));
+            }
             mark = parent
                 .spawn((
                     FaultMark,
@@ -833,25 +1091,7 @@ fn spawn_machine(
         yaw,
         yaw_prev: yaw,
         pos_seen: m.record.pos,
-    }
-}
-
-/// A ring does not turn with its body.
-#[derive(Component)]
-pub struct TeamRing;
-
-/// Rings stay flat while their bodies turn: local = parent's inverse
-/// times flat.
-pub fn level_rings(
-    parents: Query<&Transform, (Without<TeamRing>, Without<Camera3d>)>,
-    mut rings: Query<(&mut Transform, &ChildOf), With<TeamRing>>,
-) {
-    for (mut t, child_of) in &mut rings {
-        let parent_rotation = parents
-            .get(child_of.parent())
-            .map(|p| p.rotation)
-            .unwrap_or(Quat::IDENTITY);
-        t.rotation = parent_rotation.inverse() * Quat::from_rotation_x(-FRAC_PI_2);
+        color_seen: m.record.color.clone(),
     }
 }
 

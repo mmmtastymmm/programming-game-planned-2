@@ -2,8 +2,9 @@
   <!-- printer top: the paper slot the sheet mesh rises from (image-up is
        the printer's front). -->
   <rect width="64" height="64" fill="#3a4454"/>
-  <!-- status lights on the front lip -->
-  <circle cx="10" cy="8" r="2" fill="#39d98a"/>
+  <!-- status lights on the front lip: the lit one in the team's color (#ff00ff
+       marks a light, Q47), the other dark -->
+  <circle cx="10" cy="8" r="2" fill="#ff00ff"/>
   <circle cx="17" cy="8" r="2" fill="#242c37"/>
   <!-- recessed slot housing -->
   <rect x="8" y="16" width="48" height="22" rx="2" fill="#2c3542" stroke="#0e1116" stroke-width="2"/>

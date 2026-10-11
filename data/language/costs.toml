@@ -94,6 +94,7 @@ build_nearest = 2
 wait = 1
 log = 1
 rename = 1
+set_color = 1
 plans = 2
 painted = 2
 overlaid = 2

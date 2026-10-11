@@ -37,6 +37,9 @@
     <circle cx="60.5" cy="3.5" r="1.6"/>
     <circle cx="3.5" cy="60.5" r="1.6"/>
     <circle cx="60.5" cy="60.5" r="1.6"/>
-    <circle cx="32" cy="32" r="2"/>
   </g>
+  <!-- the team lamp where the braces cross (#ff00ff marks a light, Q47):
+       the depot's mesh shows this art whole only on its top -->
+  <circle cx="32" cy="32" r="9" fill="#2a1f14"/>
+  <circle cx="32" cy="32" r="6.5" fill="#ff00ff"/>
 </svg>

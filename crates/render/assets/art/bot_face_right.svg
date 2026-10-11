@@ -8,6 +8,6 @@
   <circle cx="16" cy="51" r="4" fill="#2e3844"/>
   <circle cx="32" cy="51" r="4" fill="#2e3844"/>
   <circle cx="48" cy="51" r="4" fill="#2e3844"/>
-  <rect x="54" y="26" width="6" height="10" rx="2" fill="#c8ffe6" opacity="0.9"/>
+  <rect x="54" y="26" width="6" height="10" rx="2" fill="#ff00ff"/>
   <rect x="1" y="1" width="62" height="62" fill="none" stroke="#0e1116" stroke-width="2"/>
 </svg>

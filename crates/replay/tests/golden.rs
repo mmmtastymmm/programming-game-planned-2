@@ -218,6 +218,14 @@ fn golden_scenario_is_alive() {
                 .is_some_and(|p| p.global("guard").is_some())),
         "no player bot took the redeploy"
     );
+    // The first program wore its job as its color (Q43); the redeploy's
+    // program sets none, so a color still worn at the end survived it.
+    assert!(
+        w.machines
+            .values()
+            .any(|m| m.team == TeamId(0) && matches!(m.color.as_deref(), Some("orange" | "cyan"))),
+        "no player bot wears a job color"
+    );
     let ore_moved = w.tiles.iter().any(|t| {
         t.deposit
             .as_ref()

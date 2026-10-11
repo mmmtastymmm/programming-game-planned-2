@@ -39,4 +39,5 @@ crates/render/assets/textures/
 # The renderer's per-player files inside a programs directory (docs/07): the
 # window layout and saved replays are the player's, never the repo's.
 windows.toml
+colors.toml
 replays/

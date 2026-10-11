@@ -7,8 +7,18 @@
 fault_mark_ticks = 30
 
 [teams]
-# ring colors for the teams that are not the player's, in team order
-# skipping the player's; the player's ring is white. Blue comes first so
-# that once T25 makes these Q43's outlines, with the player's own green, a
-# default one-on-one is green against blue, not green against red
-rings = ["#4fa3f2", "#f24c40", "#f2c94c", "#e254c7", "#f2913f", "#9b59f2", "#45d4d4"]
+# The team colors (Q43, Q45, Q47): the lights of a bot, a printer and a
+# depot glow in their team's color, and a site is outlined in it. The player's own team defaults to `player`,
+# green; every other team to the next of `outlines`, in team order
+# skipping the player's. Blue comes first,
+# so a default one-on-one is green against blue, which the commonest
+# colorblindness tells apart. The player may change any of them in the
+# inspector; the choice is saved in colors.toml beside the programs.
+player = "#4fc76a"
+outlines = ["#4fa3f2", "#f24c40", "#f2c94c", "#e254c7", "#f2913f", "#9b59f2", "#45d4d4"]
+
+[bodies]
+# the neutral body (Q43): a bot whose `color` is None wears this atlas, one
+# of the paint colors' or "white"; buildings are drawn in their own
+# untinted neutral materials
+neutral = "white"

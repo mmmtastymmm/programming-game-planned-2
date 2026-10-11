@@ -10,6 +10,7 @@ use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
 use crate::marks::{self, MarkRows, ROWS};
+use crate::outlines::TeamColors;
 use crate::palette::{Frame, Interface, paint_color};
 use crate::view::{self, Entities};
 use bevy::prelude::*;
@@ -42,6 +43,7 @@ pub fn panels(
     cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
+    mut colors: ResMut<TeamColors>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     let ctx = ctx.clone();
@@ -208,7 +210,7 @@ pub fn panels(
                     editor::window_body(ui, &mut driver, &mut state, name);
                 } else {
                     match name.as_str() {
-                        "inspector" => inspector(ui, &interface, &driver, &mut state),
+                        "inspector" => inspector(ui, &interface, &driver, &mut state, &mut colors),
                         "tools" => tools(ui, &mut driver, &mut state, &rows),
                         _ => log(ui, &state),
                     }
@@ -345,6 +347,7 @@ fn inspector(
     interface: &Interface,
     driver: &DriverResource,
     state: &mut ViewState,
+    colors: &mut TeamColors,
 ) {
     let d = &driver.0;
     let player = d.player;
@@ -355,7 +358,7 @@ fn inspector(
                 Some(m) => {
                     let r = &m.record;
                     ui.colored_label(
-                        interface.team_color32(player, r.team),
+                        colors.color32(interface, player, r.team),
                         format!(
                             "{} — {} #{} of team {}",
                             r.name,
@@ -472,13 +475,22 @@ fn inspector(
         for t in &snap.teams {
             let mine = if t.id == player { " (you)" } else { "" };
             let out = if t.out { " — out" } else { "" };
-            ui.colored_label(
-                interface.team_color32(player, t.id),
-                format!(
-                    "team {}{mine}: {} bots / cap {}{out}",
-                    t.id.0, t.bots, t.cap
-                ),
-            );
+            // Each team's outline color, the player's to change (Q43).
+            ui.horizontal(|ui| {
+                let mut rgb = colors.rgb(interface, player, t.id);
+                if egui::color_picker::color_edit_button_srgb(ui, &mut rgb).changed()
+                    && let Err(e) = colors.set(t.id, rgb)
+                {
+                    state.status = format!("outline colors not saved: {e}");
+                }
+                ui.colored_label(
+                    colors.color32(interface, player, t.id),
+                    format!(
+                        "team {}{mine}: {} bots / cap {}{out}",
+                        t.id.0, t.bots, t.cap
+                    ),
+                );
+            });
             for (name, v) in &t.deployments {
                 if let Some(v) = v {
                     ui.small(format!("  {name}: {v:016x}"));

@@ -204,6 +204,7 @@ pub fn run(setup: Setup, autostart: bool) {
     }))
     .insert_resource(view::Tuning::load())
     .insert_resource(view::Entities::default())
+    .insert_resource(crate::outlines::TeamColors::default())
     .insert_resource(LmbGesture::default())
     .insert_non_send(StartScreen::new(setup, autostart))
     .add_systems(Startup, camera)
@@ -231,7 +232,8 @@ pub fn run(setup: Setup, autostart: bool) {
             view::cursor_ghost,
             view::markers,
             view::billboard_bars,
-            view::level_rings,
+            view::light_digits,
+            view::recolor_teams,
         )
             .chain()
             .run_if(shown.clone()),

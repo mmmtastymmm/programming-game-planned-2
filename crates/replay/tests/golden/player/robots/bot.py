@@ -1,7 +1,8 @@
 # The fixture's first bot program: haul ore from the nearest deposit into
 # the team's building plan — a printer, whose price rises with the team's
 # printers (Q42) — building the site when there is none, and keep a tally
-# that a redeploy will throw away.
+# that a redeploy will throw away. It wears its job as its color (Q43):
+# orange while hauling to the site, cyan while fetching ore.
 steps = 0
 CAPACITY = 10
 
@@ -39,6 +40,9 @@ def step_off():
 
 while True:
     full = me().load["ore"] >= CAPACITY
+    job = "orange" if full else "cyan"
+    if me().color != job:
+        set_color(job)
     target = site() if full else deposit()
     if target is None:
         wait(5)

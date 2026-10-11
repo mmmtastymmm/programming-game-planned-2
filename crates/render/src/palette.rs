@@ -6,6 +6,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
+use sim::world::Model;
 use sim::{TeamId, TilePos};
 use std::collections::HashMap;
 
@@ -32,14 +33,10 @@ pub const LENS_GLASS_RADIUS: f32 = 0.08;
 pub const LENS_GLASS_LEN: f32 = 0.02;
 pub const LENS_GLASS_Z: f32 = LENS_BARREL_Z - LENS_BARREL_LEN / 2.0 - LENS_GLASS_LEN / 4.0;
 
-/// The neutral body (Q43): every bot wears it until T25 draws a bot's own
-/// `color`, since every bot runs one deployment (Q42).
-pub const NEUTRAL_BOT: &str = "white";
-
 /// The atlas names `build.rs` bakes and the renderer loads by name: the
-/// eight paint colors of `data/machines.toml`, which T25 draws a bot's
-/// `color` in (Q43), and `white`, the neutral body every bot wears until
-/// then and a building wears before its team's tint. `build.rs` also bakes
+/// eight paint colors of `data/machines.toml`, which a bot's `color` is
+/// drawn in (Q43), and `white`, the default neutral body
+/// (`data/interface.toml`'s `bodies.neutral`). `build.rs` also bakes
 /// `ruined`, the dead-grey swap, which is loaded by its own path and is not
 /// in this list.
 pub const ATLASES: [&str; 9] = [
@@ -52,6 +49,7 @@ pub const ATLASES: [&str; 9] = [
 pub struct Interface {
     pub faults: InterfaceFaults,
     pub teams: InterfaceTeams,
+    pub bodies: InterfaceBodies,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -61,59 +59,55 @@ pub struct InterfaceFaults {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct InterfaceTeams {
-    /// Ring colors as `#rrggbb`, for the teams that are not the player's,
-    /// in team order skipping the player's.
-    pub rings: Vec<String>,
+    /// The player's own default outline (Q43), as `#rrggbb`.
+    pub player: String,
+    /// Default outlines for the teams that are not the player's, in team
+    /// order skipping the player's, as `#rrggbb`.
+    pub outlines: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct InterfaceBodies {
+    /// The atlas a bot with no `color` wears (Q43), one of [`ATLASES`].
+    pub neutral: String,
 }
 
 pub const INTERFACE_TOML: &str = include_str!("../../../data/interface.toml");
 
-fn hex_color(s: &str) -> Option<Color> {
-    let h = s.strip_prefix('#')?;
-    if h.len() != 6 {
-        return None;
-    }
-    let v = u32::from_str_radix(h, 16).ok()?;
-    Some(Color::srgb_u8(
-        ((v >> 16) & 0xff) as u8,
-        ((v >> 8) & 0xff) as u8,
-        (v & 0xff) as u8,
-    ))
-}
-
 impl Interface {
     pub fn load() -> Result<Interface, String> {
         let i: Interface = toml::from_str(INTERFACE_TOML).map_err(|e| e.to_string())?;
-        if i.teams.rings.is_empty() {
-            return Err("interface.toml: teams.rings is empty".into());
+        if i.teams.outlines.is_empty() {
+            return Err("interface.toml: teams.outlines is empty".into());
         }
-        for r in &i.teams.rings {
-            hex_color(r).ok_or_else(|| format!("interface.toml: `{r}` is not #rrggbb"))?;
+        for c in std::iter::once(&i.teams.player).chain(&i.teams.outlines) {
+            if crate::outlines::parse_hex(c).is_none() {
+                return Err(format!("interface.toml: `{c}` is not #rrggbb"));
+            }
+        }
+        if !ATLASES.contains(&i.bodies.neutral.as_str()) {
+            return Err(format!(
+                "interface.toml: bodies.neutral `{}` is not one of {ATLASES:?}",
+                i.bodies.neutral
+            ));
         }
         Ok(i)
     }
 
-    /// The team's ring color (Q35): the player's white, every other team's
-    /// from the list in team order skipping the player's.
-    pub fn team_color(&self, player: TeamId, team: TeamId) -> Color {
-        if team == player {
-            return Color::WHITE;
-        }
-        let i = if team.0 < player.0 {
-            team.0
+    /// The team's default outline (Q43): the player's own, or every other
+    /// team's from the list in team order skipping the player's.
+    pub fn default_outline(&self, player: TeamId, team: TeamId) -> [u8; 3] {
+        let hex = if team == player {
+            &self.teams.player
         } else {
-            team.0.saturating_sub(1)
-        } as usize;
-        hex_color(&self.teams.rings[i % self.teams.rings.len()]).unwrap_or(Color::WHITE)
-    }
-
-    pub fn team_color32(&self, player: TeamId, team: TeamId) -> bevy_egui::egui::Color32 {
-        let c = self.team_color(player, team).to_srgba();
-        bevy_egui::egui::Color32::from_rgb(
-            (c.red * 255.0) as u8,
-            (c.green * 255.0) as u8,
-            (c.blue * 255.0) as u8,
-        )
+            let i = if team.0 < player.0 {
+                team.0
+            } else {
+                team.0.saturating_sub(1)
+            } as usize;
+            &self.teams.outlines[i % self.teams.outlines.len()]
+        };
+        crate::outlines::parse_hex(hex).unwrap_or([255, 255, 255])
     }
 }
 
@@ -159,6 +153,30 @@ fn hatch_image() -> Image {
         bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     )
+}
+
+/// A machine's body as half extents: its mesh, and the outline drawn round
+/// it (Q43).
+pub fn body_half(model: Model) -> Vec3 {
+    match model {
+        Model::Bot => Vec3::splat(BOT_HALF),
+        Model::Printer => Vec3::new(0.45, 0.25, 0.45),
+        Model::Depot => Vec3::new(0.39, 0.15, 0.39),
+        Model::Site => Vec3::splat(0.35),
+    }
+}
+
+/// `base` in `color`: its base color, and its emissive if it glows,
+/// multiplied by `color` — the lens glass in its team's outline color.
+pub fn tint(base: &StandardMaterial, color: Color) -> StandardMaterial {
+    let mut m = base.clone();
+    let c = color.to_linear();
+    let b = m.base_color.to_linear();
+    m.base_color =
+        LinearRgba::new(b.red * c.red, b.green * c.green, b.blue * c.blue, b.alpha).into();
+    let e = m.emissive;
+    m.emissive = LinearRgba::new(e.red * c.red, e.green * c.green, e.blue * c.blue, e.alpha);
+    m
 }
 
 /// The frame: tile `(x, y)` sits at world `(x - cx, _, -(y - cy))`, so north
@@ -294,11 +312,12 @@ pub struct Palette {
     pub mark_quad: Handle<Mesh>,
     pub overlay_cube: Handle<Mesh>,
     pub ring: Handle<Mesh>,
-    pub team_ring: Handle<Mesh>,
     pub scribble_quad: Handle<Mesh>,
     pub bar: Handle<Mesh>,
     pub lens_barrel: Handle<Mesh>,
     pub lens_glass: Handle<Mesh>,
+    /// A unit cube, scaled into each segment of a bot's number (Q46).
+    pub segment: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
@@ -309,7 +328,16 @@ pub struct Palette {
     pub ore_frames: Vec<Vec<Handle<Image>>>,
     pub rock_mats: Vec<Handle<StandardMaterial>>,
     /// Bot atlases by color name, `white` the neutral body (Q43).
-    pub bot_mats: HashMap<String, Handle<StandardMaterial>>,
+    /// Each bot atlas by name, and the mask its lights glow through in the
+    /// team's color (Q45): a bot's material is made per color and team.
+    pub bot_textures: HashMap<String, Handle<Image>>,
+    pub bot_lights: Handle<Image>,
+    /// The printer's and the depot's art and the masks their lights glow
+    /// through (Q47).
+    pub printer_texture: Handle<Image>,
+    pub printer_lights: Handle<Image>,
+    pub crate_texture: Handle<Image>,
+    pub crate_lights: Handle<Image>,
     /// The white printer atlas, tinted per team on demand.
     pub printer_mat: Handle<StandardMaterial>,
     pub printer_ruined_mat: Handle<StandardMaterial>,
@@ -332,11 +360,9 @@ pub struct Palette {
     pub dim: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     /// Plan ghosts: the live material's id to its translucent copy.
     pub ghosts: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
-    /// Team tints: a base material and a team's ring color to the tinted
-    /// copy — buildings, rings and lens glass are these.
-    pub tints: HashMap<(AssetId<StandardMaterial>, u32), Handle<StandardMaterial>>,
-    pub ring_mat: Handle<StandardMaterial>,
     pub lens_glass_mat: Handle<StandardMaterial>,
+    /// An unlit segment of a bot's number (Q46).
+    pub segment_off_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -410,15 +436,12 @@ impl Palette {
                 )
             })
             .collect();
-        let bot_mats = ATLASES
+        let bot_textures = ATLASES
             .iter()
             .map(|t| {
                 (
                     t.to_string(),
-                    atlas(
-                        materials,
-                        assets.load(format!("textures/bot_atlas_{t}.png")),
-                    ),
+                    assets.load(format!("textures/bot_atlas_{t}.png")),
                 )
             })
             .collect();
@@ -462,20 +485,20 @@ impl Palette {
         Palette {
             tile_slab: meshes.add(textured_slab_mesh(Vec3::new(0.48, SLAB_HALF, 0.48))),
             rock_block: meshes.add(block_mesh(ROCK_HEIGHT)),
-            bot_cube: meshes.add(atlas_box_mesh(Vec3::splat(BOT_HALF))),
-            printer_box: meshes.add(atlas_box_mesh(Vec3::new(0.45, 0.25, 0.45))),
+            bot_cube: meshes.add(atlas_box_mesh(body_half(Model::Bot))),
+            printer_box: meshes.add(atlas_box_mesh(body_half(Model::Printer))),
             paper_sheet: meshes.add(Cuboid::new(0.36, 0.26, 0.02)),
-            crate_box: meshes.add(textured_slab_mesh(Vec3::new(0.39, 0.15, 0.39))),
-            site_cube: meshes.add(Cuboid::new(0.7, 0.7, 0.7)),
+            crate_box: meshes.add(textured_slab_mesh(body_half(Model::Depot))),
+            site_cube: meshes.add(Cuboid::from_size(2.0 * body_half(Model::Site))),
             cover_quad: meshes.add(Cuboid::new(1.0, 0.02, 1.0)),
             mark_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
             overlay_cube: meshes.add(Cuboid::new(0.22, 0.22, 0.22)),
             ring: meshes.add(Annulus::new(0.36, 0.44)),
-            team_ring: meshes.add(Annulus::new(0.40, 0.47)),
             scribble_quad: meshes.add(Rectangle::new(1.05, 0.85)),
             bar: meshes.add(Cuboid::new(0.9, 0.12, 0.01)),
             lens_barrel: meshes.add(Cylinder::new(LENS_BARREL_RADIUS, LENS_BARREL_LEN)),
             lens_glass: meshes.add(Cylinder::new(LENS_GLASS_RADIUS, LENS_GLASS_LEN)),
+            segment: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
             ground_frames,
             water_mats,
@@ -483,7 +506,12 @@ impl Palette {
             ore_mats,
             ore_frames,
             rock_mats,
-            bot_mats,
+            bot_textures,
+            bot_lights: assets.load("textures/bot_atlas_lights.png"),
+            printer_texture: assets.load("textures/printer_atlas_white.png"),
+            printer_lights: assets.load("textures/printer_atlas_lights.png"),
+            crate_texture: assets.load("textures/crate.png"),
+            crate_lights: assets.load("textures/crate_lights.png"),
             printer_mat,
             printer_ruined_mat: atlas(materials, assets.load("textures/printer_atlas_ruined.png")),
             lens_barrel_mat: materials.add(StandardMaterial {
@@ -493,6 +521,13 @@ impl Palette {
                 ..default()
             }),
             scribble_mats,
+            // Just lighter than the bezel (#14181f), so the dark lattice
+            // shows and the lit number reads as segments switching on.
+            segment_off_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.105, 0.12, 0.15),
+                perceptual_roughness: 0.9,
+                ..default()
+            }),
             lens_glass_mat: materials.add(StandardMaterial {
                 base_color: Color::srgb(0.08, 0.1, 0.12),
                 emissive: LinearRgba::new(1.6, 1.6, 1.6, 1.0),
@@ -500,13 +535,6 @@ impl Palette {
                 perceptual_roughness: 0.15,
                 ..default()
             }),
-            ring_mat: materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                emissive: LinearRgba::new(0.5, 0.5, 0.5, 1.0),
-                unlit: false,
-                ..default()
-            }),
-            tints: HashMap::new(),
             paper_mat: materials.add(StandardMaterial {
                 base_color_texture: Some(paper_tex.clone()),
                 emissive: LinearRgba::new(0.25, 0.25, 0.25, 1.0),
@@ -537,34 +565,6 @@ impl Palette {
             dim: HashMap::new(),
             ghosts: HashMap::new(),
         }
-    }
-
-    /// A copy of `base` in the team's color: the base color, and the
-    /// emissive if the base glows, multiplied by `color`. The player's own
-    /// team is white, so its copy is the base.
-    pub fn tinted(
-        &mut self,
-        materials: &mut Assets<StandardMaterial>,
-        base: &Handle<StandardMaterial>,
-        team: TeamId,
-        color: Color,
-    ) -> Handle<StandardMaterial> {
-        if let Some(t) = self.tints.get(&(base.id(), team.0)) {
-            return t.clone();
-        }
-        let Some(src) = materials.get(base) else {
-            return base.clone();
-        };
-        let mut m = src.clone();
-        let c = color.to_linear();
-        let b = m.base_color.to_linear();
-        m.base_color =
-            LinearRgba::new(b.red * c.red, b.green * c.green, b.blue * c.blue, b.alpha).into();
-        let e = m.emissive;
-        m.emissive = LinearRgba::new(e.red * c.red, e.green * c.green, e.blue * c.blue, e.alpha);
-        let t = materials.add(m);
-        self.tints.insert((base.id(), team.0), t.clone());
-        t
     }
 
     /// The memory twin of a live material: darkened, blue-shifted, unlit.
