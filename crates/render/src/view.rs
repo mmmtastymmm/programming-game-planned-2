@@ -289,6 +289,15 @@ fn surface_of(look: &TileLook) -> f32 {
     }
 }
 
+/// The face a flat marker on `p` must clear, as drawn now: the tile's own
+/// surface, or the fog cover's top, which is a slab's, on an unknown tile.
+fn surface_at(ents: &Entities, p: TilePos) -> f32 {
+    ents.tiles
+        .get(&p)
+        .filter(|t| t.look.state != TileState::Unknown)
+        .map_or(SLAB_HALF, |t| surface_of(&t.look))
+}
+
 /// Rebuild every tile whose look changed since the last snapshot (Q21):
 /// unknown under the cover, remembered in the cold twin, visible live.
 pub fn sync_tiles(
@@ -454,7 +463,7 @@ pub fn cursor_ghost(
     if let Some(plans) = crate::marks::ghost_of(&want.0) {
         for p in &want.1 {
             let top = ents.top(*p);
-            let surface = ents.tiles.get(p).map_or(SLAB_HALF, |t| surface_of(&t.look));
+            let surface = surface_at(&ents, *p);
             let spawned = spawn_plans(
                 &mut commands,
                 &frame,
@@ -978,7 +987,9 @@ pub fn billboard_bars(
     }
 }
 
-/// The hover and selection markers ride their tiles.
+/// The hover and selection markers ride their tiles, on the tile's face
+/// above any paint (`+0.005`) or plan (`+0.01`), so neither hides them and
+/// they do not fight the slab's top.
 pub fn markers(
     state: Res<ViewState>,
     driver: NonSend<DriverResource>,
@@ -993,7 +1004,7 @@ pub fn markers(
     if let Ok((mut t, mut v)) = hover.single_mut() {
         match state.hover {
             Some(p) => {
-                t.translation = frame.tile_xyz(p, ents.top(p) + 0.04);
+                t.translation = frame.tile_xyz(p, surface_at(&ents, p) + MARK_HALF + 0.015);
                 *v = Visibility::Inherited;
             }
             None => *v = Visibility::Hidden,
@@ -1006,7 +1017,7 @@ pub fn markers(
             .map(|m| m.record.pos);
         match at {
             Some(p) => {
-                t.translation = frame.tile_xyz(p, ents.top(p) + 0.045);
+                t.translation = frame.tile_xyz(p, surface_at(&ents, p) + MARK_HALF + 0.02);
                 *v = Visibility::Inherited;
             }
             None => *v = Visibility::Hidden,
