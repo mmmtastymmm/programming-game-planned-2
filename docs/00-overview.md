@@ -77,23 +77,24 @@ pass.
   and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
   interrupts), Q14 and Q19 (numbers) and Q41's hook sources are the Decided
   entries of the parts that elaborate them, and they are not repeated here.
-- **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9 (production), Q22 and Q23 (the economy, which
-  `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
+- **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and
+  Q21 (sensing and memory), Q9 (production), Q22 and Q23 (the economy,
+  which `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
   (combat), Q30 (a printer's defence), Q42 (building printers, printing and
-  the deployments) and Q43 (a bot's color) are its Decided entries, and they are not repeated here; Q31 and Q40, which Q42
-  withdrew, have none.
+  the deployments) and Q43 (a bot's color) are its Decided entries, and
+  they are not repeated here; Q31 and Q40, which Q42 withdrew, have none.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
-  Q12 (scheduling), Q15 (the renderer) and Q32 (the paused driver) are its
-  Decided entries, and they are not repeated here; Q32's other half is
+  Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q45
+  (forks, the sim's half of debugging) are its Decided entries, and they are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
 - **The interface's rulings live in [07-interface](07-interface.md)** —
   Q33 (the editor), Q34 (faults), Q35 and Q43 (a bot's color and the team
   outline), Q36 (the start and end screens), Q37 (the mark tools), Q38 (the
-  stall and the desync), Q39
-  (windows, amending Q33) and Q41 (the program tree, amending Q33 and Q39)
-  are its Decided entries, and they are not repeated here.
+  stall and the desync), Q39 (windows, amending Q33), Q41 (the program
+  tree, amending Q33 and Q39), Q44 (the rectangle mark and the
+  withdrawing clear, amending Q37) and Q45 (the debugger and what-if) are
+  its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in

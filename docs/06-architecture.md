@@ -54,6 +54,11 @@ Rulings this doc owns, moved here from the overview when it was written.
   built. Interpolation is in floats and never read back. Input becomes
   commands the renderer submits and forgets. Headless — `sim` plus a driver
   with no Bevy — stays the build CI runs.
+- **A program is debugged on a fork, a private copy of the sim that never
+  feeds back into the match (Q45).** The live sim only reports breakpoint
+  hits, read-only; stepping, rewinding, editing a variable and what-if all
+  act on a fork. In PvP a fork never runs past the live tick. Forks,
+  below; the player's side is [07-interface](07-interface.md)'s.
 
 ## Crates
 
@@ -261,6 +266,47 @@ function of the world rather than part of it (Q7).
 Two peers whose hashes differ on a tick have desynced. `net` reports it, the
 driver stalls, and the replay tool reproduces it from `(map, command log)`
 on either peer — which is the whole reason the log is complete.
+
+## Forks
+
+A **fork** (Q45) is the world at a completed tick of a match or a replay,
+with the command log to that tick. It is built by cloning the live sim or
+by re-running `(map, command log)`, and either way its state hash equals
+the match's at that tick. It runs the tick loop of The tick, unchanged,
+and it is never a peer: it sends nothing and receives nothing, and nothing
+it does reaches the match. Only `sim` and its callers in `render` and
+`replay` hold one.
+
+- **Hits.** Given a set of watched `(file, line)` pairs and the team they
+  belong to, `sim.step` reports every machine of that team that begins an
+  operation on a watched line, with the tick, beside its usual report. It
+  charges nothing and changes nothing, and the set is no part of the state
+  hash, so a peer watching lines hashes as one that is not.
+- **Stopping.** A fork can stop inside a tick, at an operation boundary
+  (`01`, Metering) of any machine's slice, and resume from there; a fork
+  stopped mid-tick has no state hash until the tick completes. It reports
+  each frame of a machine's execution — file, line, function, locals — its
+  globals, its budget and deficit, and its pending interrupts.
+- **Steps**, each stopping on one selected machine and running every other
+  machine in tick-loop order meanwhile: **line** — until the selected
+  machine begins an operation on another line or in another frame;
+  **over** — until it next begins an operation in the frame it was in, so
+  a call or a waiting action is one step; **tick** — to the end of the
+  tick; **continue** — to the next watched line. Metering is unchanged, so
+  an untouched fork reproduces the match hash for hash.
+- **Back.** Checkpoints of the live sim and of every fork are kept every
+  `debug_checkpoint_ticks`, the last `debug_checkpoints_kept`; stepping
+  back restores the latest checkpoint at or before the target and re-runs
+  to it.
+- **Editing.** A local or global of a machine on a paused fork may be set
+  to a value the language parses as a literal; the fork is **diverged**
+  from then on and its hashes are no longer the match's.
+- **What-if** applies `Deploy` commands to a fork at its current point and
+  runs it on; the commands enter the fork's log, never the match's.
+- **The present.** In PvP a fork's tick never exceeds the live match's
+  latest completed tick, and what-if is refused. In single-player, PvE and
+  replays a fork runs ahead freely, with a scripted team's commands, which
+  are known in advance (`04`).
 
 ## Testing
 

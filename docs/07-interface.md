@@ -66,6 +66,14 @@ here changes a hash; a peer with a different renderer sees the same match.
   change any team's outline color, their own included, from the
   inspector; the choice is saved in `colors.toml` beside the programs and
   never reaches a peer. No bot wears a number.
+- **A program is debugged on a fork (Q45).** Line breakpoints are the
+  editor's; a hit opens a private copy of the sim at that point, where the
+  player steps by line, by tick or over an action, rewinds, inspects the
+  selected machine's execution and may edit its variables, and a
+  **what-if** run deploys the editor's text into the copy to try it
+  before deploying it. The same tool opens on a live match or a replay; in
+  PvP a fork never passes the live tick and what-if is off. Debugging,
+  below.
 
 ## The screen
 
@@ -80,6 +88,7 @@ floats over it (Q39, Q41):
 | **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's outline color to change | Q34, Q43 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
+| **debugger** | while a fork is open: its tick and controls, the selected machine's stack, locals, globals, action, budget and interrupts | Q45 |
 
 Every window drags, resizes, collapses and closes, and several files may
 be open at once. The layout is saved to `windows.toml` beside the programs
@@ -225,10 +234,51 @@ name, the path in the banner, and *leave* to the end screen, which says the
 match ended in a desync. A lost peer is neither: its sets stop being
 awaited and the match continues, with a line in the log.
 
+## Debugging
+
+A program is debugged on a **fork** (Q45): a private copy of the sim, as
+[06-architecture](06-architecture.md)'s Forks section defines it, which
+never feeds back into the match. Everything here is the renderer's; the
+live sim is only read.
+
+- **Breakpoints.** A click in a file window's gutter sets a breakpoint on
+  that line, scoped to the selected machine or, with no machine selected,
+  to every machine whose bundle holds the file. Breakpoints are kept with
+  the tree, never sent, and only the player's own team's machines hit
+  them.
+- **A hit** opens a fork at the hit, and the map draws the fork under a
+  banner naming its tick and the machine; the debugger window opens on
+  that machine. In single-player and PvE the match is also paused, by a
+  `SetSpeed(0)` that lands `delay` ticks later (Q12); in PvP it runs on,
+  and the time bar keeps the live tick.
+- **A fork can also be opened by hand** at the live match's latest tick,
+  or at any tick of a replay from the start screen.
+- **Stepping**: *line*, *over*, *tick*, *continue* and *back*, as `06`
+  defines each, with the keys the build chooses. The whole world advances;
+  the stop is the selected machine's. Selecting another machine of the
+  team changes which machine the steps stop on.
+- **Inspection**: the selected machine's call stack, each frame with its
+  file, line, function and locals, the frame's line marked in its file's
+  window; its globals; its action in progress, tick budget and deficit;
+  its pending interrupts and whether it is in a handler; its record.
+- **Editing a variable**: a local or global of the selected machine, typed
+  as a language literal on a paused fork. The fork is marked *diverged* in
+  its banner from then on.
+- **What-if**: a deploy button on a file window while a fork is open sends
+  that file's deploys into the fork, not the match, and *run* advances the
+  fork at the chosen speed. *Take it* deploys the same text to the match,
+  `delay` ticks after the match's own tick.
+- **PvP**: a fork stops at the live match's latest completed tick, and
+  waits there; what-if is not offered.
+- **Fog**: the map of a fork is the team's view of it, as the live map is
+  (Q21), and only the team's machines can be selected or inspected.
+- **Closing** the fork returns the map and the windows to the match.
+
 ## Costs
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
-`fault_mark_ticks`, the neutral body color, the player's default outline
+`fault_mark_ticks`, `debug_checkpoint_ticks` and `debug_checkpoints_kept`
+(Q45), the neutral body color, the player's default outline
 color and the outline list for the other teams. None is a sim value; the
 player's own outline choices live in `colors.toml` beside the programs.
 

@@ -61,3 +61,34 @@ default and the others from a list in `data/interface.toml`, changed from
 the inspector and saved in `colors.toml` beside the programs. The golden
 fixtures, regenerated with the reason in the PR. Finishing it fixes
 [P2](PROBLEMS.md).
+
+## M8 — The debugger
+
+**T26 — Forks in `sim`: hit reporting, stopping mid-tick, steps, editing**
+
+Q45, ruled in `06`'s Forks section. A fork built by cloning the sim or by
+re-running a log, agreeing with the match's hash; `sim.step` reporting a
+team's machines beginning an operation on watched `(file, line)` pairs,
+read-only and outside the hash; the language VM stopping at an operation
+boundary mid-slice and resuming, and reporting each frame's file, line,
+function and locals, the globals, budget, deficit and pending interrupts;
+the line, over, tick and continue steps; checkpoints and back; setting a
+local or global from a literal, marking the fork diverged; the PvP bound
+at the live tick. Tests that an untouched fork reproduces the golden
+stream hash for hash, and that watching lines changes no hash.
+
+**T27 — The debugger in `render`, live and on replays**
+
+Q45, ruled in `07`'s Debugging section. Gutter breakpoints scoped to a
+machine or a file, kept with the tree; a hit opening a fork and, outside
+PvP, submitting the pause; the debugger window and the fork banner; the
+map drawing the fork in the team's view; the step keys; variable editing;
+opening a fork by hand and from a replay on the start screen;
+`debug_checkpoint_ticks` and `debug_checkpoints_kept` in
+`data/interface.toml`.
+
+**T28 — What-if**
+
+Q45: deploying a file into the open fork instead of the match, running the
+fork at a chosen speed, and *take it* deploying the same text to the
+match; refused in PvP.

@@ -26,29 +26,30 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-10-11.** Every question this file has issued, Q1 through
-Q44, is answered. Q33 through Q39 and Q41 were each opened and answered in
-one commit as [07-interface](07-interface.md) was written and revised, and
+**Status 2026-10-11.** Every question this file has issued, Q1 through Q45,
+is answered. Q33 through Q39 and Q41 were each opened and answered in one
+commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
 window, Q41 the working copies to one tree and the hook binding in `01`.
 Q42 — building printers, printing by turns, one deployment per model —
 amends Q9, Q23, Q24, Q30, Q31, Q35 and Q40, and withdraws Q31 and Q40
-outright, so neither has a Decided entry anywhere; Q43, a bot's
-program-set color and the player-colored team outline, amends Q35 and
-Q42; Q44, the `Shift`+drag rectangle and the withdrawing *clear*, amends
-Q37 and is `07`'s. The rulings of Q7, Q9, Q21, Q22, Q23, Q24, Q25, Q30, Q42 and Q43 are
-[02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
-Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28 and Q32
-are [06-architecture](06-architecture.md)'s, Q4 and Q29 are
+outright, so neither has a Decided entry anywhere; Q43, a bot's program-set
+color and the player-colored team outline, amends Q35 and Q42; Q44, the
+`Shift`+drag rectangle and the withdrawing *clear*, amends Q37 and is
+`07`'s; Q45, debugging on a fork with what-if, was opened and answered in
+one commit and is `07`'s and `06`'s. The rulings of Q7, Q9, Q21, Q22, Q23,
+Q24, Q25, Q30, Q42 and Q43 are [02-machines](02-machines.md)'s Decided
+entries, `docs/03` cites Q21 and Q22 from there, the rulings of Q6, Q10,
+Q12, Q15, Q26 through Q28, Q32 and Q45 are
+[06-architecture](06-architecture.md)'s, Q4 and Q29 are
 [04-opposition](04-opposition.md)'s, Q42 is also
 [05-progression](05-progression.md)'s, and Q43 is also `07`'s. Nothing is
 undecided, and **Open** below is empty until the next question is opened.
-The
-framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
-and the language's by [01-language](01-language.md)'s parts; none is repeated
-here. Each worksheet is a file of its own in
-[history/questions-answered/](history/questions-answered/README.md), and the
-spike behind Q5 is
+The framing rulings are owned by [00-overview.md](00-overview.md)'s Decided
+section and the language's by [01-language](01-language.md)'s parts; none
+is repeated here. Each worksheet is a file of its own in
+[history/questions-answered/](history/questions-answered/README.md), and
+the spike behind Q5 is
 [spikes/lang-determinism](../spikes/lang-determinism/README.md).
 
 This block is **rewritten in place**, never stacked or archived: `git log -p
