@@ -232,7 +232,8 @@ pub fn panels(
         }
     }
 
-    // A planned overlay's label, faint over its ghost (Q37), drawn on the
+    // A planned overlay's label, faint over its ghost (Q37) — the player's
+    // own plans, and the armed overlay's preview (Q44) — drawn on the
     // background layer under the windows.
     if let Ok((camera, cam_tf)) = cams.single() {
         let painter = ctx.layer_painter(egui::LayerId::background());
@@ -251,8 +252,8 @@ pub fn panels(
                     .collect()
             })
             .unwrap_or_default();
-        if let (Tool::Mark(PlanKind::Overlay, Some(l)), Some(p)) = (&state.tool, state.hover) {
-            labels.push((p, l.clone()));
+        if let Tool::Mark(PlanKind::Overlay, Some(l)) = &state.tool {
+            labels.extend(state.preview().into_iter().map(|p| (p, l.clone())));
         }
         let font = egui::FontId::proportional(14.0);
         for (p, label) in labels {
@@ -327,7 +328,8 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
             }
         });
     }
-    ui.small("drag: mark every tile crossed · Shift+click: withdraw the armed kind");
+    ui.small("drag: mark every tile crossed · Shift+drag: fill a rectangle");
+    ui.small("clear on a tile you planned withdraws the plan");
     ui.separator();
     if ui.button("resign (Shift+R)").clicked() {
         submit(d, state, CommandKind::Resign);

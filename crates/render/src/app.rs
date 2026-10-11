@@ -35,12 +35,15 @@ pub enum Tool {
     Mark(sim::PlanKind, Option<String>),
 }
 
-/// A left drag with a tool armed: where the cursor last was, and the tiles
-/// already marked, so each is marked once per drag (Q37).
+/// A left drag with a tool armed: where the cursor last was on the map,
+/// and the tiles already marked, so each is marked once per drag (Q37).
+/// A drag begun with `Shift` held has an anchor instead: it marks nothing
+/// until release, then fills the rectangle from the anchor to `last` (Q44).
 #[derive(Debug, Default)]
 pub struct Drag {
     pub last: Option<sim::TilePos>,
     pub done: std::collections::BTreeSet<sim::TilePos>,
+    pub anchor: Option<sim::TilePos>,
 }
 
 /// Renderer-side state no system shares with the sim.
@@ -68,6 +71,25 @@ pub struct ViewState {
     pub editor: Editor,
     /// The fault tick last logged per machine, so each record logs once.
     pub faults_seen: std::collections::HashMap<sim::EntityId, u64>,
+}
+
+impl ViewState {
+    /// The tiles the armed tool's ghost covers: a `Shift`+drag's rectangle
+    /// so far, or else the tile under the cursor. Empty unarmed.
+    pub fn preview(&self) -> Vec<sim::TilePos> {
+        if self.tool == Tool::Select {
+            return Vec::new();
+        }
+        if let Some(Drag {
+            anchor: Some(a),
+            last: Some(b),
+            ..
+        }) = &self.drag
+        {
+            return crate::marks::rect(*a, *b);
+        }
+        self.hover.into_iter().collect()
+    }
 }
 
 impl Default for ViewState {

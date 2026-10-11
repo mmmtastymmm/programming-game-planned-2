@@ -1,6 +1,7 @@
-//! The mark tools (`docs/07`, Marks; Q37): the strip's three rows from
-//! data, picking an entry from the keys, the tiles a drag crosses, and the
-//! command a click on a tile becomes. Plain Rust, so it is tested headless;
+//! The mark tools (`docs/07`, Marks; Q37, Q44): the strip's three rows
+//! from data, picking an entry from the keys, the tiles a drag crosses or
+//! a `Shift`+drag's rectangle fills, and the command marking a tile
+//! becomes. Plain Rust, so it is tested headless;
 //! `input.rs`, `ui.rs` and `view.rs` are the Bevy half.
 
 use crate::app::Tool;
@@ -64,13 +65,25 @@ pub fn toggle(current: &Tool, tool: Tool) -> Tool {
     if *current == tool { Tool::Select } else { tool }
 }
 
-/// What a click on `at` with `tool` armed submits: a `Mark` of its kind
-/// and value, or with `Shift` an `Unmark` of its kind. Nothing unarmed.
-pub fn command(tool: &Tool, at: TilePos, shift: bool) -> Option<CommandKind> {
+/// The team's plan of `kind` in `plans`.
+pub fn slot(plans: &Plans, kind: PlanKind) -> &Option<Plan> {
+    match kind {
+        PlanKind::Building => &plans.building,
+        PlanKind::Paint => &plans.paint,
+        PlanKind::Overlay => &plans.overlay,
+    }
+}
+
+/// What marking `at` with `tool` armed submits, given the team's plans
+/// there: a `Mark` of its kind and value — except *clear* on a tile where
+/// the team already holds a plan of that kind, which withdraws it as an
+/// `Unmark` (Q44). Nothing unarmed.
+pub fn command(tool: &Tool, at: TilePos, held: Option<&Plans>) -> Option<CommandKind> {
     let Tool::Mark(plan, value) = tool else {
         return None;
     };
-    Some(if shift {
+    let holds = held.is_some_and(|p| slot(p, *plan).is_some());
+    Some(if value.is_none() && holds {
         CommandKind::Unmark { at, plan: *plan }
     } else {
         CommandKind::Mark {
@@ -79,6 +92,16 @@ pub fn command(tool: &Tool, at: TilePos, shift: bool) -> Option<CommandKind> {
             value: value.clone(),
         }
     })
+}
+
+/// Every tile of the rectangle with corners `a` and `b`, both included,
+/// row by row from the lowest — what a `Shift`+drag fills (Q44).
+pub fn rect(a: TilePos, b: TilePos) -> Vec<TilePos> {
+    let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+    let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+    (y0..=y1)
+        .flat_map(|y| (x0..=x1).map(move |x| TilePos::new(x, y)))
+        .collect()
 }
 
 /// Every tile on the way from `a` to `b`, both included, each sharing an
@@ -106,20 +129,15 @@ pub fn walk(a: TilePos, b: TilePos) -> Vec<TilePos> {
 
 /// The plans as one line for the inspector: `paint red · overlay clear`.
 pub fn describe(plans: &Plans) -> String {
-    [
-        (PlanKind::Building, &plans.building),
-        (PlanKind::Paint, &plans.paint),
-        (PlanKind::Overlay, &plans.overlay),
-    ]
-    .into_iter()
-    .filter_map(|(kind, plan)| {
-        plan.as_ref().map(|p| match p {
-            Plan::Set(v) => format!("{} {v}", kind.name()),
-            Plan::Clear => format!("{} clear", kind.name()),
+    ROWS.into_iter()
+        .filter_map(|kind| {
+            slot(plans, kind).as_ref().map(|p| match p {
+                Plan::Set(v) => format!("{} {v}", kind.name()),
+                Plan::Clear => format!("{} clear", kind.name()),
+            })
         })
-    })
-    .collect::<Vec<_>>()
-    .join(" · ")
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// The plans the armed tool would leave on a tile, for its ghost under the
@@ -182,25 +200,61 @@ mod tests {
     }
 
     #[test]
-    fn a_click_marks_shift_withdraws_and_unarmed_does_neither() {
+    fn a_click_marks_clear_withdraws_a_held_plan_and_unarmed_does_neither() {
         let at = TilePos::new(2, -1);
         let tool = Tool::Mark(PlanKind::Overlay, Some("a".into()));
-        assert_eq!(
-            command(&tool, at, false),
+        let clear = Tool::Mark(PlanKind::Overlay, None);
+        let mark = |value: Option<&str>| {
             Some(CommandKind::Mark {
                 at,
                 plan: PlanKind::Overlay,
-                value: Some("a".into())
+                value: value.map(str::to_string),
             })
+        };
+        let unmark = Some(CommandKind::Unmark {
+            at,
+            plan: PlanKind::Overlay,
+        });
+        let held = Plans {
+            overlay: Some(Plan::Set("b".into())),
+            ..Plans::default()
+        };
+        let other_kind = Plans {
+            paint: Some(Plan::Set("red".into())),
+            ..Plans::default()
+        };
+        let held_clear = Plans {
+            overlay: Some(Plan::Clear),
+            ..Plans::default()
+        };
+        assert_eq!(command(&tool, at, None), mark(Some("a")));
+        assert_eq!(
+            command(&tool, at, Some(&held)),
+            mark(Some("a")),
+            "a value overwrites"
         );
         assert_eq!(
-            command(&tool, at, true),
-            Some(CommandKind::Unmark {
-                at,
-                plan: PlanKind::Overlay
-            })
+            command(&clear, at, None),
+            mark(None),
+            "nothing held: plan to clear"
         );
-        assert_eq!(command(&Tool::Select, at, false), None);
+        assert_eq!(command(&clear, at, Some(&other_kind)), mark(None));
+        assert_eq!(command(&clear, at, Some(&held)), unmark, "held: withdraw");
+        assert_eq!(command(&clear, at, Some(&held_clear)), unmark);
+        assert_eq!(command(&Tool::Select, at, None), None);
+    }
+
+    #[test]
+    fn a_rectangle_fills_every_tile_between_its_corners() {
+        let t = TilePos::new;
+        assert_eq!(rect(t(1, 1), t(1, 1)), vec![t(1, 1)]);
+        let r = rect(t(2, 0), t(0, -1));
+        assert_eq!(
+            r,
+            vec![t(0, -1), t(1, -1), t(2, -1), t(0, 0), t(1, 0), t(2, 0)]
+        );
+        assert_eq!(rect(t(0, -1), t(2, 0)), r, "either corner first");
+        assert_eq!(rect(t(-3, 4), t(2, -2)).len(), 6 * 7);
     }
 
     #[test]

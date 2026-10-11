@@ -35,14 +35,16 @@ Two conventions carried over from the predecessor project:
 
 **T20 — The mark strip, drag marking, the armed tool and the plan preview**
 
-Q37: the tools window as three rows from data, each ending in a clear, with
-`B`/`P`/`O` and `1`–`9`; a tool armed until `Esc`; a drag marking every
-tile it crosses once and not panning; `Shift`+click an `Unmark` of the
-armed kind; the player's own plans drawn as a translucent version of their
-effect and the armed tool as a ghost under the cursor. The snapshot gains
-the player's team's plan values per tile — a read the renderer makes, in no
-hash — replacing the driver's `snapshot_plan` peek. Finishing it fixes
-[P4](PROBLEMS.md).
+Q37, amended by Q44: the tools window as three rows from data, each
+ending in a clear, with `B`/`P`/`O` and `1`–`9`; a tool armed until
+`Esc`; a drag marking every tile it crosses once and not panning; a
+`Shift`+drag filling the rectangle between its corners on release; a
+*clear* withdrawing the team's own plan of its kind where one stands; the
+player's own plans drawn as a translucent version of their effect and the
+armed tool as a ghost under the cursor or over the rectangle. The snapshot
+gains the player's team's plan values per tile — a read the renderer
+makes, in no hash — replacing the driver's `snapshot_plan` peek.
+Finishing it fixes [P4](PROBLEMS.md).
 
 ## M7 — Bot colors and team outlines
 

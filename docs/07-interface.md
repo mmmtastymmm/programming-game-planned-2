@@ -36,11 +36,14 @@ here changes a hash; a peer with a different renderer sees the same match.
   a match ends or desyncs; every option is also a command-line flag, which
   skips the screen.
 - **The mark tools are a strip, a tool stays armed, a drag marks, and a
-  plan previews (Q37).** Rows of building models, paint colors and overlay
-  labels each ending in a clear, `B`/`P`/`O` and `1`–`9` to pick, `Esc` to
-  disarm; a drag marks every tile it crosses once, `Shift`+click withdraws
-  the armed kind; the player's own plans show as a translucent version of
-  their effect, and the armed tool as a ghost under the cursor.
+  plan previews (Q37, amended by Q44).** Rows of building models, paint
+  colors and overlay labels each ending in a clear, `B`/`P`/`O` and `1`–`9`
+  to pick, `Esc` to disarm; a drag marks every tile it crosses once, and a
+  `Shift`+drag fills the rectangle between its corners on release; *clear*
+  withdraws the team's plan of its kind where one stands, and plans the
+  slot emptied elsewhere; the player's own plans show as a translucent
+  version of their effect, and the armed tool as a ghost under the cursor
+  or over the rectangle.
 - **A stall is a banner with a resign; a desync freezes the match with
   the report and the replay saved (Q38).** The banner names the peer, the
   tick and the wait; everything else keeps working. A desync's banner
@@ -177,15 +180,20 @@ entry; a click arms a tool, `Esc` or a second click disarms it.
 
 With a tool armed, a left click on a tile is a `Mark` of that kind and
 value; a left drag marks every tile the cursor crosses, once per drag,
-and does not pan the camera; `Shift`+click is an `Unmark` of the armed
-kind. With none armed, a click selects and a drag pans. The renderer
-submits and forgets (Q15): what the player sees is the plan the sim
-reports, `delay` ticks later.
+and does not pan the camera. A left press with `Shift` held anchors a
+rectangle instead (Q44): the drag moves its other corner, stopping at the
+map's edge, the ghost covers every tile in it, and release marks them all
+— `Esc` first fills nothing. *Clear* on a tile where the team already
+holds a plan of that kind is an `Unmark` of it, and elsewhere the plan to
+empty the slot, decided per tile against the plans the sim last reported.
+With none armed, a click selects and a drag pans. The renderer submits
+and forgets (Q15): what the player sees is the plan the sim reports,
+`delay` ticks later.
 
 A tile carrying the player's team's plan shows it as a translucent version
 of its effect — the color at half alpha, the overlay's label, a ghost of
 the building; a clear plan hatches the slot — and the armed tool shows the
-same ghost under the cursor. Only the player's team's plans are drawn,
+same ghost under the cursor, or over a `Shift`+drag's rectangle. Only the player's team's plans are drawn,
 since plans are private (`03`), and the snapshot carries that team's plan
 values per tile for it: a read, in no hash.
 

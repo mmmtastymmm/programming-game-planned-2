@@ -89,8 +89,9 @@ pub struct Entities {
     pub tops: HashMap<TilePos, f32>,
     pub synced_tick: Option<u64>,
     pub sounds_tick: Option<u64>,
-    /// The armed tool's ghost under the cursor: what it shows, and where.
-    pub cursor: Option<(Tool, TilePos)>,
+    /// The armed tool's ghost: what it shows, and on which tiles — the one
+    /// under the cursor, or a `Shift`+drag's rectangle (Q44).
+    pub cursor: (Tool, Vec<TilePos>),
     pub cursor_entities: Vec<Entity>,
 }
 
@@ -432,8 +433,9 @@ fn spawn_plans(
     out
 }
 
-/// The armed tool's ghost under the cursor: what a click there would plan
-/// (Q37), rebuilt when the tool or the tile changes.
+/// The armed tool's ghost under the cursor, or over a `Shift`+drag's
+/// rectangle: what marking there would plan (Q37, Q44), rebuilt when the
+/// tool or the tiles change.
 pub fn cursor_ghost(
     mut commands: Commands,
     state: Res<ViewState>,
@@ -442,31 +444,29 @@ pub fn cursor_ghost(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
 ) {
-    let want = state
-        .hover
-        .filter(|_| state.tool != Tool::Select)
-        .map(|p| (state.tool.clone(), p));
+    let want = (state.tool.clone(), state.preview());
     if ents.cursor == want {
         return;
     }
     for e in std::mem::take(&mut ents.cursor_entities) {
         commands.entity(e).despawn();
     }
-    if let Some((tool, p)) = &want
-        && let Some(plans) = crate::marks::ghost_of(tool)
-    {
-        let top = ents.top(*p);
-        let surface = ents.tiles.get(p).map_or(SLAB_HALF, |t| surface_of(&t.look));
-        ents.cursor_entities = spawn_plans(
-            &mut commands,
-            &frame,
-            &mut palette,
-            &mut materials,
-            *p,
-            top,
-            surface,
-            &plans,
-        );
+    if let Some(plans) = crate::marks::ghost_of(&want.0) {
+        for p in &want.1 {
+            let top = ents.top(*p);
+            let surface = ents.tiles.get(p).map_or(SLAB_HALF, |t| surface_of(&t.look));
+            let spawned = spawn_plans(
+                &mut commands,
+                &frame,
+                &mut palette,
+                &mut materials,
+                *p,
+                top,
+                surface,
+                &plans,
+            );
+            ents.cursor_entities.extend(spawned);
+        }
     }
     ents.cursor = want;
 }
