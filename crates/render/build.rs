@@ -63,6 +63,12 @@ const FACES: &[(&str, u32, u32)] = &[
 /// Master accent palette as authored (green).
 const MASTER: [&str; 3] = ["#39d98a", "#2aa86b", "#c8ffe6"];
 
+/// The authored mark of a light, glowing in the machine's team color
+/// (Q45): drawn as `LIGHT_BASE` in every atlas, and baked white on black
+/// into `{out_prefix}_lights.png`, the mask the glow shines through.
+const LIGHT: &str = "#ff00ff";
+const LIGHT_BASE: &str = "#1c2129";
+
 /// (atlas name, [accent, accent-dark, highlight]) — `palette::TEAM_PALETTES`
 /// names these in the same order; "ruined" is the dead-grey swap.
 const TEAMS: &[(&str, [&str; 3])] = &[
@@ -190,10 +196,45 @@ fn main() {
     }
 
     for (svg_prefix, out_prefix) in ATLASES {
+        // The light mask: each face drawn with its lights white and then
+        // black, the difference kept, so antialiased edges stay soft.
+        let mut mask = tiny_skia::Pixmap::new(SIZE * 3, SIZE * 2).expect("mask alloc");
+        for (face, col, row) in FACES {
+            let svg = read(&format!("{svg_prefix}_{face}"));
+            let on = render(&svg.replace(LIGHT, "#ffffff"), SIZE);
+            let off = render(&svg.replace(LIGHT, "#000000"), SIZE);
+            let mut face_px = tiny_skia::Pixmap::new(SIZE, SIZE).expect("face alloc");
+            for ((dst, a), b) in face_px
+                .pixels_mut()
+                .iter_mut()
+                .zip(on.pixels())
+                .zip(off.pixels())
+            {
+                let d = [
+                    a.red().abs_diff(b.red()),
+                    a.green().abs_diff(b.green()),
+                    a.blue().abs_diff(b.blue()),
+                ]
+                .into_iter()
+                .max()
+                .unwrap_or(0);
+                *dst = tiny_skia::PremultipliedColorU8::from_rgba(d, d, d, 255).expect("opaque");
+            }
+            mask.draw_pixmap(
+                (col * SIZE) as i32,
+                (row * SIZE) as i32,
+                face_px.as_ref(),
+                &tiny_skia::PixmapPaint::default(),
+                tiny_skia::Transform::identity(),
+                None,
+            );
+        }
+        mask.save_png(out.join(format!("{out_prefix}_lights.png")))
+            .expect("save light mask png");
         for (team, colors) in TEAMS {
             let mut atlas = tiny_skia::Pixmap::new(SIZE * 3, SIZE * 2).expect("atlas alloc");
             for (face, col, row) in FACES {
-                let mut svg = read(&format!("{svg_prefix}_{face}"));
+                let mut svg = read(&format!("{svg_prefix}_{face}")).replace(LIGHT, LIGHT_BASE);
                 for (master, team_color) in MASTER.iter().zip(colors) {
                     svg = svg.replace(master, team_color);
                 }

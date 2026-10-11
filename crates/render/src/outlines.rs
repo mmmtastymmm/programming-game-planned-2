@@ -1,7 +1,7 @@
-//! Team outline colors (`docs/07`, Machines on the map; Q43): every
-//! machine is outlined in its team's color — the player's own green by
-//! default, every other team's the next of the list in
-//! `data/interface.toml` — and the player may change any of them, the
+//! Team colors (`docs/07`, Machines on the map; Q43, Q45): a bot's lights
+//! glow in its team's color and a building is outlined in it — the
+//! player's own green by default, every other team's the next of the list
+//! in `data/interface.toml` — and the player may change any of them, the
 //! choice saved in `colors.toml` beside the programs. Nothing here reaches
 //! the sim or a peer.
 
@@ -49,6 +49,9 @@ pub struct TeamColors {
     path: Option<PathBuf>,
     /// Each team's (outline, lens glass) materials, made on first use.
     pub mats: BTreeMap<u32, (Handle<StandardMaterial>, Handle<StandardMaterial>)>,
+    /// Each bot body by (team, paint atlas), its lights glowing in the
+    /// team's color (Q45), made on first use.
+    pub bodies: BTreeMap<(u32, String), Handle<StandardMaterial>>,
     /// A choice changed since the materials were last recolored.
     pub dirty: bool,
 }

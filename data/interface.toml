@@ -7,9 +7,10 @@
 fault_mark_ticks = 30
 
 [teams]
-# Q43's outlines: every machine is outlined in its team's color. The
-# player's own team defaults to `player`, green; every other team to the
-# next of `outlines`, in team order skipping the player's. Blue comes first,
+# The team colors (Q43, Q45): a bot's lights glow in its team's color and
+# a building is outlined in it. The player's own team defaults to `player`,
+# green; every other team to the next of `outlines`, in team order
+# skipping the player's. Blue comes first,
 # so a default one-on-one is green against blue, which the commonest
 # colorblindness tells apart. The player may change any of them in the
 # inspector; the choice is saved in colors.toml beside the programs.

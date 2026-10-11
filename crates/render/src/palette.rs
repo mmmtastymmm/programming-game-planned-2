@@ -326,7 +326,10 @@ pub struct Palette {
     pub ore_frames: Vec<Vec<Handle<Image>>>,
     pub rock_mats: Vec<Handle<StandardMaterial>>,
     /// Bot atlases by color name, `white` the neutral body (Q43).
-    pub bot_mats: HashMap<String, Handle<StandardMaterial>>,
+    /// Each bot atlas by name, and the mask its lights glow through in the
+    /// team's color (Q45): a bot's material is made per color and team.
+    pub bot_textures: HashMap<String, Handle<Image>>,
+    pub bot_lights: Handle<Image>,
     /// The white printer atlas, tinted per team on demand.
     pub printer_mat: Handle<StandardMaterial>,
     pub printer_ruined_mat: Handle<StandardMaterial>,
@@ -423,15 +426,12 @@ impl Palette {
                 )
             })
             .collect();
-        let bot_mats = ATLASES
+        let bot_textures = ATLASES
             .iter()
             .map(|t| {
                 (
                     t.to_string(),
-                    atlas(
-                        materials,
-                        assets.load(format!("textures/bot_atlas_{t}.png")),
-                    ),
+                    assets.load(format!("textures/bot_atlas_{t}.png")),
                 )
             })
             .collect();
@@ -495,7 +495,8 @@ impl Palette {
             ore_mats,
             ore_frames,
             rock_mats,
-            bot_mats,
+            bot_textures,
+            bot_lights: assets.load("textures/bot_atlas_lights.png"),
             printer_mat,
             printer_ruined_mat: atlas(materials, assets.load("textures/printer_atlas_ruined.png")),
             lens_barrel_mat: materials.add(StandardMaterial {
