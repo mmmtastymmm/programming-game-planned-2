@@ -74,12 +74,11 @@ a command log that grows until the match ends.
 
 ### Ending
 
-**A team is out** on the tick it has no printer — the moment its last
-printer's `death` epilogue runs, it is deconstructed (Q28), or it is
-**converted** to another team (Q30), with no other printer standing. There
-is no site that could become one, since printers are never built (Q31). A
-converted printer is not removed with the team that lost it; it is no
-longer theirs. An out team's machines are removed, its plans cleared and its
+**A team is out** at the end of any tick it has no printer — its last
+printer's `death` epilogue ran, or it was deconstructed (Q28), with no
+other printer standing (Q42). A printer site, however near complete, bots
+and ore do not keep it in the match, and nothing it once held is anyone
+else's. An out team's machines are removed, its plans cleared and its
 command log closed in the tick's out-teams step (`06`, step 5), after damage
 and before regrowth, whatever put it out: further commands from it are dropped at submission. `Resign` (Q10)
 puts a team out at once on its agreed tick.
@@ -97,11 +96,12 @@ new question number.
 
 ### Why the printer
 
-The printer is the team's one irreplaceable machine: it is the only source
-of bots, and nothing can make one (Q31) — the map placed every printer
-there will be. A team with no printer can gain one only by converting a
-rival's, and it has no bots left to do it with once its last dies, so it is
-out the moment it holds none, not when its last bot dies.
+The printer is the team's one source of bots, and its bots can build more
+of them (Q42) — each dearer than the last, and cheaper again as they are
+lost. Any printer can be replaced but the last: a team that ends a tick
+with none is out then, not when its last bot dies, so a rebuild must start
+while a printer still stands. That keeps the last printer the thing a
+match is about.
 
 ## PvE
 

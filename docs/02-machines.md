@@ -34,22 +34,19 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   carries its cause, position, loudness and tick, never its emitter. Whether
   a sound can also interrupt a program was Q16, which ruled it cannot:
   programs poll.
-- **Bots are printed by a printer, buildings are built by bots, and a match
-  starts with the printers the map places (Q9, as amended by Q31, which
-  made printers unbuildable).** There is no fixed roster.
-  Production is ordinary program behavior: the printer is a building whose
-  program calls `print` with the deployment the new bot runs, and a bot's
-  program calls `build` with a building kind and a tile. All bots are one
-  kind; what differs is the deployment. A print takes time and, as Q23
-  amended, costs nothing else; a build takes time and costs resources,
-  hauled to its site by bots (Q22). A printed bot
-  appears on a tile adjacent to the printer on the tick the print completes,
-  running its deployment's current bundle from the top; printing a
-  deployment with no bundle is a fault. The opening program set is the
-  command log's first entries, one deploy per deployment agreed for tick 0;
-  a machine whose deployment has no bundle runs the empty program, which
-  restarts once per tick and is not a state. The building list is this doc's
-  table.
+- **Bots are printed by printers, buildings — printers among them — are
+  built by bots, and a match starts with the printers the map places (Q9,
+  as Q31 and Q42 amended).** There is no fixed roster. A bot's program
+  calls `build` with a building model and a tile; printing is not a
+  program's call but the printers' own rule (Q42, below). All bots are one
+  kind and run one program. A print takes time and, as Q23 amended, costs
+  nothing else; a build takes time and costs resources, hauled to its site
+  by bots (Q22). A printed bot appears on a tile adjacent to the printer on
+  the tick the print completes, running the team's `bot` bundle from the
+  top. The opening program set is the command log's first entries, one
+  deploy per deployment agreed for tick 0; a machine whose deployment has
+  no bundle runs the empty program, which restarts once per tick and is not
+  a state. The building list is this doc's table.
 - **The colony remembers tiles, not machines (Q21).** The world is a grid of
   tiles, and for each team every tile is unknown, visible, or remembered as
   it was on the tick it was last seen. A remembered tile holds the terrain
@@ -82,13 +79,13 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   numbers are tuning in data; `03` defines deposits and places them.
 - **Printing costs time only; building costs resources (Q23).** A printer
   prints one bot per print time and consults no store; a `drop` into a
-  printer is a fault. Printers cannot be built (Q31), so the economy prices
-  depots and what follows them, never the objective. Q9's priced print and Q22's opening
-  stock and printer store are withdrawn; Q23's own bound, printers and time,
-  is replaced by Q24's cap.
+  printer is a fault. The printer itself is built for ore like any building
+  (Q42), so the economy prices the objective as well as depots. Q9's priced
+  print and Q22's opening stock and printer store are withdrawn; Q23's own
+  bound, printers and time, is replaced by Q24's cap.
 - **Every machine has health; damage lowers it; zero is `dying`, the
   threshold below is `death`; a fault costs one health; a team may have ten
-  bots per printer, and each printer unlocks a deployment (Q24).** Health is
+  bots per printer (Q24, as Q42 amended).** Health is
   a `num` per machine, starting at the kind's maximum, never regenerating by
   itself; sites have it too. Damage is the one mechanism, and today's one
   cause is the `fault` prologue, which charges one health beside the record
@@ -96,24 +93,28 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   boundary where health reaches zero or below; `death` directly when health
   reaches the kind's death threshold, a negative number in data, or when the
   tile is destroyed. A dying machine's health is frozen. A team's bot cap is
-  its printers times `bots_per_printer`, sites excluded; a `print` at the
-  cap is a fault; losing a printer lowers the cap and bots above it are kept.
-  A team has one bot deployment per printer, numbered `1`, `2`, `3`, … in
-  the order unlocked with no bound (Q40, amending Q24's color names), plus
-  one deployment per building kind, not counted; losing a printer locks the
-  highest unlocked deployment, whose bots keep running until they die. A
-  bot deployment is a `num` in the language and every bot wears its number
-  (`07`). What deals damage beyond a fault is Q25's bullet below.
-- **Printers cannot be built; a team holds the map's, takes a rival's, or
-  loses its own (Q31).** `build` refuses the model `printer`, there is no
-  printer-site, and the number of printers in the world is fixed at load and
-  only falls, by death or deconstruction. A team is out when it has none.
-- **Printers change hands, and defend themselves (Q30).** A bot's
-  `convert(id)` on an adjacent printer of another team makes it the bot's
-  team's after `convert_ticks`, keeping its store, health, name and any print
-  in progress; the caps and deployments follow by Q24 and Q40. Every printer deals
-  `defence_damage` each tick to every adjacent bot of another team, in the
-  damage step, so a conversion is a fight. Progression is
+  its standing printers times `bots_per_printer`, sites excluded; printers
+  print nothing at the cap; losing a printer lowers the cap and bots above
+  it are kept. Q24's deployment per printer, and Q40's numbering of them,
+  are withdrawn by Q42's bullet below. What deals damage beyond a fault is
+  Q25's bullet below.
+- **Printers are built at a price that rises with how many the team has,
+  print by themselves in turn up to the cap, and never change hands; a team
+  has one deployment per model (Q42, amending Q9, Q23, Q24, Q30, Q31, Q35
+  and Q40).** `build` accepts the model `printer`. A site's store capacity
+  is `cost[model] + n × cost_step[model]`, `n` the team's standing buildings
+  of that model and its sites for one, counted when it is placed, so losing printers lowers the
+  next one's price. The map's starting printers count toward `n`. After
+  out teams, each team's printers begin prints by turns while its bots and
+  prints in progress fall short of its cap — the turn order, the print and
+  its loss are Printing below. Nothing converts a printer. A team is out at
+  the end of any tick it has no printer, whatever sites, bots or ore it
+  holds (`04`). A team's deployments are `"bot"`, `"printer"` and
+  `"depot"`, and nothing else.
+- **Printers defend themselves (Q30, as Q42 amended, which withdrew
+  conversion).** Every printer deals `defence_damage` each tick to every
+  adjacent bot of another team, in the damage step, so attacking or
+  deconstructing a printer is a fight. Progression is
   [05-progression](05-progression.md)'s doc; the mechanism is this one's.
 - **Bots attack, and nothing else does (Q25).** A bot's `attack(id)` hits a
   machine its team can see, within `attack_range` and in line of sight, for
@@ -132,8 +133,8 @@ identity:
 |---|---|---|
 | **kind** | `"bot"` or `"building"`; a building also has a **model** — `"printer"`, `"depot"` or `"site"` | at print or build, never changed |
 | **team** | the allegiance it acts for, a small integral `num`; every machine of a team shares senses, memory, stores, deployments and the bot cap | at print or build, from the machine that made it; never changed |
-| **program** | the bundle of its **deployment**: a bot runs the bundle deployed to its number, a building the bundle deployed to its model's name | by the command log, through the deployment (Q11) |
-| **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print, to `<deployment>-<id>` (`2-17`); at build, to the model's name plus the entity id (Q40); changed by `rename` |
+| **program** | the bundle of its **deployment**, which is its model's name: every bot runs the `bot` bundle, a building the bundle deployed to its model (Q42) | by the command log, through the deployment (Q11) |
+| **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print or build, to the model's name plus the entity id (`bot17`, `depot23`; Q42); changed by `rename` |
 
 Two machines with the same team, kind and deployment are the same program in
 two bodies, which is Q2's fleet; what tells them apart is the entity `id`,
@@ -145,22 +146,11 @@ A **deployment** is a named slot that holds a bundle. Deploying (Q3) writes a
 bundle into a slot; every machine on that slot takes the new bundle at its
 next operation boundary (Q11).
 
-- **Bot deployments are numbers** (Q40): `1`, `2`, `3`, … A team has as
-  many as it has printers: its first printer unlocks `1`, its `n`-th
-  unlocks `n`, without bound. A `print` names the number the bot runs, as a
-  `num`; the command log and the programs directory spell it `"1"`. The
-  color a bot is drawn in is the renderer's, read from the paint list
-  `deployment.colors` in [data/machines.toml](../data/machines.toml) by the
-  number, cycling (`07`).
-- **Building deployments are models**: `"printer"` and `"depot"` are
-  deployments, one per team, unlocked from the start and never locked. A
-  site runs no program and has no deployment.
-- **Locking.** Losing a printer locks the team's highest unlocked number.
-  Bots on a locked deployment keep running its bundle until they die;
-  `print` of a locked one is a `ValueError`; a deploy to any positive
-  number is accepted into the command log and takes effect when that
-  deployment unlocks, so a program for a printer not yet taken can be
-  written ahead.
+- **One deployment per model** (Q42): a team has exactly `"bot"`,
+  `"printer"` and `"depot"`, each from the start, never locked, and no
+  others; a `Deploy` naming anything else is refused at submission (`06`).
+  Every bot runs the `bot` bundle. A site runs no program and has no
+  deployment, and takes its model's deployment when it completes.
 - **The opening program set** (Q9) is one deploy per deployment the team's
   starting bundles name, agreed for tick 0.
 
@@ -205,7 +195,6 @@ classDiagram
     build_nearest()
     deconstruct()
     attack()
-    convert()
     paint()
     unpaint()
     overlay()
@@ -216,7 +205,7 @@ classDiagram
     store
   }
   class printer {
-    print()
+    printing
   }
   class depot
   class site {
@@ -237,7 +226,7 @@ carries a team and a position like any building.
 | Model | Moves | Store | Made by | Does |
 |---|---|---|---|---|
 | `bot` | yes | none; a **load** up to its capacity | a printer, in `print_ticks`, under the team's cap | senses, moves, picks, drops, builds |
-| `printer` | no | capacity zero | **the map only** (Q31): every printer there will be stands at tick 0 on a team's starting tile (`03`); none is ever built, and the count only falls | senses, prints, defends itself; unlocks a deployment and ten bots |
+| `printer` | no | capacity zero | the map, one on each starting tile at tick 0 (`03`); then a bot's `build`, at a price rising with the team's printers (Q42) | senses; prints by turns and defends itself, by rule; raises the cap by ten bots |
 | `depot` | no | capacity per kind, large | a bot's `build` | senses, holds |
 | `site` | no | capacity equal to the cost of what it becomes | a bot's `build`, at once | holds; becomes its building when full and built |
 
@@ -260,13 +249,14 @@ writable except through an action.
 | `kind` | `str` | `"bot"` or `"building"` |
 | `model` | `str` | `"bot"`, `"printer"`, `"depot"` or `"site"` |
 | `team` | `num`, integral | the team's number |
-| `deployment` | `num`, `str` or `None` | the number whose bundle a bot runs (Q40), the model name whose bundle a building runs; `None` for a site |
+| `deployment` | `str` or `None` | the model name whose bundle the machine runs — `"bot"` for every bot (Q42); `None` for a site |
 | `pos` | `(num, num)` | the tile it occupies, as `(x, y)`, integral |
 | `health` | `num` | current health; the model's maximum is in data |
 | `busy` | `str` or `None` | the name of the action in progress — any of the action builtins below, `"move"` for both move forms — or `None` |
 | `load` | `dict` of kind to `num` | a bot's carried resources, every kind present; absent on a building |
 | `store` | `dict` of kind to `num` | a building's held resources, every kind present; absent on a bot |
 | `progress` | `num` | ticks remaining on `busy`, or on a site's construction; `0` when idle |
+| `printing` | `num` | a printer's ticks remaining on its print in progress, `0` when not printing (Printing, below); absent on every other model |
 
 **Occupancy.** A tile holds at most one machine. A bot cannot move onto an
 occupied tile, a print needs a free adjacent tile, and a build needs a free
@@ -314,11 +304,10 @@ The causes, which are the `cause` strings a sound carries:
 |---|---|
 | `"move"` | a bot beginning a move |
 | `"pick"`, `"drop"` | a bot beginning a pick or a drop |
-| `"print"` | a printer beginning a print |
+| `"print"` | a printer beginning a print (Q42: by rule, not by a program) |
 | `"build"` | a bot placing a site, and a site completing |
 | `"deconstruct"` | a bot beginning a deconstruction |
 | `"attack"` | a bot beginning an attack |
-| `"convert"` | a bot beginning a conversion |
 
 Loudness per cause is in `data/machines.toml`. A sound never names its
 emitter.
@@ -351,15 +340,13 @@ sound.
 | `move_to(x, y)` | bot | **one step** toward `(x, y)`: of the adjacent tiles that are passable and unoccupied, the one with the least squared distance to `(x, y)`, ties in the order `n`, `e`, `s`, `w`; a `ValueError` if none qualifies or the bot is already there. A program that wants to arrive loops; there is no pathfinding, and a bot can be led into a dead end | `move_ticks` | yes |
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
-| `print(n)` | printer | `n` must be an unlocked bot deployment with a bundle (Q9, Q24, Q40) — a positive integral `num` — the team must be under its bot cap, and a free adjacent tile must exist at completion — the first free of `n`, `e`, `s`, `w`; the bot appears there, on the printer's team, named `n-id`, in main flow, its first slice next tick; no free tile at completion cancels the print with nothing produced | `print_ticks` | yes |
-| `build(model, x, y)` | bot | `model` a building model other than `site` or `printer` (Q31); `(x, y)` adjacent and buildable (`03`): `ground`, no deposit, **no building** — a tile carrying the team's building plan for `model` (Q27) is the usual target, and if that tile has a building the plan deconstructs it first (Q28), as one action of both durations; placing the site consumes the plan and no other mark. The site appears at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model]`. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0`, or `deconstruct_ticks` of the old building first — the site is busy after that | yes, twice |
+| `build(model, x, y)` | bot | `model` a building model other than `site` — `printer` included (Q42); `(x, y)` adjacent and buildable (`03`): `ground`, no deposit, **no building** — a tile carrying the team's building plan for `model` (Q27) is the usual target, and if that tile has a building the plan deconstructs it first (Q28), as one action of both durations; placing the site consumes the plan and no other mark. The site appears at once, on the bot's team, named `model` plus its `id`, with an empty store of capacity `cost[model] + n × cost_step[model]` per kind, `n` the team's standing buildings of `model` and its other sites for one (Q42), fixed at placement. When the site's store reaches its capacity, construction runs `build_ticks[model]` and the site becomes the building, with `deployment` the model's name and an empty store | `0`, or `deconstruct_ticks` of the old building first — the site is busy after that | yes, twice |
 | `paint(x, y)` | bot | `(x, y)` adjacent and carrying the team's paint plan with a color; if the tile is already painted, the unpaint runs first (Q28), as one action of both durations; on completion the tile's paint is the plan's color and the plan is gone; no plan is a `ValueError` | `paint_ticks`, plus `unpaint_ticks` if painted | no |
 | `unpaint(x, y)` | bot | `(x, y)` adjacent and painted; on completion its paint is `None`. Any team's bot may do it. A paint plan whose value is `None` is realised by this action and consumed | `unpaint_ticks` | no |
 | `overlay(x, y)`, `unoverlay(x, y)` | bot | as `paint` and `unpaint`, for the overlay slot | `overlay_ticks`, `unoverlay_ticks` | no |
-| `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store lost, and its team's cap and deployments updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
+| `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store and any print in progress lost, and its team's cap updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `attack(id)` | bot | `id` a machine the team can currently see — a sighting's `id` — within `attack_range` by squared distance and in the attacker's line of sight (`03`); any team, the bot's own included; anything with health: a bot, a building, a site. On completion, if the target still exists and is still in range and sight, `attack_damage` is subtracted from its health in the tick's damage step (`06`), where hits on one target are summed before `dying` or `death` is raised (Q25); otherwise nothing | `attack_ticks` | yes |
-| `convert(id)` | bot | `id` an adjacent printer of another team; on completion, if it still stands, is still of another team, and the bot is still adjacent, its `team` becomes the bot's and its `deployment` the new team's `printer`, keeping its store, health, name and any print in progress; the two teams' caps and deployments follow (Q24, Q40); a printer converted twice on one tick goes to the lower entity id's team (Q30) | `convert_ticks` | yes |
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
 | `rename(name)` | any | sets `name`; a `str` longer than `name_max` is a `ValueError` | `0` | no |
@@ -368,6 +355,38 @@ sound.
 order within a tick (`06`) and complete in entity-id order among those that
 complete on the same tick, so two bots picking from one deposit on the same
 tick are resolved lower `id` first.
+
+### Printing
+
+A printer prints by rule, not by its program (Q42), so printing is not an
+action: it never sets `busy`, and a printer's program may `wait`, `log` and
+`rename` while it prints. A printer's own attribute `printing` counts its
+print down.
+
+- **Beginning**, in the tick's print step (`06`, step 6), team by team in
+  order. A team's **shortfall** is its cap (Q24) minus its bots, `dying`
+  ones included, minus its printers whose `printing` is above zero. A
+  printer is **idle** if its `printing` is `0` and it is not `dying`. While
+  the shortfall is above zero and an idle printer remains, the one to begin
+  is the idle printer with the least entity id greater than the team's
+  **print turn**, or, if there is none, the idle printer with the least
+  entity id; its `printing` becomes `print_ticks`, it emits the `"print"`
+  sound, the print turn becomes its id, and the shortfall falls by one. The
+  print turn is team state in the hash and starts as no printer, so the
+  first print goes to the team's least id.
+- **Completing**, in step 3 of every later tick, with the action
+  completions and in entity-id order among them: `printing` falls by one,
+  and at `0` the print completes. The bot appears on the first free tile
+  adjacent to the printer of `n`, `e`, `s`, `w`, on the printer's team, on
+  the `bot` deployment, named `bot` plus its id, in main flow, its first
+  slice next tick. If none is free the print is cancelled with nothing
+  made. Either way the printer is idle again, and may begin another print
+  in the same tick's print step. A print begun in tick `T` completes in
+  tick `T + print_ticks`.
+- **Losing a print.** A printer that goes `dying`, dies or is
+  deconstructed loses its print in progress, and nothing else follows:
+  there is no queue, so the next print step's shortfall already counts the
+  bot that was not made.
 
 ## Health, damage and the interrupts
 
@@ -394,7 +413,7 @@ in the tick's damage step, where every hit on one target this tick is summed
 before the rules below run. **A printer defends itself** (Q30): in the same
 step, every printer deals its model's `defence_damage` to every bot of
 another team on an adjacent tile, every tick it stands — the one thing in
-the design that acts without a program, because a building does not decide.
+the design that acts without a program, beside printing (Printing, above), because a building does not decide.
 `defence_damage` is per model in data and zero for every model but the
 printer.
 Nothing else deals damage, and nothing repairs; each is a new question
@@ -406,8 +425,8 @@ is what the prologues and epilogues do beyond the language's rules.
 
 | Kind | Raised by | Prologue does to the body | The hook may | Epilogue does to the body |
 |---|---|---|---|---|
-| `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine; its load or store is lost; its tile is free; a site it was building stays; the team's cap and deployments update if it was a printer |
-| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
+| `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine; its load or store, and a printer's print, is lost; its tile is free; a site it was building stays; the team's cap updates if it was a printer |
+| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress and a printer's print; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 
@@ -418,8 +437,8 @@ modules. **There are no game modules yet**; every builtin above is a global
 name, and a bundle file named `game.py` or the like collides with nothing.
 There are no root or trigonometric builtins; a program that needs one writes
 it, and `01`'s mention of a root as a possible game builtin is exactly that,
-a possibility. Python's `print` does not exist (`01`); the game's `print` is
-the printer action above, a different function under the same name.
+a possibility. Python's `print` does not exist (`01`), and nor does a game
+`print`: printers print by rule (Q42), so no program calls one.
 
 ## Costs
 

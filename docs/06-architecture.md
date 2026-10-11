@@ -28,8 +28,8 @@ Rulings this doc owns, moved here from the overview when it was written.
   removes the sender's team on the agreed tick. A mark changes what a
   program can read about a tile and never what a machine does: the player
   authors programs and marks the map, and never commands a machine. Every
-  command carries its sender and its tick; one that cannot apply is dropped,
-  except a deploy to a locked deployment, which waits. What a mark is and
+  command carries its sender and its tick; one that cannot apply is
+  dropped. What a mark is and
   does is [02-machines](02-machines.md)'s and [03-world](03-world.md)'s.
 - **A fixed delay, and a stall for a late peer (Q12).** A command entered at
   tick `t` is agreed for `t + delay`, a tuning constant in ticks fixed at
@@ -131,7 +131,7 @@ loop:
 `sim.step` runs one tick in this order, and the order is spec:
 
 1. **Apply the tick's commands**, by sender then submission order (Q12):
-   `Deploy` writes a bundle into a deployment slot (or waits, if locked);
+   `Deploy` writes a bundle into a deployment slot;
    `Mark` and `Unmark` set and clear plans (`03`); `SetSpeed` is recorded for
    the driver; `Resign` marks the sender's team **out**, which step 5
    applies.
@@ -141,7 +141,8 @@ loop:
    begun in a slice begin in this order, and actions completing on this tick
    complete in ascending entity id after every slice has run.
 3. **Action completions**, in ascending entity id: moves land, transfers
-   happen, prints place bots, sites complete, deconstructions finish (`02`).
+   happen, prints count down and place bots, sites complete,
+   deconstructions finish (`02`).
    A bot printed this tick has its first slice next tick.
 4. **Damage and death**: health changes from this tick's causes are applied
    — attacks that completed, and every printer's defence against adjacent
@@ -149,12 +150,14 @@ loop:
    `death` epilogues remove machines. A machine removed here is absent from everything below.
 5. **Out teams**: every team that is out — it resigned this tick, or step 4
    left it with no printer (`04`) — has its machines removed, its plans
-   cleared and its log closed, in team order. A printer converted away from
-   it this tick is not its and stays.
-6. **Regrowth**: every deposit grows (`03`).
-7. **The vision pass**: each team's visible tiles are computed and their
+   cleared and its log closed, in team order.
+6. **Printing**: in team order, each team's idle printers begin prints by
+   turns until its bots and prints in progress reach its cap (Q42; `02`,
+   Printing).
+7. **Regrowth**: every deposit grows (`03`).
+8. **The vision pass**: each team's visible tiles are computed and their
    snapshots refreshed (Q21).
-8. **The state hash** over everything below.
+9. **The state hash** over everything below.
 
 Nothing else happens in a tick. A rule that needs another step is a change
 to this list and a new question number.
@@ -175,13 +178,13 @@ A **command** is:
   `tick`, in `seq` order; an empty set is sent explicitly, so absence is
   never ambiguous.
 - **Validation at submission** refuses what can never apply — a tile off
-  the map, a step not in the list, a building plan naming `printer` (Q31), a
-  bundle that fails to load (`01`) — so
+  the map, a step not in the list, a `Deploy` naming a deployment other
+  than `bot`, `printer` or `depot` (Q42), a bundle that fails to load
+  (`01`) — so
   the log holds only commands every peer would accept. A command that
   cannot apply *on its tick* — a `Mark` on a tile the sender has since lost
   the right to, a `Resign` from a team already out — is dropped in
-  `sim.step` and recorded nowhere; a `Deploy` to a locked deployment waits
-  in the slot (`02`).
+  `sim.step` and recorded nowhere.
 - **The log is append-only and complete**: every command every peer ever
   applied, in order — a scripted team's commands (`04`) among them, since
   they enter the log like any peer's. `(map, command log)` is a replay, and
@@ -218,18 +221,18 @@ snapshot and **not** of the state hash.
 ## The state hash
 
 The hash is FNV-1a 64-bit over a canonical encoding of the world after step
-7, in this order: the tick; every team in order — its deployments, the
-version of each bundle, its cap, its plans by tile in row-then-column order,
-its memory table by tile; every tile in row-then-column order — terrain,
-deposit, paint, overlay; every machine in ascending entity id — every
-attribute, its load or store, its health, its action in progress and
-`progress`, its fault record, and its **execution state**: the program
-counter, every frame's locals, every global, the deficit, the pending
-interrupt set, whether it is in main flow or a handler and which kind, the
-hook budget spent so far in that handler, and the set of modules already
-run in this run (`01`). Every `num` is
-its i128; every `str` its UTF-8 bytes length-prefixed; every collection its
-elements in iteration order.
+8, in this order: the tick; every team in order — its deployments, the
+version of each bundle, its cap, its print turn (Q42), its plans by tile in
+row-then-column order, its memory table by tile; every tile in
+row-then-column order — terrain, deposit, paint, overlay; every machine in
+ascending entity id — every attribute, its load or store, its health, its
+action in progress and `progress`, its fault record, and its **execution
+state**: the program counter, every frame's locals, every global, the
+deficit, the pending interrupt set, whether it is in main flow or a handler
+and which kind, the hook budget spent so far in that handler, and the set
+of modules already run in this run (`01`). Every `num` is its i128; every
+`str` its UTF-8 bytes length-prefixed; every collection its elements in
+iteration order.
 
 What is **not** hashed: the diagnostic log, the speed (the driver's, not the
 sim's), anything the renderer holds, and the live sensing list, which is a

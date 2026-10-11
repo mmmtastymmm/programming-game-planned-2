@@ -2,54 +2,44 @@
 
 What a player gains as a match goes on, and what carries between matches.
 This doc is short by design: progression in this game happens inside a
-match, it is made of two rules that [02-machines](02-machines.md) owns, and
+match, it is made of rules that [02-machines](02-machines.md) owns, and
 nothing persists when the match ends.
 
 ## Decided
 
-- **Progression is inside a match, and it is printers changing hands
-  (Q30, as amended by Q31, which made printers unbuildable).** A bot may convert an adjacent printer of another team, after which
-  the printer is its team's: it prints for them, and by Q24's rules its new
-  team's cap rises by `bots_per_printer` and its next color unlocks while
-  the old team's cap falls and its last color locks. A printer defends
-  itself, dealing `defence_damage` each tick to every adjacent bot of another
-  team, so a conversion is
-  a fight. There is no progression between matches and none is planned; the
-  ladder of opponents (Q29) is the only thing that carries from one match to
-  the next, and it carries nothing but the player's own programs.
+- **Progression is inside a match, and it is building printers (Q42,
+  replacing Q30's conversion and Q31's fixed count).** A team's bots build
+  printers for ore, each one dearer than the last by how many printers and
+  printer sites the team has, and each one standing raises the team's cap
+  by `bots_per_printer`, which its printers fill by themselves. No printer
+  changes hands. A printer defends itself, dealing `defence_damage` each
+  tick to every adjacent bot of another team (Q30), so taking one down is
+  a fight. There is no progression between matches and none is planned;
+  the ladder of opponents (Q29) is the only thing that carries from one
+  match to the next, and it carries nothing but the player's own programs.
 
 ## Inside a match
 
 A team's reach is measured in printers. Each one it holds is
-`bots_per_printer` more bots it may print and one more deployment it may
-write for (Q24). None is ever
-built (Q31): the map placed every printer there will be, so there are two
-ways to hold more, and the second is the only way up:
+`bots_per_printer` more bots its printers will print (Q24). There is one
+way up and two ways down:
 
 | Way | Costs | Ruled in |
 |---|---|---|
-| **convert** a rival's | a bot adjacent to it for `convert_ticks`, taking `defence_damage` every tick from the printer it is converting | Q30, [02-machines](02-machines.md) |
-| **keep** the ones it has | bots to stand between them and the rival's, and a program that knows when to | Q25, Q30 |
+| **build** one | a site of `cost + n × cost_step` ore, `n` the team's printers and printer sites when it is placed, hauled by bots, then `build_ticks` | Q42, [02-machines](02-machines.md) |
+| **lose** one to a rival's attacks | the rival's bots, within `attack_range`, taking `defence_damage` every tick they stand adjacent | Q25, Q30 |
+| **lose** one to a rival's deconstruction | a rival's bot adjacent to it for its `deconstruct_ticks`, taking the same | Q28, Q30 |
 
-Conversion is the progression rule, and it is the reason a match has an
-arc: a printer taken is ten bots and a color taken, and a printer taken
-back is the same in reverse. Deconstruction (Q28) removes a rival's printer
-instead of taking it, which is faster, gains nothing, and is permanent — one
-fewer printer in the world for everyone; a program chooses.
+**The price rises with what a team has, not with what it ever built.** A
+team that loses printers pays less for the next one, so a beaten-down team
+can rebuild faster than it was knocked down — the comeback is the rule's,
+on purpose. A team far ahead pays more for each printer than it did for the
+last, so a lead costs more to extend than to hold.
 
-**The arithmetic the numbers are set for.** With `convert_ticks` and bot
-health both at ten and `defence_damage` at one, one full-health bot converts
-a printer with one health to spare — an action of `n` ticks begun in tick
-`T`'s slice completes in step 3 of tick `T + n - 1` (`02`), so the printer's
-defence lands `n - 1` times before the conversion does; two bots do it
-comfortably; a bot already hurt dies trying. A team that wants a rival's printer brings more than one
-bot, which is a program's decision, which is the point.
-
-**What conversion does not change.** The printer keeps its store, its
-health, its name and a print in progress; it takes the new team's printer
-bundle at its next boundary by the swap rule (Q11), as if redeployed, and
-the bot it was printing is the new
-team's. Its old team is out (`04`) if it was the last one.
+**The last printer is not replaceable.** A team that ends a tick with no
+printer is out (`04`), whatever site it was building, so a rebuild must
+start while a printer still stands. Defending the last one is the one thing
+a program cannot leave to later.
 
 ## Between matches
 

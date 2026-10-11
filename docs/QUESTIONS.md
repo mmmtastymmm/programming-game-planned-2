@@ -26,17 +26,19 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-09-13.** Every question this file has issued, Q1 through
-Q41, is answered. Q33 through Q39 and Q41 were each opened and answered in
+**Status 2026-10-11.** Every question this file has issued, Q1 through
+Q42, is answered. Q33 through Q39 and Q41 were each opened and answered in
 one commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
 window, Q41 the working copies to one tree and the hook binding in `01`;
-Q40, numbering the bot deployments, amends Q24 and Q35 and is `02`'s. The
-rulings of Q7, Q9, Q21, Q22, Q23, Q24, Q25 and Q40 are
+Q40, numbering the bot deployments, amends Q24 and Q35 and is `02`'s; Q42,
+building printers, printing by turns and one deployment per model, amends
+Q9, Q23, Q24, Q30, Q31, Q35 and Q40, and is `02`'s and `05`'s. The
+rulings of Q7, Q9, Q21, Q22, Q23, Q24, Q25, Q40 and Q42 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and Q22
 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28 and Q32 are
 [06-architecture](06-architecture.md)'s, Q4 and Q29 are
-[04-opposition](04-opposition.md)'s, and Q30 is
+[04-opposition](04-opposition.md)'s, and Q42 is
 [05-progression](05-progression.md)'s. Nothing is undecided, and **Open**
 below is empty until the next question is opened. The
 framing rulings are owned by [00-overview.md](00-overview.md)'s Decided section
@@ -57,7 +59,7 @@ attached to the commit that changed it.
 each with the rulings it waited on
 as its Decided entries or citing them from `02`. `02` opened Q24 and `04`
 opened Q29 in the writing, and both are answered; `05` was written from Q30,
-opened and answered for it; `07` from Q33 through Q39, the last three
+opened and answered for it, and rewritten from Q42; `07` from Q33 through Q39, the last three
 opened in its writing and answered after. The overview's table says the
 same.
 

@@ -78,8 +78,8 @@ pass.
   interrupts), Q14 and Q19 (numbers) and Q41's hook sources are the Decided
   entries of the parts that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9, Q23, Q24, Q25, Q30, Q31 and Q40 (production,
-  health, the cap, combat, the printer and the numbered deployments), and
+  (sensing and memory), Q9, Q23, Q24, Q25, Q30, Q31, Q40 and Q42
+  (production, health, the cap, combat, the printer and the deployments), and
   Q22 (the economy, which `docs/03` will cite) are its Decided entries, and
   they are not repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
@@ -95,7 +95,7 @@ pass.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in
-  [05-progression](05-progression.md)** — Q30 (printers change hands); neither
+  [05-progression](05-progression.md)** — Q42 (building printers); neither
   is repeated here.
 
 ## What the numbered docs will hold
@@ -110,7 +110,7 @@ inserted without renumbering:
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
 | `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | — |
-| `05` | Progression — printers changing hands inside a match; nothing between matches | — |
+| `05` | Progression — building printers inside a match; nothing between matches | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 | `07` | Interface — the screen, the editor, how a fault reaches the player, how a machine on the map reads | — |
 

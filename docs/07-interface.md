@@ -51,14 +51,12 @@ here changes a hash; a peer with a different renderer sees the same match.
   faults by file and line in the programs panel, the full record in the
   inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
-- **A bot's body is its deployment's color, and its team is a ring (Q35,
-  as Q40 amended).** Deployment `n`'s bots wear the `n`-th paint color,
-  cycling through the list, and every bot wears its number over its body,
-  so deployment `9` is the first color again with a `9` on it. The team
-  shows as a ring under every machine, the player's own in white and each
-  other team's in a color from `data/interface.toml`. Printers, depots and
-  sites, which have no numbered deployment, wear the team's ring color on
-  their body.
+- **Every machine's body is its team's color, and so is its ring (Q35,
+  as Q40 and Q42 amended).** A team has one bot deployment (Q42), so a
+  bot's color says only its team: bots, printers, depots and sites alike
+  wear the team's ring color on their body, and no bot wears a number. The
+  team shows as a ring under every machine, the player's own in white and
+  each other team's in a color from `data/interface.toml`.
 
 ## The screen
 
@@ -87,8 +85,8 @@ text, edited in place. A deployment's **running version** is the sim's
 (`02`): the bundle the deployment slot holds, identified by its hash (Q13).
 The two meet only through `Deploy`.
 
-- **The tree** holds `robots/` — `1.py`, `2.py`, … for the deployments the
-  team can write for (Q40), `printer.py`, `depot.py` — and `interrupts/`
+- **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`, one
+  per deployment (Q42) — and `interrupts/`
   with `on_fault.py` and `on_dying.py`; both folders and every file in
   them always exist and cannot be renamed, moved or deleted. Everything
   else is the player's: files and folders they add, rename, move and
@@ -110,7 +108,7 @@ The two meet only through `Deploy`.
 - **The opening set** (Q9) is composed from the tree at start, one bundle
   per deployment with a non-empty robot file, and becomes the opening
   `Deploy`s. The cards (`04`) use the same layout; a script's
-  `bundle = "1"` names the deployment whose bundle its tree composes.
+  `bundle = "bot"` names the deployment whose bundle its tree composes.
 - **Export** writes the tree back to the programs directory, on the
   player's request, and never on its own: the directory is the player's
   editor-independent store, and what they wrote there is not overwritten
@@ -141,11 +139,8 @@ clears only when those machines fault again or die.
 
 ## Machines on the map
 
-- **Body:** a bot is an atlas cube in the color its deployment's number
-  selects from the paint list, cycling (Q40); a printer, a depot and a site
-  are their own shapes in the team's ring color.
-- **Number:** every bot wears its deployment's number over its body,
-  always, drawn by the renderer (Q40).
+- **Body:** a bot is an atlas cube, and a printer, a depot and a site
+  are their own shapes, all in the team's ring color (Q42).
 - **Ring:** every machine stands on a ring in its team's color, the
   player's own team white.
 - **Health:** a bar over the machine for a few seconds after any change.
@@ -156,7 +151,7 @@ clears only when those machines fault again or die.
 ## Marks
 
 The tools window is a strip (Q37): a row of the building models a plan may
-name (`printer` excluded, Q31), a row of the eight paint colors, a row of
+name (`printer` among them, Q42), a row of the eight paint colors, a row of
 the overlay labels in data (Q10, Q26, Q27), each row ending in a *clear* —
 the plan to empty that slot. `B`, `P` and `O` pick a row and `1`–`9` an
 entry; a click arms a tool, `Esc` or a second click disarms it.
