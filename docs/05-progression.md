@@ -27,7 +27,7 @@ from the team itself:
 
 | Way | Costs | Ruled in |
 |---|---|---|
-| **build** one | a site of `cost + n × cost_step` ore, `n` the team's printers and other printer sites just before it is placed, hauled by bots, then `build_ticks` | Q42, [02-machines](02-machines.md) |
+| **build** one | a site holding the printer's price, which rises with the printers and printer sites the team has ([02-machines](02-machines.md)'s Q42 bullet), hauled by bots, then `build_ticks` | Q42 |
 | **lose** one to a rival's attacks | the rival's bots, within `attack_range`, taking `defence_damage` every tick they stand adjacent | Q25, Q30 |
 | **lose** one to a rival's deconstruction | a rival's bot adjacent to it for its `deconstruct_ticks`, taking the same | Q28, Q30 |
 | **lose** one to its own program | `fault_damage` for every fault: a printer program that faults on every restart is `dying` after `health / fault_damage` faults | Q24, [02-machines](02-machines.md) |

@@ -93,17 +93,18 @@ The two meet only through `Deploy`.
 - **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`, one
   per deployment (Q42) — and `interrupts/` with `on_fault.py` and
   `on_dying.py`; both folders, every deployment's file and both interrupt
-  files always exist and cannot be renamed, moved or deleted. Everything
-  else is the player's: files and folders they add, rename, move and
-  delete, shared by every robot. A file's name is `[a-z_][a-z0-9_]*.py`
-  (`01`) and its stem is unique across the tree, since folders are
-  organisational only and the language has no packages; a collision is a
-  load error shown in the tree. A file in `robots/` for no deployment —
-  `robots/1.py` from a tree written before Q42 — composes nothing, is
-  marked as an error in the tree and its window, and the player may delete
-  it; the match starts without it. A file that calls a builtin Q42 removed
-  — `print` or `convert` — is marked the same way at that line, since it
-  loads but faults every time the call runs.
+  files always exist and cannot be renamed, moved or deleted, and the
+  player cannot add a file to either folder. Everything outside them is the
+  player's: files and folders they add, rename, move and delete, shared by
+  every robot. A file's name is `[a-z_][a-z0-9_]*.py` (`01`) and its stem
+  is unique across the tree, since folders are organisational only and the
+  language has no packages; a collision is a load error shown in the tree.
+  A file found in `robots/` for no deployment — `robots/1.py` from a tree
+  written before Q42 — composes nothing, is marked as an error in the tree
+  and its window, and the player may delete it; the match starts without
+  it. A file that calls a builtin Q42 removed — `print` or `convert` — is
+  marked the same way at that line, since it loads but faults every time
+  the call runs.
 - **Composition.** Deployment `d`'s bundle is `robots/d.py` as `main.py`,
   plus every interrupt file and every player file by its bare name. A hook
   binds from `robots/d.py` if it defines one, else from the interrupt file
@@ -117,8 +118,9 @@ The two meet only through `Deploy`.
   inspector says which version each runs.
 - **The opening set** (Q9) is composed from the tree at start, one bundle
   per deployment with a non-empty robot file, and becomes the opening
-  `Deploy`s. The cards (`04`) use the same layout; a script's
-  `bundle = "bot"` names the deployment whose bundle its tree composes.
+  `Deploy`s; a deployment whose file is empty gets none and runs the empty
+  program (`06`). The cards (`04`) use the same layout; a script's `bundle
+  = "bot"` names the deployment whose bundle its tree composes.
 - **Export** writes the tree back to the programs directory, on the
   player's request, and never on its own: the directory is the player's
   editor-independent store, and what they wrote there is not overwritten

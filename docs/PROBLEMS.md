@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-11: 2 opened, 1 fixed — 1 open.**
+**Status 2026-10-11: 3 opened, 1 fixed — 2 open.**
 
 ## Open
 
@@ -48,3 +48,19 @@ sim has no `set_color` or `color`, the cost table has no row for it, the
 renderer draws bots white and teams as rings, and `data/interface.toml`
 holds only the ring list. The work is
 [T25](TASKS.md); this entry closes with the commit that finishes it.
+
+**P3 — No rival bot can deconstruct a printer at today's numbers**
+
+`05`'s table, `02`'s Q30 bullet and `04`'s ending all name a rival's
+deconstruction as a way to lose a printer, and the numbers in
+`data/machines.toml` make it impossible. A bot adjacent to a rival printer
+takes `defence_damage` (1) every tick, so its `health` (10) reaches zero on
+the tenth and it goes `dying`, which cancels the action in progress; the
+printer's `deconstruct_ticks` is 30, and a second bot cannot help, since
+each runs its own action. Attacking is possible but slow: a bot lands about
+three hits of `attack_damage` (1) before it falls, so a printer's `health`
+(60) takes some twenty bots, four at a time. The numbers were set for Q30's
+conversion and never rechecked against deconstruction once Q42 made it the
+way to take a printer down. The user deferred retuning them to
+playtesting; this entry holds the arithmetic until then, and closes with
+the commit that changes the numbers or the rule.

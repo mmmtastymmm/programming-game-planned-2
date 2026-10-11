@@ -31,13 +31,15 @@ Rulings this doc owns, moved here from the overview when it was written.
   command carries its sender and its tick; one that cannot apply is
   dropped. What a mark is and
   does is [02-machines](02-machines.md)'s and [03-world](03-world.md)'s.
-- **A fixed delay, and a stall for a late peer (Q12).** A command entered at
-  tick `t` is agreed for `t + delay`, a tuning constant in ticks fixed at
-  match start; a peer missing another's command set for the next tick issues
-  no tick until it arrives, so nothing is dropped and nothing desyncs.
-  Single-player is lockstep with one peer and feels the same delay. Within a
-  tick, commands apply by sender then submission order. Rate-limiting is
-  deferred with PvP; the sender stamp is its hook.
+- **A fixed delay, and a stall for a late peer (Q12).** A command entered
+  at tick `t` is agreed for `t + delay`, a tuning constant in ticks fixed
+  at match start; a peer missing another's command set for the next tick
+  issues no tick until it arrives, so nothing is dropped and nothing
+  desyncs. Single-player is lockstep with one peer and feels the same
+  delay. Within a tick, commands apply by the tick they were agreed for —
+  tick 0's opening set before tick 1's own, the one tick that carries two —
+  then sender, then submission order. Rate-limiting is deferred with PvP;
+  the sender stamp is its hook.
 - **A paused driver still reaches a command, and a hook's wait spends its
   budget (Q32).** At speed `0` the driver runs, without the clock, exactly
   the ticks up to the next one that carries any command, so a `SetSpeed`
@@ -130,7 +132,8 @@ loop:
 
 `sim.step` runs one tick in this order, and the order is spec:
 
-1. **Apply the tick's commands**, by sender then submission order (Q12):
+1. **Apply the tick's commands**, by agreed tick, then sender, then
+   submission order (Q12):
    `Deploy` writes a bundle into a deployment slot;
    `Mark` and `Unmark` set and clear plans (`03`); `SetSpeed` is recorded for
    the driver; `Resign` marks the sender's team **out**, which step 5
@@ -148,8 +151,11 @@ loop:
    — attacks that completed, and every printer's defence against adjacent
    enemy bots (Q30) — `dying` and `death` are raised where Q24 says, and
    `death` epilogues remove machines; a printer left at or below zero health
-   loses its print in progress (`02`, Printing). A machine removed here is
-   absent from everything below.
+   loses its print in progress (`02`, Printing). Every machine whose `death`
+   epilogue ran this tick — here, or earlier in its own step-2 slice — is
+   removed together at the end of this step; until then it keeps its tile,
+   and a printer among them still defends in this step. A machine removed
+   here is absent from everything below.
 5. **Out teams**: every team that is out — it resigned this tick, or steps
    3 and 4 left it with no printer, by deconstruction or death (`04`) — has
    its machines removed, its plans cleared and its log closed, in team
@@ -198,9 +204,10 @@ A **command** is:
   identically everywhere. `net` owns the layout; it is spec once written and
   changes only under a new question number.
 - **The opening program set** (Q9) is the first entries: one `Deploy` per
-  deployment, `tick` 0, `sender` the team, in team order. A match cannot
-  start without them. No tick 0 is ever stepped: the first `sim.step` is
-  tick 1, and tick 0's commands apply in its step 1, before tick 1's own.
+  deployment the team has a program for, `tick` 0, `sender` the team, in
+  team order; a deployment with none runs the empty program (`02`) until a
+  later `Deploy`. No tick 0 is ever stepped: the first `sim.step` is tick
+  1, and tick 0's commands apply in its step 1, before tick 1's own.
 
 ## The snapshot
 
@@ -225,19 +232,20 @@ snapshot and **not** of the state hash.
 ## The state hash
 
 The hash is FNV-1a 64-bit over a canonical encoding of the world after step
-8, in this order: the tick; every team in order — its deployments, the
-version of each bundle, its cap, its print turn (Q42), its plans by tile in
-row-then-column order, its memory table by tile; every tile in
-row-then-column order — terrain, deposit, paint, overlay; every machine in
-ascending entity id — every attribute, its load or store and its store
-capacity, which for a site is its price, fixed at placement (Q42), its
-health, its action in progress and `progress`, its fault record, and its
-**execution state**: the program counter, every frame's locals, every
-global, the deficit, the pending interrupt set, whether it is in main flow
-or a handler and which kind, the hook budget spent so far in that handler,
-and the set of modules already run in this run (`01`). Every `num` is its
-i128; every `str` its UTF-8 bytes length-prefixed; every collection its
-elements in iteration order.
+8, in this order: the tick; every team in order — whether it is out, its
+deployments, the version of each bundle, its cap, its print turn (Q42), its
+plans by tile in row-then-column order, its memory table by tile; every
+tile in row-then-column order — terrain, deposit, paint, overlay; the next
+entity id; every machine in ascending entity id — every attribute, whether
+it is `dying`, its action in progress and `progress`, a site's construction
+ticks and the model it becomes, its store capacity, which for a site is its
+price, fixed at placement (Q42), its fault record, and its **execution
+state**: the program counter, every frame's locals, every global, the
+deficit, the pending interrupt set, whether it is in main flow or a handler
+and which kind, the hook budget spent so far in that handler, and the set
+of modules already run in this run (`01`). Every `num` is its i128; every
+`str` its UTF-8 bytes length-prefixed; every collection its elements in
+iteration order.
 
 What is **not** hashed: the diagnostic log, the speed (the driver's, not the
 sim's), anything the renderer holds, and the live sensing list, which is a

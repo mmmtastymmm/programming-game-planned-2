@@ -43,7 +43,7 @@ their effect and the armed tool as a ghost under the cursor. The snapshot
 gains the player's team's plan values per tile — a read the renderer
 makes, in no hash — replacing the driver's `snapshot_plan` peek.
 
-## M7 — Buildable printers
+## M7 — Bot colors and team outlines
 
 **T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
 
