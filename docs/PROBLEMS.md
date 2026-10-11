@@ -32,8 +32,19 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-09-06: 1 opened, 1 fixed — zero open.**
+**Status 2026-10-11: 2 opened, 1 fixed — 1 open.**
 
 ## Open
 
-*(none)*
+**P2 — The code lags Q43: no `set_color`, no `color`, no outlines**
+
+Q43 gave bots a `set_color(color)` builtin and a `color` attribute, and
+every team an outline the player colors. `docs/02` states the builtin, the
+attribute and the `dying` hook's use of it as current, its Costs section
+says every builtin above has a row in `data/language/costs.toml`, and
+`docs/07` names the neutral body color, the default outline color and the
+outline list as constants in `data/interface.toml`. None exists yet: the
+sim has no `set_color` or `color`, the cost table has no row for it, the
+renderer draws bots white and teams as rings, and `data/interface.toml`
+holds only the ring list. The work is
+[T25](TASKS.md); this entry closes with the commit that finishes it.

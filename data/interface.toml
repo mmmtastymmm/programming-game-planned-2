@@ -8,6 +8,7 @@ fault_mark_ticks = 30
 
 [teams]
 # ring colors for the teams that are not the player's, in team order
-# skipping the player's; the player's ring is white. Blue comes first so a
-# default one-on-one is green against blue (Q43), not green against red
+# skipping the player's; the player's ring is white. Blue comes first so
+# that once T25 makes these Q43's outlines, with the player's own green, a
+# default one-on-one is green against blue, not green against red
 rings = ["#4fa3f2", "#f24c40", "#f2c94c", "#e254c7", "#f2913f", "#9b59f2", "#45d4d4"]

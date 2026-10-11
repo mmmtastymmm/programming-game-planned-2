@@ -11,7 +11,7 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use sim::{CommandKind, PlanKind};
 
-/// Keys: tools 1–5, speed with `-`/`=`, `Shift+D` deploys, `L` toggles the
+/// Keys: tools 1–6, speed with `-`/`=`, `Shift+D` deploys, `L` toggles the
 /// log, `Escape` drops the tool, `Shift+R` resigns.
 pub fn keys(
     mut contexts: EguiContexts,

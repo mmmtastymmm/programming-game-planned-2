@@ -41,7 +41,7 @@ last, so a lead costs more to extend than to hold.
 
 **The last printer is not replaceable.** A team that ends a tick with no
 printer is out (`04`), whatever site it was building, so a replacement must
-be finished while a printer still stands. Defending the last one, and
+be finished no later than the tick the last printer falls. Defending the last one, and
 keeping its program from faulting, is the one thing a team cannot leave to
 later.
 

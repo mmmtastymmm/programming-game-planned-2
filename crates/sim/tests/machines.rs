@@ -436,6 +436,40 @@ fn losing_the_last_printer_ends_the_match_whatever_sites_remain() {
     assert!(!s.world.machines.contains_key(&site));
 }
 
+/// A printer whose own program faults it to zero health loses its print
+/// at once, in the fault's prologue, before step 3 could complete it.
+#[test]
+fn a_printer_faulted_to_zero_loses_its_print() {
+    let mut s = sim();
+    // A second printer keeps team 0 in the match; both begin a print in
+    // tick 1, due in step 3 of tick 31.
+    let p2 = s.world.place(
+        Model::Printer,
+        TeamId(0),
+        TilePos::new(0, 0),
+        Some("printer".into()),
+    );
+    run(
+        &mut s,
+        vec![deploy(0, "printer", "wait(30)\nx = 1 / 0\n")],
+        1,
+    );
+    let p = printer_of(&s, 0).id;
+    assert_ne!(p, p2);
+    s.world.machines.get_mut(&p).unwrap().health = Num::ONE;
+    run(&mut s, vec![], 29);
+    assert_eq!(s.world.machines[&p].printing, 1);
+    // Tick 31: the wait ended in tick 30, so the program faults in tick
+    // 31's slice, before the print would complete in its step 3.
+    run(&mut s, vec![], 1);
+    assert!(s.world.machines.get(&p).is_none_or(|m| m.printing == 0));
+    assert_eq!(
+        bots(&s, 0).len(),
+        1,
+        "only the healthy printer's print completed"
+    );
+}
+
 #[test]
 fn a_fault_costs_health_and_a_faulting_program_dies_in_time() {
     let mut s = sim();

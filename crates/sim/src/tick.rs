@@ -505,10 +505,17 @@ impl Sim {
     /// (`docs/02`, Printing).
     fn complete_print(&mut self, id: EntityId) {
         let w = &mut self.world;
+        let dead = w.dead.contains(&id);
         let Some(m) = w.machines.get_mut(&id) else {
             return;
         };
         if m.model != Model::Printer || m.printing == 0 {
+            return;
+        }
+        // A printer whose `death` ran in its slice, or that is at or below
+        // zero health, has lost its print (docs/02, Printing).
+        if dead || m.health <= Num::ZERO {
+            m.printing = 0;
             return;
         }
         m.printing = m.printing.saturating_sub(1);

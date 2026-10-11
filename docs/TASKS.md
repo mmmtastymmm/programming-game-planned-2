@@ -56,4 +56,5 @@ neutral body color, buildings in the neutral color, an outline on every
 machine in its team's color replacing the ring, the player's own green by
 default and the others from a list in `data/interface.toml`, changed from
 the inspector and saved in `colors.toml` beside the programs. The golden
-fixtures, regenerated with the reason in the PR.
+fixtures, regenerated with the reason in the PR. Finishing it fixes
+[P2](PROBLEMS.md).

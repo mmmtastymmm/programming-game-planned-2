@@ -14,7 +14,7 @@ use crate::view;
 use bevy_egui::egui;
 use lang::errors::LoadError;
 use lang::{Limits, Program};
-use sim::script::{INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose};
+use sim::script::{INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose, is_stray_robot};
 use sim::snapshot::Snapshot;
 use sim::{Bundle, CommandKind, TeamId};
 use std::collections::{BTreeMap, BTreeSet};
@@ -73,9 +73,22 @@ pub fn robot_of(path: &str) -> Option<&str> {
 }
 
 /// Whether the path is one of the fixed entries the player cannot rename,
-/// move or delete.
+/// move or delete: a deployment's robot file, or an interrupt file. A
+/// robot file for no deployment is the player's to delete (Q42).
 pub fn is_fixed(path: &str) -> bool {
-    robot_of(path).is_some() || interrupt_paths().iter().any(|p| p == path)
+    robot_of(path).is_some_and(sim::world::is_deployment_name)
+        || interrupt_paths().iter().any(|p| p == path)
+}
+
+/// What is wrong with a robot file for no deployment (Q42), if `path` is
+/// one: it is never deployed, and the match starts without it.
+pub fn stray_error(path: &str) -> Option<String> {
+    is_stray_robot(path).then(|| {
+        format!(
+            "`{path}` is for no deployment — a team's are `bot`, `printer` and `depot` (Q42); \
+             it is never deployed: move what you want into `{ROBOTS}/bot.py` and delete it"
+        )
+    })
 }
 
 impl Editor {
@@ -695,7 +708,10 @@ pub fn line_range(text: &str, line: u32) -> std::ops::Range<usize> {
 /// is ahead, `!` when it carries a load error.
 pub fn title(state: &ViewState, path: &str, snap: &Snapshot, player: TeamId) -> String {
     let bare = bare_name(path);
-    if state.editor.error_at(path).is_some() || state.editor.compose_error.is_some() {
+    if state.editor.error_at(path).is_some()
+        || state.editor.compose_error.is_some()
+        || stray_error(path).is_some()
+    {
         format!("{bare} !")
     } else if state.editor.ahead(path, snap, player) {
         format!("{bare} *")
@@ -758,6 +774,8 @@ pub fn window_body(
         state.editor.recompose();
     }
     if let Some(e) = &compose_error {
+        ui.colored_label(egui::Color32::LIGHT_RED, e);
+    } else if let Some(e) = stray_error(path) {
         ui.colored_label(egui::Color32::LIGHT_RED, e);
     } else if let Some((dep, e)) = &error {
         ui.colored_label(egui::Color32::LIGHT_RED, format!("{dep}: {e}"));
@@ -886,7 +904,7 @@ pub fn tree_panel(
     let mut actions = Vec::new();
     let mark = |state: &ViewState, path: &str| -> String {
         let mut s = String::new();
-        if state.editor.error_at(path).is_some() {
+        if state.editor.error_at(path).is_some() || stray_error(path).is_some() {
             s.push_str(" !");
         } else if state.editor.ahead(path, snap, player) {
             s.push_str(" *");
@@ -1257,6 +1275,25 @@ mod tests {
             assert_eq!(s.format.underline != egui::Stroke::NONE, overlaps);
         }
         assert_eq!(pos, text.len());
+    }
+
+    /// Q42: a robot file for no deployment — `robots/1.py` from a tree
+    /// written before it — composes nothing, shows as an error, and is the
+    /// player's to delete; the deployments' own files stay fixed.
+    #[test]
+    fn a_robot_file_for_no_deployment_is_an_error_the_player_may_delete() {
+        let mut t = Tree::new();
+        t.insert("robots/1.py".into(), "move('e')\n".into());
+        t.insert("robots/bot.py".into(), "wait(1)\n".into());
+        let mut e = Editor::from_tree(&t);
+        assert_eq!(e.bundles.keys().cloned().collect::<Vec<_>>(), ["bot"]);
+        assert!(e.compose_error.is_none());
+        assert!(stray_error("robots/1.py").is_some());
+        assert!(stray_error("robots/bot.py").is_none());
+        assert!(is_fixed("robots/bot.py") && !is_fixed("robots/1.py"));
+        assert!(e.delete("robots/bot.py").is_err());
+        e.delete("robots/1.py").unwrap();
+        assert!(!e.files.contains_key("robots/1.py"));
     }
 
     #[test]

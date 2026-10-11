@@ -219,11 +219,22 @@ pub fn bare_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// Whether `path` is a file in `robots/` for no deployment a team holds
+/// (Q42) — `robots/1.py` from a tree written before Q42. It composes
+/// nothing; the editor shows it as an error the player may delete
+/// (`docs/07`).
+pub fn is_stray_robot(path: &str) -> bool {
+    path.strip_prefix(&format!("{ROBOTS}/"))
+        .and_then(|f| f.strip_suffix(".py"))
+        .is_some_and(|d| !d.contains('/') && !crate::world::is_deployment_name(d))
+}
+
 /// Compose one bundle per deployment from a tree (`docs/07`, Q41):
 /// `robots/<d>.py` is `main.py`, plus every interrupt file and every
-/// player file by its bare name. A robot file that is empty makes no
-/// bundle; two files with one stem are an error, since folders are
-/// organisational only and the language has no packages.
+/// player file by its bare name. A robot file that is empty, or is for no
+/// deployment (`is_stray_robot`), makes no bundle; two files with one stem
+/// are an error, since folders are organisational only and the language
+/// has no packages.
 pub fn compose(tree: &Tree) -> Result<BTreeMap<String, Bundle>, String> {
     let mut shared: Vec<(String, String)> = Vec::new();
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
@@ -271,7 +282,7 @@ pub fn compose(tree: &Tree) -> Result<BTreeMap<String, Bundle>, String> {
         let Some(deployment) = file.strip_suffix(".py") else {
             continue;
         };
-        if text.trim().is_empty() {
+        if text.trim().is_empty() || is_stray_robot(path) {
             continue;
         }
         let mut files = shared.clone();
@@ -296,6 +307,7 @@ mod tests {
         let mut t = Tree::new();
         t.insert("robots/bot.py".into(), "import nav\n".into());
         t.insert("robots/2.py".into(), "".into());
+        t.insert("robots/1.py".into(), "move('e')\n".into());
         t.insert("robots/printer.py".into(), "wait(60)\n".into());
         t.insert(
             "interrupts/on_fault.py".into(),

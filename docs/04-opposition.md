@@ -100,9 +100,9 @@ The printer is the team's one source of bots, and its bots can build more
 of them (Q42) — each dearer than the last, and cheaper again as they are
 lost. Any printer can be replaced but the last: a team that ends a tick
 with none is out then, not when its last bot dies, and a printer site does
-not count, so a replacement must be **finished** while a printer still
-stands. That keeps the last printer the thing a
-match is about.
+not count, so a replacement must be **finished** no later than the tick the
+last printer falls — a site that completes in that tick's step 3 counts.
+That keeps the last printer the thing a match is about.
 
 ## PvE
 

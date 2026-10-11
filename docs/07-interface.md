@@ -98,7 +98,10 @@ The two meet only through `Deploy`.
   delete, shared by every robot. A file's name is `[a-z_][a-z0-9_]*.py`
   (`01`) and its stem is unique across the tree, since folders are
   organisational only and the language has no packages; a collision is a
-  load error shown in the tree.
+  load error shown in the tree. A file in `robots/` for no deployment —
+  `robots/1.py` from a tree written before Q42 — composes nothing, is
+  marked as an error in the tree and its window, and the player may delete
+  it; the match starts without it.
 - **Composition.** Deployment `d`'s bundle is `robots/d.py` as `main.py`,
   plus every interrupt file and every player file by its bare name. A hook
   binds from `robots/d.py` if it defines one, else from the interrupt file

@@ -144,7 +144,7 @@ A map fixes:
   deployment — every other printer the team will have, its bots build
   (`02`); and
 - nothing else — no bots, no ore held, no memory. The printers begin the
-  first prints in tick 0's print step (`02`, Printing), whatever the
+  first prints in tick 1's print step (`02`, Printing), whatever the
   opening program set (Q9) holds; the bots run the `bot` bundle once it
   arrives.
 

@@ -39,9 +39,9 @@ pub struct ModelData {
     pub capacity: BTreeMap<String, Num>,
     /// A building's store capacity per kind.
     pub store: BTreeMap<String, Num>,
-    /// What building the first costs, per kind, and what each one the
-    /// team already has adds (Q42): a site's store capacity is
-    /// `cost + n × cost_step`.
+    /// A site's base price per kind, and what each building of the model
+    /// and other site for one the team already has adds (Q42): its store
+    /// capacity is `cost + n × cost_step`.
     pub cost: BTreeMap<String, Num>,
     pub cost_step: BTreeMap<String, Num>,
     pub pick_rate: BTreeMap<String, Num>,

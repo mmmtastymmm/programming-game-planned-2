@@ -51,9 +51,10 @@ hearing = 6
 health = 60
 death_threshold = -30
 store = { ore = 0 }
-# built by bots (Q42): the first printer site holds `cost`, and each printer
-# or printer site the team already has adds `cost_step`. Tuning placeholders,
-# to be set by playtesting
+# built by bots (Q42): a printer site holds `cost`, plus `cost_step` for each
+# printer and other printer site the team has when it is placed. The map's
+# starting printer counts, so the cheapest site a team can place holds
+# `cost + cost_step`. Tuning placeholders, to be set by playtesting
 cost = { ore = 100 }
 cost_step = { ore = 50 }
 build_ticks = 60

@@ -719,6 +719,11 @@ impl<'a> Host for GameHost<'a> {
                     return None;
                 }
                 me.health = me.health.checked_sub(damage).unwrap_or(Num::MIN);
+                // A printer at or below zero loses its print at once
+                // (docs/02, Printing).
+                if me.model == Model::Printer && me.health <= Num::ZERO {
+                    me.printing = 0;
+                }
                 if me.health <= threshold {
                     Some(Interrupt::Death)
                 } else if me.health <= Num::ZERO {

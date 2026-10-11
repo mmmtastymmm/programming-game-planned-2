@@ -199,7 +199,8 @@ A **command** is:
   changes only under a new question number.
 - **The opening program set** (Q9) is the first entries: one `Deploy` per
   deployment, `tick` 0, `sender` the team, in team order. A match cannot
-  start without them.
+  start without them. No tick 0 is ever stepped: the first `sim.step` is
+  tick 1, and tick 0's commands apply in its step 1, before tick 1's own.
 
 ## The snapshot
 
