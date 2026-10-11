@@ -119,7 +119,8 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
 - **A bot's program sets its color (Q43, amending Q35 and Q42).** A bot's
   `set_color(color)` sets its `color` attribute to a color from the paint
   list in data, or `None`, which it is when printed; the color survives a
-  redeploy and a fault, and a sighting carries it like every attribute.
+  redeploy and a fault, a `dying` bot's hook may still set it, and a
+  sighting carries it like every attribute.
   Buildings have none. How a color and a team are drawn is `07`'s.
 - **Bots attack, and nothing else does (Q25).** A bot's `attack(id)` hits a
   machine its team can see, within `attack_range` and in line of sight, for
@@ -435,7 +436,7 @@ is what the prologues and epilogues do beyond the language's rules.
 | Kind | Raised by | Prologue does to the body | The hook may | Epilogue does to the body |
 |---|---|---|---|---|
 | `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine; its load or store, and a printer's print, is lost; its tile is free; a site it was building stays; the team's cap updates if it was a printer |
-| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress and a printer's print; freezes health | call the senses, `log`, `wait`, `rename`, and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
+| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress and a printer's print; freezes health | call the senses, `log`, `wait`, `rename`, `set_color` (Q43) and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 

@@ -20,7 +20,7 @@ renderer's and reach no hash.
 1. **`set_color(color)`** is a bot action of zero ticks, not noisy:
    `color` a color from the paint list in data, or `None`; anything else
    is a `ValueError`. Like `rename`, it is an action, so a busy bot cannot
-   call it.
+   call it, and like `rename` it is one a `dying` bot's hook may call.
 2. **`color` is a bot attribute**: a paint color or `None`, `None` when the
    bot is printed. It survives a redeploy and a fault, as `name` does, and
    is carried by sightings like every attribute — a rival sees it.
@@ -54,7 +54,7 @@ renderer's and reach no hash.
 ## Outcome
 
 - **Docs:** [02-machines.md](../../02-machines.md) — the Decided entry, the
-  kind tree, the attributes and the `set_color` row.
+  kind tree, the attributes, the `set_color` row and the `dying` row.
   [07-interface.md](../../07-interface.md) — the Decided entry, the
   inspector row, Machines on the map and Costs.
   [00-overview.md](../../00-overview.md) — the Decided listing.
@@ -76,6 +76,10 @@ Cite the ruling above; open this half only to recover *why*.
 | the team cue | Q35's ring, the player's white | A small cue, and fixed colors. |
 | the team cue | Friendly green, enemy red | Unreadable to the commonest colorblindness, and every enemy alike. |
 | the team cue | **An outline per team, colored by the player** *(chosen)* | Defaults to friendly green and a distinct color per rival; any of them changes for colorblindness or taste. |
+| green bodies | Drop green from the paint list | A bot under a green outline cannot be green; the paint list loses a color tiles use too. |
+| green bodies | **Keep it** *(chosen)* | A green bot under the default green outline reads less well; the outline is drawn apart from the body, and the player can recolor their outline. |
+| a `dying` bot | Refuse `set_color` | A last signal lost, for no rule's sake. |
+| a `dying` bot | **Allow it, as `rename` is** *(chosen)* | A bot can mark itself as going down, for its team's programs to see. |
 
 ### How the answer took its shape
 

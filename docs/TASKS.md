@@ -68,7 +68,8 @@ the golden fixtures, regenerated with the reason in the PR.
 **T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
 
 Q43, ruled in `02` and `07`. The sim: a `color` attribute on bots, `None`
-when printed, kept across redeploy and fault, in sightings and the hash;
+when printed, kept across redeploy and fault, settable while `dying`, in
+sightings and the hash;
 the zero-tick `set_color(color)` action, refusing anything not in the
 paint list or `None`, with its row in `data/language/costs.toml`. The
 renderer: a bot's body in its color or the neutral body color, buildings
