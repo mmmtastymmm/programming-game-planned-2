@@ -1,8 +1,6 @@
-# A starter printer: print deployment 1's bots while under the cap, and otherwise wait.
-# Edit this file and press Shift+D in the game to redeploy it (docs/02, docs/06).
+# A starter printer: printers print by themselves, taking turns until the team
+# is at its bot cap (docs/02, Printing), so this program only waits. Edit it
+# in the game and deploy it from its window (docs/07).
 
 while True:
-    try:
-        print(1)
-    except ValueError:
-        wait(10)
+    wait(60)

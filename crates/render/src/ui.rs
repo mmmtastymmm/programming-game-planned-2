@@ -10,7 +10,7 @@ use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
 use crate::palette::Interface;
-use crate::view::{self, Entities, MachineBody};
+use crate::view;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use sim::world::TileState;
@@ -35,9 +35,6 @@ pub fn panels(
     mut contexts: EguiContexts,
     time: Res<Time>,
     interface: Res<Interface>,
-    ents: Res<Entities>,
-    cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
-    bodies: Query<&GlobalTransform, With<MachineBody>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
@@ -153,20 +150,12 @@ pub fn panels(
                 }
             });
         });
-    // The first run opens the first robot file and the fixed windows.
+    // The first run opens the bot's file and the fixed windows.
     if state.layout.windows.is_empty() {
-        let first = state
-            .editor
-            .files
-            .keys()
-            .filter(|p| {
-                editor::robot_of(p)
-                    .and_then(sim::world::deployment_number)
-                    .is_some()
-            })
-            .min_by_key(|p| editor::robot_of(p).and_then(sim::world::deployment_number))
-            .cloned();
-        to_open.extend(first);
+        let first = editor::robot_path("bot");
+        if state.editor.files.contains_key(&first) {
+            to_open.push(first);
+        }
         to_open.extend(FIXED_WINDOWS.iter().map(|s| s.to_string()));
     }
     // A file clicked in the tree opens; a fixed window's label toggles.
@@ -238,58 +227,6 @@ pub fn panels(
         }
     }
 
-    // Every bot wears its deployment's number (Q40): drawn on the
-    // background layer at the body's screen position, under the windows.
-    if let Ok((camera, cam_tf)) = cams.single() {
-        let painter = ctx.layer_painter(egui::LayerId::background());
-        let font = egui::FontId::proportional(15.0);
-        let snap = driver.0.snapshot();
-        for m in &snap.machines {
-            let Some(n) = m
-                .record
-                .deployment
-                .as_deref()
-                .and_then(sim::world::deployment_number)
-            else {
-                continue;
-            };
-            let Some(view) = ents.machines.get(&m.record.id) else {
-                continue;
-            };
-            if !view.shown {
-                continue;
-            }
-            let Ok(tf) = bodies.get(view.body) else {
-                continue;
-            };
-            let Ok(at) = camera.world_to_viewport(cam_tf, tf.translation() + Vec3::Y * 0.05) else {
-                continue;
-            };
-            let pos = egui::pos2(at.x, at.y);
-            // Under the tree or the bar, not over them.
-            if !screen.contains(pos) {
-                continue;
-            }
-            let text = n.to_string();
-            for d in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
-                painter.text(
-                    pos + egui::vec2(d.0, d.1),
-                    egui::Align2::CENTER_CENTER,
-                    &text,
-                    font.clone(),
-                    egui::Color32::BLACK,
-                );
-            }
-            painter.text(
-                pos,
-                egui::Align2::CENTER_CENTER,
-                &text,
-                font.clone(),
-                egui::Color32::WHITE,
-            );
-        }
-    }
-
     // A changed layout is saved once a second, never on every drag frame.
     let now = time.elapsed_secs();
     if state.layout_dirty
@@ -312,6 +249,11 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState) 
         &mut tool,
         Tool::Building("depot".into()),
         "plan a depot (1)",
+    );
+    ui.radio_value(
+        &mut tool,
+        Tool::Building("printer".into()),
+        "plan a printer (6)",
     );
     ui.radio_value(&mut tool, Tool::Paint("red".into()), "plan red paint (2)");
     ui.radio_value(&mut tool, Tool::Overlay("a".into()), "plan overlay a (3)");
@@ -366,6 +308,16 @@ fn inspector(
                         Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
                         None => ui.label("idle"),
                     };
+                    // Printing is not an action (Q42): a printer's own line.
+                    match r.printing {
+                        Some(0) => {
+                            ui.label("not printing");
+                        }
+                        Some(t) => {
+                            ui.label(format!("printing ({t})"));
+                        }
+                        None => {}
+                    }
                     let running = r.deployment.as_ref().and_then(|dep| {
                         snap.teams
                             .iter()

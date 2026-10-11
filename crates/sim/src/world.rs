@@ -104,9 +104,6 @@ pub enum Effect {
         kind: String,
         into: EntityId,
     },
-    Print {
-        color: String,
-    },
     /// Place a site for `model` at `at`; `remove` first if a building is to
     /// be deconstructed on the way.
     Build {
@@ -123,9 +120,6 @@ pub enum Effect {
         target: EntityId,
     },
     Attack {
-        target: EntityId,
-    },
-    Convert {
         target: EntityId,
     },
     Wait,
@@ -165,7 +159,7 @@ pub struct Machine {
     pub name: String,
     pub model: Model,
     pub team: TeamId,
-    /// The color or model name whose bundle it runs; `None` for a site.
+    /// The model name whose bundle it runs (Q42); `None` for a site.
     pub deployment: Option<String>,
     pub pos: TilePos,
     pub health: Num,
@@ -181,6 +175,9 @@ pub struct Machine {
     /// once its store is full.
     pub becomes: Option<Model>,
     pub construction: Option<u64>,
+    /// A printer's ticks remaining on its print in progress, `0` when not
+    /// printing (`docs/02`, Printing). Printing is not an action.
+    pub printing: u64,
     pub program: Option<lang::Machine>,
     /// The diagnostic log, this tick's entries; not world state.
     pub log: Vec<LogEntry>,
@@ -230,9 +227,6 @@ pub struct LoadedBundle {
 #[derive(Clone, Default)]
 pub struct Deployment {
     pub bundle: Option<LoadedBundle>,
-    /// A deploy that arrived while the slot was locked; applied when it
-    /// unlocks (`docs/02`, Locking).
-    pub pending: Option<LoadedBundle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -258,6 +252,8 @@ pub struct MachineRecord {
     pub load: Option<BTreeMap<String, Num>>,
     pub store: Option<BTreeMap<String, Num>>,
     pub progress: u64,
+    /// A printer's `printing`; absent on every other model.
+    pub printing: Option<u64>,
 }
 
 impl MachineRecord {
@@ -275,6 +271,7 @@ impl MachineRecord {
             load: m.is_bot().then(|| m.load.clone()),
             store: m.is_building().then(|| m.store.clone()),
             progress: m.progress(),
+            printing: (m.model == Model::Printer).then_some(m.printing),
         }
     }
 }
@@ -291,22 +288,12 @@ pub struct TileMemory {
     pub building: Option<MachineRecord>,
 }
 
-/// A bot deployment's number, if `name` is one: decimal, positive, no
-/// leading zero, within `u32` (Q40). `"printer"` and `"depot"` are not.
-pub fn deployment_number(name: &str) -> Option<u64> {
-    if name.is_empty() || name.len() > 9 || name.starts_with('0') {
-        return None;
-    }
-    if !name.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    name.parse::<u64>().ok().filter(|n| *n >= 1)
-}
+/// A team's deployments: one per model that runs a program (Q42).
+pub const DEPLOYMENTS: [&str; 3] = ["bot", "printer", "depot"];
 
-/// Whether `name` is a deployment a team can hold: a building's, or a
-/// bot number.
+/// Whether `name` is a deployment a team holds.
 pub fn is_deployment_name(name: &str) -> bool {
-    name == "printer" || name == "depot" || deployment_number(name).is_some()
+    DEPLOYMENTS.contains(&name)
 }
 
 pub struct Team {
@@ -318,6 +305,9 @@ pub struct Team {
     pub memory: Vec<TileMemory>,
     /// The starting tiles, for scripts.
     pub starts: Vec<TilePos>,
+    /// The printer that began the team's last print; `0`, which no entity
+    /// is, before the first (`docs/02`, Printing).
+    pub print_turn: EntityId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -343,8 +333,6 @@ pub struct World {
     pub sounds_now: Vec<Sound>,
     /// Attack hits landed this tick, summed per target in step 4.
     pub pending_damage: BTreeMap<EntityId, Num>,
-    /// Printers converted this tick: a second conversion is a no-op (Q30).
-    pub converted_this_tick: BTreeSet<EntityId>,
     /// Machines whose `death` epilogue ran this tick, removed in step 4.
     pub dead: BTreeSet<EntityId>,
     /// The driver's speed, carried for the snapshot only.
@@ -388,7 +376,6 @@ impl World {
             sounds_prev: Vec::new(),
             sounds_now: Vec::new(),
             pending_damage: BTreeMap::new(),
-            converted_this_tick: BTreeSet::new(),
             dead: BTreeSet::new(),
             speed,
             next_host_object: 0x8000_0000_0000_0000,
@@ -397,11 +384,11 @@ impl World {
         let team_starts: Vec<Vec<TilePos>> = world.map.teams.clone();
         for (i, starts) in team_starts.iter().enumerate() {
             let id = TeamId(i as u32);
-            // Bot deployments are numbered and created on demand (Q40);
-            // the building deployments exist from the start.
-            let mut deployments = BTreeMap::new();
-            deployments.insert("printer".to_string(), Deployment::default());
-            deployments.insert("depot".to_string(), Deployment::default());
+            // One deployment per model, from the start (Q42).
+            let deployments: BTreeMap<String, Deployment> = DEPLOYMENTS
+                .iter()
+                .map(|d| (d.to_string(), Deployment::default()))
+                .collect();
             let memory = world
                 .tiles
                 .iter()
@@ -424,6 +411,7 @@ impl World {
                     resigned: false,
                     memory,
                     starts: starts.clone(),
+                    print_turn: EntityId(0),
                 },
             );
             for &s in starts {
@@ -517,18 +505,34 @@ impl World {
         (self.printers_of(team) as u64).saturating_mul(self.data.machines.bots_per_printer) as usize
     }
 
-    /// The bot deployments a team may print and deploy to: `"1"` through
-    /// its printer count, in order (Q24, Q40).
-    pub fn unlocked_deployments(&self, team: TeamId) -> Vec<String> {
-        (1..=self.printers_of(team) as u64)
-            .map(|n| n.to_string())
-            .collect()
+    /// The team's standing buildings of `model` and its sites becoming
+    /// one: the `n` of a new site's price (Q42).
+    pub fn count_toward_price(&self, team: TeamId, model: Model) -> u64 {
+        self.machines
+            .values()
+            .filter(|m| {
+                m.team == team
+                    && (m.model == model || (m.model == Model::Site && m.becomes == Some(model)))
+            })
+            .count() as u64
     }
 
-    pub fn is_unlocked(&self, team: TeamId, deployment: &str) -> bool {
-        deployment == "printer"
-            || deployment == "depot"
-            || deployment_number(deployment).is_some_and(|n| n <= self.printers_of(team) as u64)
+    /// A new site's store capacity for `model`: `cost + n × cost_step` per
+    /// kind (Q42).
+    pub fn price(&self, team: TeamId, model: Model) -> BTreeMap<String, Num> {
+        let md = self.data.model(model.name());
+        let n = Num::from_int(i128::from(self.count_toward_price(team, model))).unwrap_or(Num::MAX);
+        self.data
+            .machines
+            .kinds
+            .iter()
+            .map(|k| {
+                let cost = md.cost.get(k).copied().unwrap_or(Num::ZERO);
+                let step = md.cost_step.get(k).copied().unwrap_or(Num::ZERO);
+                let extra = step.checked_mul(n).unwrap_or(Num::MAX);
+                (k.clone(), cost.checked_add(extra).unwrap_or(Num::MAX))
+            })
+            .collect()
     }
 
     /// The program a deployment currently runs.
@@ -560,11 +564,8 @@ impl World {
             .iter()
             .map(|k| (k.clone(), md.store.get(k).copied().unwrap_or(Num::ZERO)))
             .collect();
-        // A bot is `<deployment>-<id>`, a building `<model><id>` (Q40).
-        let name = match (&deployment, model) {
-            (Some(d), Model::Bot) => format!("{d}-{}", id.0),
-            _ => format!("{}{}", model.name(), id.0),
-        };
+        // Every machine is `<model><id>`, bots included (Q42).
+        let name = format!("{}{}", model.name(), id.0);
         let program = deployment.as_ref().map(|d| {
             let p = self.program_of(team, d);
             let mut m = lang::Machine::new(&p, self.costs.clone(), self.limits.clone());
@@ -588,11 +589,24 @@ impl World {
                 store_capacity,
                 becomes: None,
                 construction: None,
+                printing: 0,
                 program,
                 log: Vec::new(),
             },
         );
         id
+    }
+
+    /// Set a machine's health: the one place health changes, so a printer
+    /// that falls to zero or below loses its print there (`docs/02`,
+    /// Printing), whatever dealt the damage.
+    pub fn set_health(&mut self, id: EntityId, health: Num) {
+        if let Some(m) = self.machines.get_mut(&id) {
+            m.health = health;
+            if m.model == Model::Printer && health <= Num::ZERO {
+                m.printing = 0;
+            }
+        }
     }
 
     /// Emit a sound at `pos` (`docs/02`, Sounds).

@@ -27,10 +27,16 @@ pub const LENS_GLASS_RADIUS: f32 = 0.08;
 pub const LENS_GLASS_LEN: f32 = 0.02;
 pub const LENS_GLASS_Z: f32 = LENS_BARREL_Z - LENS_BARREL_LEN / 2.0 - LENS_GLASS_LEN / 4.0;
 
-/// The atlas names `build.rs` bakes: the eight deployment colors of
-/// `data/machines.toml` and `white`, which a machine with no color
-/// deployment wears before its team's tint; a tenth, `ruined`, is the
-/// dead-grey swap.
+/// The neutral body (Q43): every bot wears it until T25 draws a bot's own
+/// `color`, since every bot runs one deployment (Q42).
+pub const NEUTRAL_BOT: &str = "white";
+
+/// The atlas names `build.rs` bakes and the renderer loads by name: the
+/// eight paint colors of `data/machines.toml`, which T25 draws a bot's
+/// `color` in (Q43), and `white`, the neutral body every bot wears until
+/// then and a building wears before its team's tint. `build.rs` also bakes
+/// `ruined`, the dead-grey swap, which is loaded by its own path and is not
+/// in this list.
 pub const ATLASES: [&str; 9] = [
     "green", "red", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white",
 ];
@@ -270,11 +276,8 @@ pub struct Palette {
     pub ore_mats: Vec<Handle<StandardMaterial>>,
     pub ore_frames: Vec<Vec<Handle<Image>>>,
     pub rock_mats: Vec<Handle<StandardMaterial>>,
-    /// Bot atlases by color name (Q35), `white` for a deployment that is
-    /// not a number.
+    /// Bot atlases by color name, `white` the neutral body (Q43).
     pub bot_mats: HashMap<String, Handle<StandardMaterial>>,
-    /// The paint list a deployment's number picks its color from (Q40).
-    pub colors: Vec<String>,
     /// The white printer atlas, tinted per team on demand.
     pub printer_mat: Handle<StandardMaterial>,
     pub printer_ruined_mat: Handle<StandardMaterial>,
@@ -448,9 +451,6 @@ impl Palette {
             ore_frames,
             rock_mats,
             bot_mats,
-            colors: sim::Data::load()
-                .map(|d| d.machines.colors)
-                .unwrap_or_default(),
             printer_mat,
             printer_ruined_mat: atlas(materials, assets.load("textures/printer_atlas_ruined.png")),
             lens_barrel_mat: materials.add(StandardMaterial {
@@ -500,19 +500,6 @@ impl Palette {
             bar_fill_mat: plain(materials, Color::srgb(0.9, 0.2, 0.15), true),
             dim: HashMap::new(),
         }
-    }
-
-    /// The atlas a bot wears: deployment `n`'s is the `n`-th paint color,
-    /// cycling (Q40); a deployment that is not a number is white.
-    pub fn bot_color(&self, deployment: Option<&str>) -> &str {
-        deployment
-            .and_then(sim::world::deployment_number)
-            .and_then(|n| {
-                let len = self.colors.len() as u64;
-                (len > 0).then(|| self.colors[((n - 1) % len) as usize].as_str())
-            })
-            .filter(|c| self.bot_mats.contains_key(*c))
-            .unwrap_or("white")
     }
 
     /// A copy of `base` in the team's color: the base color, and the

@@ -10,8 +10,10 @@
 //! and the PR explains the hash change. The scenario: the first map, a
 //! player team running the bundles under `tests/golden/player/`, and the
 //! Fool as the opposition, with a **mid-match redeploy** of the player's
-//! deployment `1` (T7: the hash-affecting path most likely to differ between
-//! peers), a speed change, and marks. The alive test asserts on what the
+//! `bot` deployment (T7: the hash-affecting path most likely to differ
+//! between peers), a speed change, and marks — among them a printer plan
+//! the player's bots build, so the rising price, construction and two
+//! printers taking turns (Q42) all feed the hash. The alive test asserts on what the
 //! match must have done, so a run that did nothing cannot score green.
 
 use replay::Replay;
@@ -62,8 +64,8 @@ fn golden_replay() -> Replay {
         player,
         1,
         CommandKind::Deploy {
-            deployment: "1".into(),
-            bundle: composed["1"].clone(),
+            deployment: "bot".into(),
+            bundle: composed["bot"].clone(),
         },
     ));
     // A paint plan and an overlay plan beside the start, for the marks path.
@@ -88,11 +90,24 @@ fn golden_replay() -> Replay {
             value: Some("a".into()),
         },
     ));
+    // A printer plan (Q42), which the player's bots haul ore into and
+    // build: the rising price, construction and the turn order between two
+    // printers all feed the hash.
+    commands.push(Command::new(
+        0,
+        player,
+        4,
+        CommandKind::Mark {
+            at: printer_plan(&map),
+            plan: PlanKind::Building,
+            value: Some("printer".into()),
+        },
+    ));
     // The Fool's script, tiles relative to its first start.
     let script =
         sim::script::Script::load(&data_dir().join("opposition/fool")).expect("the Fool's script");
     commands.extend(script.resolve(fool, map.teams[1][0]));
-    // Mid-match: a speed change, an unmark, and the redeploy of `1`.
+    // Mid-match: a speed change, an unmark, and the redeploy of `bot`.
     commands.push(Command::new(40, player, 0, CommandKind::SetSpeed(2)));
     commands.push(Command::new(
         55,
@@ -104,29 +119,27 @@ fn golden_replay() -> Replay {
         },
     ));
     commands.push(Command::new(
-        90,
+        360,
         player,
         0,
         CommandKind::Deploy {
-            deployment: "1".into(),
+            deployment: "bot".into(),
             bundle: bundle(&fixture_dir().join("red2")),
         },
     ));
-    // A deploy to a locked color waits in its slot and never applies here.
-    commands.push(Command::new(
-        95,
-        player,
-        0,
-        CommandKind::Deploy {
-            deployment: "2".into(),
-            bundle: composed["1"].clone(),
-        },
-    ));
+
     Replay {
         map: map_text,
         commands,
-        ticks: 220,
+        ticks: 400,
     }
+}
+
+/// Where the golden scenario's printer plan goes: two tiles south of the
+/// player's start.
+fn printer_plan(map: &Map) -> TilePos {
+    let start = map.teams[0][0];
+    TilePos::new(start.x, start.y.saturating_sub(2))
 }
 
 fn hashes_to_text(hashes: &[u64]) -> String {
@@ -174,7 +187,7 @@ fn golden_scenario_is_alive() {
     );
     assert_eq!(
         run.hashes.len(),
-        220,
+        400,
         "the match ended early: {:?}",
         run.sim.ended()
     );
@@ -199,7 +212,7 @@ fn golden_scenario_is_alive() {
     );
     assert!(
         w.machines.values().any(|m| m.team == TeamId(0)
-            && m.deployment.as_deref() == Some("1")
+            && m.deployment.as_deref() == Some("bot")
             && m.program
                 .as_ref()
                 .is_some_and(|p| p.global("guard").is_some())),
@@ -215,11 +228,16 @@ fn golden_scenario_is_alive() {
     });
     assert!(ore_moved, "no ore was ever picked");
     assert_eq!(w.speed, 2, "the SetSpeed did not land");
-    assert!(
-        w.teams[&TeamId(0)].deployments["2"].pending.is_some(),
-        "the deploy to the locked color did not wait"
-    );
-    assert!(w.teams[&TeamId(0)].deployments["2"].bundle.is_none());
+    // The bots built the planned printer (by about tick 300), so the
+    // player ends with two, and the plan was consumed.
+    let printers: Vec<u32> = w
+        .machines
+        .values()
+        .filter(|m| m.team == TeamId(0) && m.model == Model::Printer)
+        .map(|m| m.id.0)
+        .collect();
+    assert_eq!(printers.len(), 2, "the planned printer was never built");
+    assert!(w.plans(TeamId(0), printer_plan(&w.map)).is_none());
     let remembered = w.teams[&TeamId(0)]
         .memory
         .iter()

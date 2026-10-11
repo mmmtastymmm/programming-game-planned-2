@@ -46,19 +46,23 @@ here changes a hash; a peer with a different renderer sees the same match.
   tick and the wait; everything else keeps working. A desync's banner
   carries the report and the replay's path, and *leave* goes to the end
   screen.
-- **A fault reaches the player on every channel (Q34).** A mark over the
-  machine while its fault record is fresh, a line per deployment counting
-  faults by file and line in the programs panel, the full record in the
-  inspector, and a line in the log. The record itself is the sim's (Q20);
+- **A fault reaches the player on every channel (Q34, as Q39 and Q41
+  moved the panel into each file's window).** A mark over the machine
+  while its fault record is fresh, a summary in each file's window counting
+  its faults by line across every deployment the file reaches, the full
+  record in the inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
-- **A bot's body is its deployment's color, and its team is a ring (Q35,
-  as Q40 amended).** Deployment `n`'s bots wear the `n`-th paint color,
-  cycling through the list, and every bot wears its number over its body,
-  so deployment `9` is the first color again with a `9` on it. The team
-  shows as a ring under every machine, the player's own in white and each
-  other team's in a color from `data/interface.toml`. Printers, depots and
-  sites, which have no numbered deployment, wear the team's ring color on
-  their body.
+- **A bot's body is the color its program set, and every team is an
+  outline the player colors (Q43, amending Q35 and Q42).** A bot is drawn
+  in its `color` (`02`), or a neutral body color while it has none; a
+  building's body is the neutral color. Every machine has an outline in
+  its team's outline color: the player's own green by default, each other
+  team's the next of a list in `data/interface.toml` in team order,
+  skipping the player's — blue first, so a default one-on-one is green
+  against blue. The player may
+  change any team's outline color, their own included, from the
+  inspector; the choice is saved in `colors.toml` beside the programs and
+  never reaches a peer. No bot wears a number.
 
 ## The screen
 
@@ -70,7 +74,7 @@ floats over it (Q39, Q41):
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end; nothing else | Q6, Q12, `06`, Q41 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools and the log | Q41 |
 | **one per open file** | the file being edited, the versions it is deployed as, the deploy and export buttons; the faults naming this file | Q33, Q34, Q39, Q41 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions | Q34 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's outline color to change | Q34, Q43 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 
@@ -87,15 +91,24 @@ text, edited in place. A deployment's **running version** is the sim's
 (`02`): the bundle the deployment slot holds, identified by its hash (Q13).
 The two meet only through `Deploy`.
 
-- **The tree** holds `robots/` — `1.py`, `2.py`, … for the deployments the
-  team can write for (Q40), `printer.py`, `depot.py` — and `interrupts/`
-  with `on_fault.py` and `on_dying.py`; both folders and every file in
-  them always exist and cannot be renamed, moved or deleted. Everything
-  else is the player's: files and folders they add, rename, move and
-  delete, shared by every robot. A file's name is `[a-z_][a-z0-9_]*.py`
-  (`01`) and its stem is unique across the tree, since folders are
+- **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`, one
+  per deployment (Q42) — and `interrupts/` with `on_fault.py` and
+  `on_dying.py`; both folders, every deployment's file and both interrupt
+  files always exist and cannot be renamed, moved or deleted, and the
+  player cannot add a file to either folder. Everything outside them is the
+  player's: files and folders they add, rename, move and delete, shared by
+  every robot. A file's name is `[a-z_][a-z0-9_]*.py` (`01`) and its stem
+  is unique among the files outside `robots/`, since folders are
   organisational only and the language has no packages; a collision is a
-  load error shown in the tree.
+  load error shown in the tree. A robot file is its bundle's `main.py`,
+  never a module, so `lib/printer.py` beside `robots/printer.py` is no
+  collision. A file found in `robots/` for no deployment — `robots/1.py`
+  from a tree written before Q42 — composes nothing, is marked as an error
+  in the tree and its window, and the player may delete it; the match
+  starts without it. A file that calls a builtin Q42 removed — `print` or
+  `convert` — without defining, importing or assigning that name itself is
+  marked the same way at that line, since such a call loads but faults
+  every time it runs.
 - **Composition.** Deployment `d`'s bundle is `robots/d.py` as `main.py`,
   plus every interrupt file and every player file by its bare name. A hook
   binds from `robots/d.py` if it defines one, else from the interrupt file
@@ -109,8 +122,9 @@ The two meet only through `Deploy`.
   inspector says which version each runs.
 - **The opening set** (Q9) is composed from the tree at start, one bundle
   per deployment with a non-empty robot file, and becomes the opening
-  `Deploy`s. The cards (`04`) use the same layout; a script's
-  `bundle = "1"` names the deployment whose bundle its tree composes.
+  `Deploy`s; a deployment whose file is empty gets none and runs the empty
+  program (`06`). The cards (`04`) use the same layout; a script's `bundle
+  = "bot"` names the deployment whose bundle its tree composes.
 - **Export** writes the tree back to the programs directory, on the
   player's request, and never on its own: the directory is the player's
   editor-independent store, and what they wrote there is not overwritten
@@ -141,13 +155,13 @@ clears only when those machines fault again or die.
 
 ## Machines on the map
 
-- **Body:** a bot is an atlas cube in the color its deployment's number
-  selects from the paint list, cycling (Q40); a printer, a depot and a site
-  are their own shapes in the team's ring color.
-- **Number:** every bot wears its deployment's number over its body,
-  always, drawn by the renderer (Q40).
-- **Ring:** every machine stands on a ring in its team's color, the
-  player's own team white.
+- **Body:** a bot is an atlas cube in its `color`, or the neutral body
+  color while it is `None`; a printer, a depot and a site are their own
+  shapes in the neutral body color (Q43).
+- **Outline:** every machine is outlined in its team's outline color —
+  the player's own green unless changed, each other team's from the list
+  in data unless changed — so friend and foe read at a glance and three
+  teams stay three (Q43).
 - **Health:** a bar over the machine for a few seconds after any change.
 - **Fault:** the mark above.
 - **Fog:** as Q21 rules — a machine on a remembered tile is drawn as last
@@ -156,7 +170,7 @@ clears only when those machines fault again or die.
 ## Marks
 
 The tools window is a strip (Q37): a row of the building models a plan may
-name (`printer` excluded, Q31), a row of the eight paint colors, a row of
+name (`printer` among them, Q42), a row of the eight paint colors, a row of
 the overlay labels in data (Q10, Q26, Q27), each row ending in a *clear* —
 the plan to empty that slot. `B`, `P` and `O` pick a row and `1`–`9` an
 entry; a click arms a tool, `Esc` or a second click disarms it.
@@ -206,7 +220,9 @@ awaited and the match continues, with a line in the log.
 ## Costs
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
-`fault_mark_ticks`, and the team ring colors. None is a sim value.
+`fault_mark_ticks`, the neutral body color, the player's default outline
+color and the outline list for the other teams. None is a sim value; the
+player's own outline choices live in `colors.toml` beside the programs.
 
 ## What this doc leaves open
 

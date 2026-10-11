@@ -115,12 +115,12 @@ export function runRustGates(repo) {
       mutate: (d) => flipHash(join(d, replayGolden, "showcase.hashes.txt")) },
     { name: "golden replay: the stored artifact and the scenario diverged", check: "replay-golden",
       expect: "the in-code scenario and the stored artifact diverged", files: [`${replayGolden}/showcase.replay.ron`],
-      mutate: (d) => edit(join(d, replayGolden, "showcase.replay.ron"), /ticks: 220/, "ticks: 221") },
+      mutate: (d) => edit(join(d, replayGolden, "showcase.replay.ron"), /ticks: (\d+)/, (_, n) => `ticks: ${Number(n) + 1}`) },
     // A match that ran one tick hashes identically everywhere, which is what
     // the alive assertions exist to refuse (CLAUDE.md).
     { name: "golden replay: a match that ran one tick", check: "replay-golden",
       expect: "the match ended early", files: ["crates/replay/tests/golden.rs"],
-      mutate: (d) => edit(join(d, "crates/replay/tests/golden.rs"), /ticks: 220,/, "ticks: 1,") },
+      mutate: (d) => edit(join(d, "crates/replay/tests/golden.rs"), /ticks: \d+,/, "ticks: 1,") },
 
     // ── the language fixtures ───────────────────────────────────────────────
     { name: "language fixture: a stored hash changed", check: "lang-golden",

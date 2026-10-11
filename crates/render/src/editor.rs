@@ -14,7 +14,11 @@ use crate::view;
 use bevy_egui::egui;
 use lang::errors::LoadError;
 use lang::{Limits, Program};
-use sim::script::{INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose};
+pub use sim::script::robot_of;
+use sim::script::{
+    INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose, deployments_prose,
+    is_stray_robot,
+};
 use sim::snapshot::Snapshot;
 use sim::{Bundle, CommandKind, TeamId};
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,7 +33,7 @@ pub struct Doc {
 /// The tree and what it composes to.
 #[derive(Debug, Clone, Default)]
 pub struct Editor {
-    /// Every file by its tree path (`robots/1.py`, `lib/nav.py`).
+    /// Every file by its tree path (`robots/bot.py`, `lib/nav.py`).
     pub files: BTreeMap<String, Doc>,
     /// The player's folders, including empty ones.
     pub folders: BTreeSet<String>,
@@ -65,17 +69,67 @@ pub fn robot_path(deployment: &str) -> String {
     format!("{ROBOTS}/{deployment}.py")
 }
 
-/// The deployment a robot file is, if `path` is one.
-pub fn robot_of(path: &str) -> Option<&str> {
-    path.strip_prefix(&format!("{ROBOTS}/"))
-        .and_then(|f| f.strip_suffix(".py"))
-        .filter(|d| !d.contains('/'))
+/// Whether the path is one of the fixed entries the player cannot rename,
+/// move or delete: a deployment's robot file, or an interrupt file. A
+/// robot file for no deployment is the player's to delete (Q42).
+pub fn is_fixed(path: &str) -> bool {
+    robot_of(path).is_some_and(sim::world::is_deployment_name)
+        || interrupt_paths().iter().any(|p| p == path)
 }
 
-/// Whether the path is one of the fixed entries the player cannot rename,
-/// move or delete.
-pub fn is_fixed(path: &str) -> bool {
-    robot_of(path).is_some() || interrupt_paths().iter().any(|p| p == path)
+/// The builtins Q42 removed. A program that still calls one loads, then
+/// raises `NameError` and faults every time the call runs.
+const REMOVED_BUILTINS: [&str; 2] = ["print", "convert"];
+
+/// The first call in `text` to a builtin Q42 removed, with its line,
+/// unless the file binds that name itself: a `def`, an import of it, or
+/// an assignment to it.
+pub fn removed_call(text: &str) -> Option<(&'static str, u32)> {
+    use lang::lexer::Tok;
+    let toks = lang::lexer::Lexer::new("", text).tokenize().ok()?;
+    let import_lines: Vec<u32> = toks
+        .iter()
+        .filter(|t| t.tok == Tok::Keyword("import"))
+        .map(|t| t.line)
+        .collect();
+    let defined = |name: &str| {
+        let named = Tok::Name(name.to_string());
+        toks.windows(2).any(|w| {
+            (w[0].tok == Tok::Keyword("def") && w[1].tok == named)
+                || (w[0].tok == named && w[1].tok == Tok::Op("="))
+        }) || toks
+            .iter()
+            .any(|t| t.tok == named && import_lines.contains(&t.line))
+    };
+    toks.windows(2).find_map(|w| match (&w[0].tok, &w[1].tok) {
+        (Tok::Name(n), Tok::Op("(")) => REMOVED_BUILTINS
+            .iter()
+            .find(|r| **r == n.as_str() && !defined(r))
+            .map(|r| (*r, w[0].line)),
+        _ => None,
+    })
+}
+
+/// What `removed_call` found, as the window and the tree say it.
+pub fn removed_warning(text: &str) -> Option<String> {
+    removed_call(text).map(|(name, line)| {
+        format!(
+            "line {line} calls `{name}`, which Q42 removed — printers print by themselves and \
+             nothing converts — so it raises NameError and faults every time it runs"
+        )
+    })
+}
+
+/// What is wrong with a robot file for no deployment (Q42), if `path` is
+/// one: it is never deployed, and the match starts without it.
+pub fn stray_error(path: &str) -> Option<String> {
+    is_stray_robot(path).then(|| {
+        format!(
+            "`{path}` is for no deployment — a team's are {} (Q42); \
+             it is never deployed: move what you want into `{ROBOTS}/bot.py` and delete it",
+            deployments_prose()
+        )
+    })
 }
 
 impl Editor {
@@ -220,18 +274,6 @@ impl Editor {
             .collect()
     }
 
-    /// The number after the highest robot file: what *next* opens (Q40).
-    pub fn next_deployment(&self) -> String {
-        let max = self
-            .files
-            .keys()
-            .filter_map(|p| robot_of(p))
-            .filter_map(sim::world::deployment_number)
-            .max()
-            .unwrap_or(0);
-        (max + 1).to_string()
-    }
-
     /// Add a file at `path` if none exists; `Err` names why not.
     pub fn add_file(&mut self, path: &str) -> Result<(), String> {
         let path = path.trim().trim_matches('/').to_string();
@@ -321,7 +363,13 @@ impl Editor {
     pub fn selected_folder(&self) -> String {
         match &self.selected {
             Some(sel) if self.folders.contains(sel) => sel.clone(),
-            Some(sel) if sel.is_empty() || sel == ROBOTS || sel == INTERRUPTS || is_fixed(sel) => {
+            Some(sel)
+                if sel.is_empty()
+                    || sel == ROBOTS
+                    || sel == INTERRUPTS
+                    || is_fixed(sel)
+                    || robot_of(sel).is_some() =>
+            {
                 String::new()
             }
             Some(sel) => sel
@@ -707,7 +755,15 @@ pub fn line_range(text: &str, line: u32) -> std::ops::Range<usize> {
 /// is ahead, `!` when it carries a load error.
 pub fn title(state: &ViewState, path: &str, snap: &Snapshot, player: TeamId) -> String {
     let bare = bare_name(path);
-    if state.editor.error_at(path).is_some() || state.editor.compose_error.is_some() {
+    if state.editor.error_at(path).is_some()
+        || state.editor.compose_error.is_some()
+        || is_stray_robot(path)
+        || state
+            .editor
+            .files
+            .get(path)
+            .is_some_and(|d| removed_call(&d.text).is_some())
+    {
         format!("{bare} !")
     } else if state.editor.ahead(path, snap, player) {
         format!("{bare} *")
@@ -771,13 +827,25 @@ pub fn window_body(
     }
     if let Some(e) = &compose_error {
         ui.colored_label(egui::Color32::LIGHT_RED, e);
+    } else if let Some(e) = stray_error(path) {
+        ui.colored_label(egui::Color32::LIGHT_RED, e);
     } else if let Some((dep, e)) = &error {
         ui.colored_label(egui::Color32::LIGHT_RED, format!("{dep}: {e}"));
+    }
+    if let Some(w) = state
+        .editor
+        .files
+        .get(path)
+        .and_then(|d| removed_warning(&d.text))
+    {
+        ui.colored_label(egui::Color32::LIGHT_RED, w);
     }
     // What the file reaches, and each deployment's state.
     let reaches = state.editor.reaches(path);
     if reaches.is_empty() {
-        ui.small(if robot_of(path).is_some() {
+        ui.small(if is_stray_robot(path) {
+            "for no deployment: never composed"
+        } else if robot_of(path).is_some() {
             "empty: composes nothing until it has text"
         } else {
             "reaches no deployment yet"
@@ -883,7 +951,6 @@ enum Menu {
     NewFolder(String),
     Rename(String),
     Delete(String),
-    NextRobot,
 }
 
 /// The tree (`docs/07`, Q41): `robots`, `interrupts`, then the player's
@@ -899,7 +966,12 @@ pub fn tree_panel(
     let mut actions = Vec::new();
     let mark = |state: &ViewState, path: &str| -> String {
         let mut s = String::new();
-        if state.editor.error_at(path).is_some() {
+        let removed = state
+            .editor
+            .files
+            .get(path)
+            .is_some_and(|d| removed_call(&d.text).is_some());
+        if state.editor.error_at(path).is_some() || is_stray_robot(path) || removed {
             s.push_str(" !");
         } else if state.editor.ahead(path, snap, player) {
             s.push_str(" *");
@@ -930,7 +1002,9 @@ pub fn tree_panel(
                     ui.close();
                 }
                 if !fixed {
-                    if ui.button("rename").clicked() {
+                    // A stray robot file can only go: `robots/` takes no
+                    // new name (Q42).
+                    if !is_stray_robot(path) && ui.button("rename").clicked() {
                         menus.push(Menu::Rename(path.to_string()));
                         ui.close();
                     }
@@ -1029,23 +1103,9 @@ pub fn tree_panel(
                         .cloned()
                         .collect();
                     robots = deployment_order_paths(robots);
+                    // One file per deployment, and no others (Q42).
                     for p in &robots {
                         file_row(ui, state, p, &mut menus);
-                    }
-                    let next = state.editor.next_deployment();
-                    if ui
-                        .small_button("+")
-                        .on_hover_text(format!("a file for deployment {next}"))
-                        .clicked()
-                    {
-                        menus.push(Menu::NextRobot);
-                    }
-                })
-                .header_response
-                .context_menu(|ui| {
-                    if ui.button("new robot file").clicked() {
-                        menus.push(Menu::NextRobot);
-                        ui.close();
                     }
                 });
             // The handlers are fixed: a lock says nothing can be added here.
@@ -1114,12 +1174,6 @@ pub fn tree_panel(
                 Ok(()) => state.editor.selected = None,
                 Err(e) => state.status = e,
             },
-            Menu::NextRobot => {
-                let p = robot_path(&state.editor.next_deployment());
-                state.editor.files.entry(p.clone()).or_default();
-                state.editor.recompose();
-                actions.push(TreeAction::Open(p));
-            }
         }
     }
 
@@ -1226,17 +1280,16 @@ pub fn tree_panel(
     actions
 }
 
-/// Robot files in deployment order: printer, depot, then the numbers.
+/// Robot files in deployment order: bot, printer, depot (Q42), then
+/// anything else a programs directory held.
 fn deployment_order_paths(mut paths: Vec<String>) -> Vec<String> {
-    let rank = |p: &str| -> (u64, u64) {
+    let rank = |p: &str| -> usize {
         match robot_of(p) {
-            Some("printer") => (0, 0),
-            Some("depot") => (1, 0),
-            Some(d) => match sim::world::deployment_number(d) {
-                Some(k) => (2, k),
-                None => (3, 0),
-            },
-            None => (4, 0),
+            Some(d) => sim::world::DEPLOYMENTS
+                .iter()
+                .position(|x| *x == d)
+                .unwrap_or(sim::world::DEPLOYMENTS.len()),
+            None => sim::world::DEPLOYMENTS.len() + 1,
         }
     };
     paths.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.cmp(b)));
@@ -1293,28 +1346,64 @@ mod tests {
         assert_eq!(pos, text.len());
     }
 
+    /// Q42: a robot file for no deployment — `robots/1.py` from a tree
+    /// written before it — composes nothing, shows as an error, and is the
+    /// player's to delete; the deployments' own files stay fixed.
+    #[test]
+    fn a_robot_file_for_no_deployment_is_an_error_the_player_may_delete() {
+        let mut t = Tree::new();
+        t.insert("robots/1.py".into(), "move('e')\n".into());
+        t.insert("robots/bot.py".into(), "wait(1)\n".into());
+        let mut e = Editor::from_tree(&t);
+        assert_eq!(e.bundles.keys().cloned().collect::<Vec<_>>(), ["bot"]);
+        assert!(e.compose_error.is_none());
+        assert!(stray_error("robots/1.py").is_some());
+        assert!(stray_error("robots/bot.py").is_none());
+        assert!(is_fixed("robots/bot.py") && !is_fixed("robots/1.py"));
+        assert!(e.delete("robots/bot.py").is_err());
+        // Selected, it puts new files at the root, not in `robots/`.
+        e.selected = Some("robots/1.py".into());
+        assert_eq!(e.selected_folder(), "");
+        e.delete("robots/1.py").unwrap();
+        assert!(!e.files.contains_key("robots/1.py"));
+    }
+
+    /// A program still calling a builtin Q42 removed is flagged at its
+    /// line; one that defines its own of that name is not.
+    #[test]
+    fn a_call_to_a_removed_builtin_is_flagged() {
+        let old =
+            "while True:\n    try:\n        print(1)\n    except ValueError:\n        wait(10)\n";
+        assert_eq!(removed_call(old), Some(("print", 3)));
+        assert!(removed_warning(old).is_some_and(|w| w.contains("line 3")));
+        assert_eq!(removed_call("x = 'print(1)'  # print(2)\n"), None);
+        assert_eq!(removed_call("def print(x):\n    log(x)\nprint(1)\n"), None);
+        assert_eq!(removed_call("from util import print\nprint(1)\n"), None);
+        assert_eq!(removed_call("print = log\nprint(1)\n"), None);
+        assert_eq!(removed_call("convert(7)\n"), Some(("convert", 1)));
+    }
+
     #[test]
     fn a_tree_composes_reaches_and_reports_errors_at_the_file() {
         let mut t = Tree::new();
-        t.insert("robots/1.py".into(), "import nav\nx = 1\nif x\n".into());
-        t.insert("robots/printer.py".into(), "print(1)\n".into());
+        t.insert("robots/bot.py".into(), "import nav\nx = 1\nif x\n".into());
+        t.insert("robots/printer.py".into(), "wait(60)\n".into());
         t.insert("lib/nav.py".into(), "y = 2\n".into());
         let mut e = Editor::from_tree(&t);
         assert!(e.files.contains_key("interrupts/on_fault.py"));
-        assert_eq!(e.reaches("robots/1.py"), ["1"]);
-        assert_eq!(e.reaches("lib/nav.py"), ["1", "printer"]);
+        assert_eq!(e.reaches("robots/bot.py"), ["bot"]);
+        assert_eq!(e.reaches("lib/nav.py"), ["bot", "printer"]);
         let (dep, err) = e
-            .error_at("robots/1.py")
+            .error_at("robots/bot.py")
             .expect("a load error at the robot file");
-        assert_eq!(dep, "1");
+        assert_eq!(dep, "bot");
         assert!(err.line >= 1);
-        assert!(!line_range(&e.files["robots/1.py"].text, err.line).is_empty());
-        e.files.get_mut("robots/1.py").unwrap().text = "import nav\nx = 1\n".into();
+        assert!(!line_range(&e.files["robots/bot.py"].text, err.line).is_empty());
+        e.files.get_mut("robots/bot.py").unwrap().text = "import nav\nx = 1\n".into();
         e.recompose();
-        assert!(e.error_at("robots/1.py").is_none());
-        assert!(matches!(e.loaded.get("1"), Some(Ok(_))));
-        assert_eq!(e.next_deployment(), "2");
-        assert!(e.add_file("robots/3.py").is_err());
+        assert!(e.error_at("robots/bot.py").is_none());
+        assert!(matches!(e.loaded.get("bot"), Some(Ok(_))));
+        assert!(e.add_file("robots/extra.py").is_err());
         assert!(e.add_file("lib/Nav.py").is_err());
         e.add_file("util/nav.py").unwrap();
         assert!(
@@ -1327,7 +1416,7 @@ mod tests {
         assert!(e.delete("interrupts/on_fault.py").is_err());
         e.rename("lib/nav.py", "lib/path.py").unwrap();
         assert!(
-            e.error_at("robots/1.py").is_some(),
+            e.error_at("robots/bot.py").is_some(),
             "the import of nav now fails"
         );
         // Suggestions: a free name under the selected folder, the root when
@@ -1339,7 +1428,7 @@ mod tests {
         assert_eq!(e.suggest_folder("lib"), "folder_2");
         e.selected = Some("lib/path.py".into());
         assert_eq!(e.selected_folder(), "lib");
-        e.selected = Some("robots/1.py".into());
+        e.selected = Some("robots/bot.py".into());
         assert_eq!(e.selected_folder(), "");
         assert_eq!(e.suggest_file(), "module.py");
         e.add_file("module.py").unwrap();
@@ -1355,7 +1444,7 @@ mod tests {
         let moved = e.rename_leaf("a/folder", "tools").unwrap();
         assert_eq!(moved, "a/tools");
         assert!(e.files.contains_key("a/tools/module_2.py") && !e.folders.contains("a/folder"));
-        assert!(e.rename_leaf("robots/1.py", "x.py").is_err());
+        assert!(e.rename_leaf("robots/bot.py", "x.py").is_err());
         assert_eq!(line_range("ab\ncd", 7), 4..5);
     }
 }

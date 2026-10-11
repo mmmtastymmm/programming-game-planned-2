@@ -74,21 +74,23 @@ a command log that grows until the match ends.
 
 ### Ending
 
-**A team is out** on the tick it has no printer — the moment its last
-printer's `death` epilogue runs, it is deconstructed (Q28), or it is
-**converted** to another team (Q30), with no other printer standing. There
-is no site that could become one, since printers are never built (Q31). A
-converted printer is not removed with the team that lost it; it is no
-longer theirs. An out team's machines are removed, its plans cleared and its
+**A team is out** at the end of any tick it has no printer — its last
+printer's `death` epilogue ran, or it was deconstructed (Q28), with no
+other printer standing (Q42). A printer site, however near complete, bots
+and ore do not keep it in the match, and nothing it once held is anyone
+else's. An out team's machines are removed, its plans cleared and its
 command log closed in the tick's out-teams step (`06`, step 5), after damage
-and before regrowth, whatever put it out: further commands from it are dropped at submission. `Resign` (Q10)
+and before printing, whatever put it out: further commands from it are
+dropped in `sim.step` on their tick and recorded nowhere (`06`), since a
+peer cannot know at submission that the team will be out. `Resign` (Q10)
 puts a team out at once on its agreed tick.
 
 **A match ends** on the first tick at which at most one team is not out.
-That team **wins**; if none is — two last printers dying on the same tick —
-the match is a **draw**. The driver stops issuing ticks; the state hash of
-the ending tick is the match's final hash, and the log to that tick is the
-replay.
+That team **wins**; if none is — two teams' last printers removed, by
+`death` or deconstruction, on the same tick; a printer that is only `dying`
+still stands (`02`) — the match is a **draw**. The driver stops issuing
+ticks; the state hash of the ending tick is the match's final hash, and the
+log to that tick is the replay.
 
 There is no other way for a match to end: no tick limit, no score, no
 objective but the printer. A match with two passive teams runs until a
@@ -97,11 +99,13 @@ new question number.
 
 ### Why the printer
 
-The printer is the team's one irreplaceable machine: it is the only source
-of bots, and nothing can make one (Q31) — the map placed every printer
-there will be. A team with no printer can gain one only by converting a
-rival's, and it has no bots left to do it with once its last dies, so it is
-out the moment it holds none, not when its last bot dies.
+The printer is the team's one source of bots, and its bots can build more
+of them (Q42) — each dearer than the last, and cheaper again as they are
+lost. Any printer can be replaced but the last: a team that ends a tick
+with none is out then, not when its last bot dies, and a printer site does
+not count, so a replacement must be **finished** no later than the tick the
+last printer falls — a site that completes in that tick's step 3 counts.
+That keeps the last printer the thing a match is about.
 
 ## PvE
 

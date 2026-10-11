@@ -32,8 +32,46 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-09-06: 1 opened, 1 fixed — zero open.**
+**Status 2026-10-11: 4 opened, 1 fixed — 3 open.**
 
 ## Open
 
-*(none)*
+**P2 — The code lags Q43: no `set_color`, no `color`, no outlines**
+
+Q43 gave bots a `set_color(color)` builtin and a `color` attribute, and
+every team an outline the player colors. `docs/02` states the builtin, the
+attribute and the `dying` hook's use of it as current, its Costs section
+says every builtin above has a row in `data/language/costs.toml`, and
+`docs/07` names the neutral body color, the default outline color and the
+outline list as constants in `data/interface.toml`. None exists yet: the
+sim has no `set_color` or `color`, the cost table has no row for it, the
+renderer draws bots white and teams as rings, and `data/interface.toml`
+holds only the ring list. The work is
+[T25](TASKS.md); this entry closes with the commit that finishes it.
+
+**P3 — No rival bot can deconstruct a printer at today's numbers**
+
+`05`'s table, `02`'s Q30 bullet and `04`'s ending all name a rival's
+deconstruction as a way to lose a printer, and the numbers in
+`data/machines.toml` make it impossible. A bot adjacent to a rival printer
+takes `defence_damage` (1) every tick, so its `health` (10) reaches zero on
+the tenth and it goes `dying`, which cancels the action in progress; the
+printer's `deconstruct_ticks` is 30, and a second bot cannot help, since
+each runs its own action. Attacking is possible but slow: a bot lands about
+three hits of `attack_damage` (1) before it falls, so a printer's `health`
+(60) takes some twenty bots, four at a time. The numbers were set for Q30's
+conversion and never rechecked against deconstruction once Q42 made it the
+way to take a printer down. The user deferred retuning them to
+playtesting; this entry holds the arithmetic until then, and closes with
+the commit that changes the numbers or the rule.
+
+**P4 — The code lags Q37: the tools are a list, not the mark strip**
+
+Q37 ruled the mark tools a strip of three rows from data — building
+models, paint colors, overlay labels — each ending in a clear, picked with
+`B`/`P`/`O` and `1`–`9`, armed until `Esc`, with drag marking and a plan
+preview; `07` states it as current. The renderer still offers a short
+fixed list of tools on keys `1`–`6`, marks one tile per click, and draws no
+preview. The work is [T20](TASKS.md), open since before Q42; this entry
+records the gap the registers require beside it, and closes with the
+commit that finishes T20.

@@ -71,78 +71,128 @@ fn bots(sim: &Sim, team: u32) -> Vec<(TilePos, Num)> {
         .collect()
 }
 
-/// Prints, and says so when refused.
-const PRINT_LOG: &str = "while True:\n    try:\n        print(1)\n    except ValueError:\n        log('print refused')\n        wait(1)\n";
+fn printer_of(sim: &Sim, team: u32) -> &sim::world::Machine {
+    sim.world
+        .machines
+        .values()
+        .find(|m| m.model == Model::Printer && m.team == TeamId(team))
+        .expect("a printer")
+}
 
-const PRINT_RED: &str =
-    "while True:\n    try:\n        print(1)\n    except ValueError:\n        wait(3)\n";
-
+/// Q42: printing is the printers' own rule. Begun in tick 1's print step,
+/// a print of 30 ticks completes in step 3 of tick 31; printers keep
+/// printing until the team is at its cap.
 #[test]
-fn a_printer_prints_one_bot_per_print_time_up_to_the_cap() {
+fn a_printer_prints_by_itself_one_bot_per_print_time_up_to_the_cap() {
     let mut s = sim();
-    run(
-        &mut s,
-        vec![
-            deploy(0, "printer", PRINT_LOG),
-            deploy(0, "1", "wait(1000)\n"),
-        ],
-        30,
-    );
-    // Begun in tick 1's slice, 30 ticks: completes in step 3 of tick 30.
+    run(&mut s, vec![deploy(0, "bot", "wait(1000)\n")], 30);
+    assert!(bots(&s, 0).is_empty(), "a bot before the print time");
+    assert_eq!(printer_of(&s, 0).printing, 1);
+    run(&mut s, vec![], 1);
     assert_eq!(bots(&s, 0).len(), 1, "no bot after the print time");
     assert_eq!(
         bots(&s, 0)[0].0,
         TilePos::new(-3, 1),
         "the first free adjacent tile is north"
     );
+    let bot = s
+        .world
+        .machines
+        .values()
+        .find(|m| m.model == Model::Bot && m.team == TeamId(0))
+        .unwrap();
+    assert_eq!(bot.deployment.as_deref(), Some("bot"));
+    assert_eq!(bot.name, format!("bot{}", bot.id.0));
+    // The next print began in the same tick's print step.
+    assert_eq!(printer_of(&s, 0).printing, 30);
     run(&mut s, vec![], 29);
     assert_eq!(bots(&s, 0).len(), 1, "a second bot before its print time");
     run(&mut s, vec![], 1);
     assert_eq!(bots(&s, 0).len(), 2, "the second bot, east");
     assert_eq!(s.world.bot_cap(TeamId(0)), 10);
-    // Tick 61: the third print begins, under the cap. Then fill the cap by
-    // fiat, away from either printer: the cap is checked when a print
-    // begins, so the one in flight completes and the next is refused.
-    run(&mut s, vec![], 1);
-    assert_eq!(
-        s.world
-            .machines
-            .values()
-            .find(|m| m.model == Model::Printer && m.team == TeamId(0))
-            .and_then(|m| m.busy()),
-        Some("print")
-    );
-    for (i, y) in (-3..=3).enumerate() {
-        s.world
-            .place(Model::Bot, TeamId(0), TilePos::new(1, y), Some("1".into()));
-        if i == 7 {
-            break;
-        }
+    // A third print is in flight. Fill the cap by fiat, away from the
+    // printer: the print in flight completes, the bots above the cap are
+    // kept, and no further print begins.
+    assert_eq!(printer_of(&s, 0).printing, 30);
+    for x in -4..=3 {
+        s.world.place(
+            Model::Bot,
+            TeamId(0),
+            TilePos::new(x, -3),
+            Some("bot".into()),
+        );
     }
-    s.world
-        .place(Model::Bot, TeamId(0), TilePos::new(0, -3), Some("1".into()));
     assert_eq!(bots(&s, 0).len(), 10);
-    run(&mut s, vec![], 29);
+    run(&mut s, vec![], 30);
     assert_eq!(
         bots(&s, 0).len(),
         11,
         "the print begun under the cap completes; bots above it are kept"
     );
-    run(&mut s, vec![], 2);
-    let printer = s
-        .world
-        .machines
-        .values()
-        .find(|m| m.model == Model::Printer && m.team == TeamId(0))
-        .unwrap();
-    assert!(
-        printer.log.iter().any(|l| l.text == "print refused"),
-        "a print at the cap is a ValueError: {:?}",
-        printer.log
-    );
+    assert_eq!(printer_of(&s, 0).printing, 0, "a print began at the cap");
+    run(&mut s, vec![], 40);
     assert_eq!(bots(&s, 0).len(), 11);
-    // Team 1 deployed nothing: its printer runs the empty program.
-    assert!(bots(&s, 1).is_empty());
+    // Team 1 deployed nothing: its printer prints all the same, and its
+    // bots run the empty program.
+    assert!(!bots(&s, 1).is_empty());
+}
+
+/// Q42: printers take turns — the ready printer with the least id past
+/// the team's print turn, wrapping to the least.
+#[test]
+fn printers_take_turns_by_entity_id() {
+    let mut s = sim();
+    // Team 0: printer 1 from the map, printer 3 by fiat; team 1's is 2.
+    let p1 = printer_of(&s, 0).id;
+    let p3 = s.world.place(
+        Model::Printer,
+        TeamId(0),
+        TilePos::new(0, 0),
+        Some("printer".into()),
+    );
+    assert!(p3 > p1);
+    // Nineteen bots by fiat: a cap of twenty leaves a shortfall of one.
+    let mut fiat = Vec::new();
+    for y in [-3, -2] {
+        for x in -4..=4 {
+            fiat.push(s.world.place(
+                Model::Bot,
+                TeamId(0),
+                TilePos::new(x, y),
+                Some("bot".into()),
+            ));
+        }
+    }
+    fiat.push(s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(4, -1),
+        Some("bot".into()),
+    ));
+    assert_eq!(bots(&s, 0).len(), 19);
+    let printing = |s: &Sim, id| s.world.machines[&id].printing;
+    let turn = |s: &Sim| s.world.teams[&TeamId(0)].print_turn;
+    run(&mut s, vec![deploy(0, "bot", "wait(1000)\n")], 1);
+    assert_eq!((printing(&s, p1), printing(&s, p3)), (30, 0));
+    assert_eq!(turn(&s), p1, "the first print goes to the least id");
+    s.world.machines.remove(&fiat[0]);
+    run(&mut s, vec![], 1);
+    assert_eq!(printing(&s, p3), 30, "the next turn is the next id");
+    assert_eq!(turn(&s), p3);
+    s.world.machines.remove(&fiat[1]);
+    run(&mut s, vec![], 1);
+    assert_eq!(turn(&s), p3, "no printer was ready, so the turn stays");
+    // Tick 31: printer 1's print lands, and it is the only one ready for
+    // the bot still short — past the greatest id, the turn wraps to it.
+    // Tick 32: printer 3's lands, and the team is at its cap.
+    run(&mut s, vec![], 28);
+    assert_eq!(bots(&s, 0).len(), 18);
+    assert_eq!(turn(&s), p1, "past the greatest id the turn wraps");
+    assert_eq!(printing(&s, p1), 30);
+    run(&mut s, vec![], 1);
+    assert_eq!(bots(&s, 0).len(), 19);
+    assert_eq!((printing(&s, p1), printing(&s, p3)), (29, 0));
+    assert_eq!(turn(&s), p1, "at the cap, no print began");
 }
 
 #[test]
@@ -150,15 +200,12 @@ fn a_move_takes_its_ticks_and_a_tile_holds_one_machine() {
     let mut s = sim();
     run(
         &mut s,
-        vec![
-            deploy(0, "printer", PRINT_RED),
-            deploy(0, "1", "move('e')\nwait(1000)\n"),
-        ],
-        30,
+        vec![deploy(0, "bot", "move('e')\nwait(1000)\n")],
+        31,
     );
     assert_eq!(bots(&s, 0)[0].0, TilePos::new(-3, 1));
-    // Tick 31: the bot's first slice begins the move (2 ticks): it lands in
-    // step 3 of tick 32.
+    // Tick 32: the bot's first slice begins the move (2 ticks): it lands in
+    // step 3 of tick 33.
     run(&mut s, vec![], 1);
     assert_eq!(bots(&s, 0)[0].0, TilePos::new(-3, 1));
     assert!(
@@ -180,20 +227,13 @@ fn a_move_takes_its_ticks_and_a_tile_holds_one_machine() {
 fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
     let program = "move('e')\nwhile True:\n    while me().load['ore'] < 10:\n        try:\n            pick('ore')\n        except ValueError:\n            wait(1)\n    try:\n        build('depot', -2, 2)\n    except ValueError:\n        pass\n    try:\n        drop('ore')\n    except ValueError:\n        wait(1)\n";
     let mut s = sim();
-    run(
-        &mut s,
-        vec![
-            deploy(0, "printer", "print(1)\nwait(1000)\n"),
-            deploy(0, "1", program),
-        ],
-        38,
-    );
-    // Printed tick 30; moves east 31–32; picks 33–35 and 36–38.
+    run(&mut s, vec![deploy(0, "bot", program)], 39);
+    // Printed tick 31; moves east 32–33; picks 34–36 and 37–39.
     let bot = s
         .world
         .machines
         .values()
-        .find(|m| m.model == Model::Bot)
+        .find(|m| m.model == Model::Bot && m.team == TeamId(0))
         .expect("a bot");
     assert_eq!(bot.pos, TilePos::new(-2, 1));
     assert_eq!(
@@ -212,7 +252,7 @@ fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
         deposit.amount["ore"] < Num::from_int(50).unwrap(),
         "the deposit did not shrink"
     );
-    // Tick 40: the site is placed (a build takes no ticks) and the drop
+    // Tick 41: the site is placed (a build takes no ticks) and the drop
     // begins; it lands the same tick.
     run(&mut s, vec![], 3);
     let site = s
@@ -225,13 +265,17 @@ fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
         (site.pos, site.team, site.becomes),
         (TilePos::new(-2, 2), TeamId(0), Some(Model::Depot))
     );
-    assert_eq!(site.store_capacity["ore"], Num::from_int(40).unwrap());
+    assert_eq!(
+        site.store_capacity["ore"],
+        Num::from_int(40).unwrap(),
+        "a depot's price does not rise"
+    );
     assert!(
         site.store["ore"] >= Num::from_int(10).unwrap(),
         "the first drop did not land"
     );
     // Four loads fill the site; construction then runs its 20 ticks. On
-    // the tick the depot appears its store is empty; the bot keeps hauling
+    // the tick the depot appears its store is empty; the bots keep hauling
     // into it afterwards.
     let mut appeared_at = None;
     for _ in 0..200 {
@@ -263,28 +307,74 @@ fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
         .unwrap();
     assert!(
         depot.store["ore"] > Num::ZERO,
-        "the bot stopped hauling into the depot"
+        "the bots stopped hauling into the depot"
     );
-    // Regrowth: the deposit climbs back toward its cap once picking stops.
-    let before = s
+}
+
+/// Q42: a printer's price is `cost + n × cost_step`, `n` the team's
+/// printers and other printer sites; a depot's does not rise.
+#[test]
+fn a_printer_site_costs_more_for_every_printer_the_team_has() {
+    let data = Data::load().unwrap();
+    let pd = data.model("printer");
+    let price = |n: i128| {
+        pd.cost["ore"]
+            .checked_add(
+                pd.cost_step["ore"]
+                    .checked_mul(Num::from_int(n).unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+    };
+    let mut s = sim();
+    assert_eq!(s.world.price(TeamId(0), Model::Printer)["ore"], price(1));
+    assert_eq!(
+        s.world.price(TeamId(0), Model::Depot)["ore"],
+        data.model("depot").cost["ore"]
+    );
+    // A bot builds a printer site beside it: the starting printer counts,
+    // the new site does not.
+    run(
+        &mut s,
+        vec![deploy(0, "bot", "build('printer', -1, -1)\nwait(1000)\n")],
+        1,
+    );
+    s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(-1, 0),
+        Some("bot".into()),
+    );
+    run(&mut s, vec![], 2);
+    let site = s
         .world
-        .tile(TilePos::new(-3, 1))
-        .unwrap()
-        .deposit
-        .as_ref()
-        .unwrap()
-        .amount["ore"];
-    assert!(before <= Num::from_int(50).unwrap());
+        .machines
+        .values()
+        .find(|m| m.model == Model::Site)
+        .expect("a printer site");
+    assert_eq!(
+        (site.pos, site.becomes),
+        (TilePos::new(-1, -1), Some(Model::Printer))
+    );
+    assert_eq!(site.name, format!("printer{}", site.id.0));
+    assert_eq!(site.store_capacity["ore"], price(1));
+    // With the site standing, the next one costs one step more; team 1's
+    // count is its own.
+    assert_eq!(s.world.price(TeamId(0), Model::Printer)["ore"], price(2));
+    assert_eq!(s.world.price(TeamId(1), Model::Printer)["ore"], price(1));
 }
 
 #[test]
 fn a_printer_defends_itself_and_a_bot_at_zero_health_dies() {
     let mut s = sim();
-    run(&mut s, vec![deploy(0, "1", "wait(1000)\n")], 1);
+    run(&mut s, vec![deploy(0, "bot", "wait(1000)\n")], 1);
     // A team-0 bot beside team 1's printer, by fiat.
-    let id = s
-        .world
-        .place(Model::Bot, TeamId(0), TilePos::new(2, 0), Some("1".into()));
+    let id = s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(2, 0),
+        Some("bot".into()),
+    );
     run(&mut s, vec![], 9);
     assert_eq!(
         s.world.machines[&id].health,
@@ -301,64 +391,94 @@ fn a_printer_defends_itself_and_a_bot_at_zero_health_dies() {
     );
 }
 
+/// Q42: a team with no printer at the end of a tick is out, whatever
+/// printer site it holds; a printer at zero health loses its print.
 #[test]
-fn converting_the_last_printer_ends_the_match() {
-    let convert = "for m in see():\n    if m.model == 'printer' and m.team != me().team:\n        convert(m.id)\nwait(1000)\n";
+fn losing_the_last_printer_ends_the_match_whatever_sites_remain() {
+    let attack = "for m in see():\n    if m.model == 'printer' and m.team != me().team:\n        attack(m.id)\nwait(1000)\n";
     let mut s = sim();
-    run(&mut s, vec![deploy(0, "1", convert)], 1);
-    let bot = s
+    run(&mut s, vec![deploy(0, "bot", attack)], 1);
+    let printer1 = printer_of(&s, 1).id;
+    assert_eq!(s.world.machines[&printer1].printing, 30);
+    // Team 1's printer at one health, and a printer site of its own.
+    s.world.machines.get_mut(&printer1).unwrap().health = Num::ONE;
+    let site = s
         .world
-        .place(Model::Bot, TeamId(0), TilePos::new(2, 0), Some("1".into()));
-    let printer1 = s
-        .world
-        .machines
-        .values()
-        .find(|m| m.team == TeamId(1))
-        .unwrap()
-        .id;
-    run(&mut s, vec![], 9);
-    assert!(
-        s.world.machines.contains_key(&bot),
-        "the bot died before converting"
-    );
-    assert_eq!(s.world.machines[&printer1].team, TeamId(1));
-    let report = s.step(&[]);
-    assert_eq!(
-        s.world.machines[&printer1].team,
+        .place(Model::Site, TeamId(1), TilePos::new(3, -2), None);
+    s.world.machines.get_mut(&site).unwrap().becomes = Some(Model::Printer);
+    s.world.place(
+        Model::Bot,
         TeamId(0),
-        "the conversion did not land"
+        TilePos::new(2, 0),
+        Some("bot".into()),
     );
+    // Tick 2's slice begins the attack (3 ticks): it lands in tick 4.
+    run(&mut s, vec![], 3);
+    assert_eq!(s.world.machines[&printer1].health, Num::ZERO);
     assert_eq!(
-        s.world.machines[&bot].health,
-        Num::ONE,
-        "one health to spare (docs/05)"
+        s.world.machines[&printer1].printing, 0,
+        "a printer at zero health keeps its print"
     );
+    let mut ended = None;
+    for _ in 0..5 {
+        let report = s.step(&[]);
+        if report.ended.is_some() {
+            ended = report.ended;
+            break;
+        }
+    }
     assert_eq!(
-        report.ended,
+        ended,
         Some(Some(TeamId(0))),
-        "team 1 has no printer: out, and team 0 wins"
+        "team 1 has no printer: out, site or no site, and team 0 wins"
     );
     assert!(s.world.teams[&TeamId(1)].out);
-    assert_eq!(s.world.printers_of(TeamId(0)), 2);
-    assert_eq!(s.world.unlocked_deployments(TeamId(0)), ["1", "2"]);
+    assert!(!s.world.machines.contains_key(&site));
+}
+
+/// A printer whose own program faults it to zero health loses its print
+/// at once, in the fault's prologue, before step 3 could complete it.
+#[test]
+fn a_printer_faulted_to_zero_loses_its_print() {
+    let mut s = sim();
+    // A second printer keeps team 0 in the match; both begin a print in
+    // tick 1, due in step 3 of tick 31.
+    let p2 = s.world.place(
+        Model::Printer,
+        TeamId(0),
+        TilePos::new(0, 0),
+        Some("printer".into()),
+    );
+    run(
+        &mut s,
+        vec![deploy(0, "printer", "wait(30)\nx = 1 / 0\n")],
+        1,
+    );
+    let p = printer_of(&s, 0).id;
+    assert_ne!(p, p2);
+    s.world.machines.get_mut(&p).unwrap().health = Num::ONE;
+    run(&mut s, vec![], 29);
+    assert_eq!(s.world.machines[&p].printing, 1);
+    // Tick 31: the wait ended in tick 30, so the program faults in tick
+    // 31's slice, before the print would complete in its step 3.
+    run(&mut s, vec![], 1);
+    assert!(s.world.machines.get(&p).is_none_or(|m| m.printing == 0));
+    assert_eq!(
+        bots(&s, 0).len(),
+        1,
+        "only the healthy printer's print completed"
+    );
 }
 
 #[test]
 fn a_fault_costs_health_and_a_faulting_program_dies_in_time() {
     let mut s = sim();
-    run(
-        &mut s,
-        vec![
-            deploy(0, "printer", "print(1)\nwait(1000)\n"),
-            deploy(0, "1", "x = 1 / 0\n"),
-        ],
-        30,
-    );
+    run(&mut s, vec![deploy(0, "bot", "x = 1 / 0\n")], 31);
     let id = s
         .world
         .machines
         .values()
-        .find(|m| m.model == Model::Bot)
+        .find(|m| m.model == Model::Bot && m.team == TeamId(0))
         .unwrap()
         .id;
     run(&mut s, vec![], 1);
@@ -379,24 +499,17 @@ fn a_fault_costs_health_and_a_faulting_program_dies_in_time() {
 #[test]
 fn a_redeploy_cancels_the_action_and_the_new_program_runs() {
     let mut s = sim();
-    run(
-        &mut s,
-        vec![
-            deploy(0, "printer", "print(1)\nwait(1000)\n"),
-            deploy(0, "1", "wait(500)\n"),
-        ],
-        31,
-    );
+    run(&mut s, vec![deploy(0, "bot", "wait(500)\n")], 32);
     let id = s
         .world
         .machines
         .values()
-        .find(|m| m.model == Model::Bot)
+        .find(|m| m.model == Model::Bot && m.team == TeamId(0))
         .unwrap()
         .id;
     assert_eq!(s.world.machines[&id].busy(), Some("wait"));
-    let mut redeploy = deploy(0, "1", "log('new program')\nmove('e')\nwait(1000)\n");
-    redeploy.tick = 32;
+    let mut redeploy = deploy(0, "bot", "log('new program')\nmove('e')\nwait(1000)\n");
+    redeploy.tick = 33;
     s.step(&[redeploy]);
     let m = &s.world.machines[&id];
     assert_eq!(
@@ -408,13 +521,6 @@ fn a_redeploy_cancels_the_action_and_the_new_program_runs() {
         Some("move"),
         "the wait was cancelled and the new program acted"
     );
-    // A deploy to a locked color waits, and a second deploy to the same
-    // slot replaces it.
-    let mut locked = deploy(0, "2", "wait(1)\n");
-    locked.tick = 33;
-    let report = s.step(&[locked]);
-    assert!(report.dropped.is_empty());
-    assert!(s.world.teams[&TeamId(0)].deployments["2"].pending.is_some());
 }
 
 #[test]
@@ -487,7 +593,10 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
             value: Some("printer".into()),
         },
     );
-    assert!(s.validate(&printer_plan).unwrap_err().contains("Q31"));
+    assert!(
+        s.validate(&printer_plan).is_ok(),
+        "a printer plan is a plan like any other (Q42)"
+    );
     let off = Command::new(
         1,
         TeamId(0),
@@ -505,7 +614,7 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
         TeamId(0),
         0,
         CommandKind::Deploy {
-            deployment: "1".into(),
+            deployment: "bot".into(),
             bundle: bundle_of("def (:\n"),
         },
     );
@@ -515,62 +624,92 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
     let _ = mark;
 }
 
-/// Q40: deployments are numbered without bound — a team with nine
-/// printers prints deployment 9, a deploy to a number not yet unlocked
-/// waits, and a name that is not a number is refused.
+/// Q42: a team's deployments are `bot`, `printer` and `depot`, and no
+/// others.
 #[test]
-fn deployments_are_numbered_past_any_color_list() {
-    let mut s = sim();
-    // Eight more printers by fiat, on free ground: nine in all.
-    for pos in (-3..=3)
-        .map(|y| TilePos::new(1, y))
-        .chain([TilePos::new(0, -3)])
-    {
-        s.world
-            .place(Model::Printer, TeamId(0), pos, Some("printer".into()));
+fn a_team_has_one_deployment_per_model() {
+    let s = sim();
+    for good in ["bot", "printer", "depot"] {
+        assert!(s.validate(&deploy(0, good, "wait(1)\n")).is_ok());
     }
-    assert_eq!(s.world.printers_of(TeamId(0)), 9);
-    assert_eq!(s.world.unlocked_deployments(TeamId(0)).len(), 9);
-    assert!(s.world.is_unlocked(TeamId(0), "9"));
-    assert!(!s.world.is_unlocked(TeamId(0), "10"));
-    for bad in ["red", "0", "01", "-1", ""] {
+    for bad in ["1", "9", "red", "site", ""] {
         assert!(
             s.validate(&deploy(0, bad, "wait(1)\n")).is_err(),
             "`{bad}` accepted as a deployment"
         );
     }
-    assert!(s.validate(&deploy(0, "12", "wait(1)\n")).is_ok());
-    run(
-        &mut s,
-        vec![
-            deploy(0, "printer", "print(9)\nwait(1000)\n"),
-            deploy(0, "9", "wait(1000)\n"),
-            deploy(0, "12", "wait(1)\n"),
-        ],
-        31,
-    );
-    // Every printer runs the printer program, so each printed one.
-    assert_eq!(bots(&s, 0).len(), 9, "deployment 9 printed no bots");
-    for bot in s
-        .world
-        .machines
-        .values()
-        .filter(|m| m.team == TeamId(0) && m.model == Model::Bot)
-    {
-        assert_eq!(bot.deployment.as_deref(), Some("9"));
-        assert_eq!(bot.name, format!("9-{}", bot.id.0));
-    }
-    let slot = &s.world.teams[&TeamId(0)].deployments["12"];
-    assert!(
-        slot.pending.is_some() && slot.bundle.is_none(),
-        "a deploy to 12 did not wait"
-    );
     let snap = s.snapshot();
     let team = snap.teams.iter().find(|t| t.id == TeamId(0)).unwrap();
-    assert!(team.deployments.contains_key("9") && team.deployments.contains_key("12"));
     assert_eq!(
-        team.deployments.len(),
-        9 + 1 + 2,
-        "unlocked 1..9, 12 pending, printer, depot"
+        team.deployments.keys().cloned().collect::<Vec<_>>(),
+        ["bot", "depot", "printer"]
     );
+}
+
+/// A tile a bot is moving onto is occupied for `build` as for `move`: a
+/// site never lands under a bot (docs/02, Occupancy).
+#[test]
+fn a_build_refuses_a_tile_a_bot_is_moving_onto() {
+    let program = "if me().pos[0] == -1:\n    move('e')\nelse:\n    try:\n        build('depot', 0, 0)\n    except ValueError:\n        log('refused')\nwait(1000)\n";
+    let mut s = sim();
+    run(&mut s, vec![deploy(0, "bot", program)], 1);
+    // The mover has the lower id, so its move begins first in the slice.
+    let mover = s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(-1, 0),
+        Some("bot".into()),
+    );
+    let builder = s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(0, -1),
+        Some("bot".into()),
+    );
+    assert!(mover < builder);
+    run(&mut s, vec![], 1);
+    assert!(
+        s.world.machines[&builder]
+            .log
+            .iter()
+            .any(|l| l.text == "refused"),
+        "the build was not refused"
+    );
+    assert!(!s.world.machines.values().any(|m| m.model == Model::Site));
+    run(&mut s, vec![], 1);
+    assert_eq!(s.world.machines[&mover].pos, TilePos::new(0, 0));
+}
+
+/// Tick 0's opening set applies with tick 1, before tick 1's own commands,
+/// whatever their sequence numbers (docs/06, The command log).
+#[test]
+fn the_opening_set_applies_before_tick_ones_commands() {
+    let mut s = sim();
+    let mut opening = deploy(0, "bot", "wait(1)\n");
+    opening.seq = 1;
+    let mut newer = deploy(0, "bot", "wait(2)\n");
+    newer.tick = 1;
+    newer.seq = 0;
+    let want = sim::tick::load_bundle(&bundle_of("wait(2)\n"), &s.world.limits)
+        .unwrap()
+        .version;
+    s.step(&[opening, newer]);
+    let slot = &s.world.teams[&TeamId(0)].deployments["bot"];
+    assert_eq!(slot.bundle.as_ref().map(|b| b.version), Some(want));
+}
+
+/// The previous tick's sounds are stored for `hear()`, so they are hashed:
+/// two worlds that heard differently do not agree (docs/06).
+#[test]
+fn the_sounds_hear_reads_are_in_the_hash() {
+    let mut s = sim();
+    run(&mut s, vec![], 1);
+    let before = s.state_hash();
+    s.world.sounds_prev.push(sim::world::Sound {
+        cause: "move".into(),
+        pos: TilePos::new(0, 0),
+        loudness: 1,
+        tick: 1,
+    });
+    assert_ne!(s.state_hash(), before);
 }

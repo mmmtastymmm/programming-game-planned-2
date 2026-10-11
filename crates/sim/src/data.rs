@@ -39,14 +39,16 @@ pub struct ModelData {
     pub capacity: BTreeMap<String, Num>,
     /// A building's store capacity per kind.
     pub store: BTreeMap<String, Num>,
-    /// What building it costs, per kind (a site's store capacity).
+    /// A site's base price per kind, and what each building of the model
+    /// and other site for one the team already has adds (Q42): its store
+    /// capacity is `cost + n × cost_step`.
     pub cost: BTreeMap<String, Num>,
+    pub cost_step: BTreeMap<String, Num>,
     pub pick_rate: BTreeMap<String, Num>,
     pub move_ticks: u64,
     pub pick_ticks: u64,
     pub drop_ticks: u64,
     pub attack_ticks: u64,
-    pub convert_ticks: u64,
     pub print_ticks: u64,
     pub build_ticks: u64,
     pub deconstruct_ticks: u64,
@@ -234,12 +236,12 @@ impl MachinesData {
                     "capacity" => d.capacity = num_map(FILE, &key(k), v)?,
                     "store" => d.store = num_map(FILE, &key(k), v)?,
                     "cost" => d.cost = num_map(FILE, &key(k), v)?,
+                    "cost_step" => d.cost_step = num_map(FILE, &key(k), v)?,
                     "pick_rate" => d.pick_rate = num_map(FILE, &key(k), v)?,
                     "move_ticks" => d.move_ticks = uint(FILE, &key(k), v)?,
                     "pick_ticks" => d.pick_ticks = uint(FILE, &key(k), v)?,
                     "drop_ticks" => d.drop_ticks = uint(FILE, &key(k), v)?,
                     "attack_ticks" => d.attack_ticks = uint(FILE, &key(k), v)?,
-                    "convert_ticks" => d.convert_ticks = uint(FILE, &key(k), v)?,
                     "print_ticks" => d.print_ticks = uint(FILE, &key(k), v)?,
                     "build_ticks" => d.build_ticks = uint(FILE, &key(k), v)?,
                     "deconstruct_ticks" => d.deconstruct_ticks = uint(FILE, &key(k), v)?,
@@ -265,6 +267,24 @@ impl MachinesData {
             if !models.contains_key(required) {
                 return Err(err(FILE, format!("no `model.{required}`")));
             }
+        }
+        // Every buildable model has a price of both parts, neither
+        // negative (Q42); a missing step would silently price at the base.
+        for (name, m) in &models {
+            if !m.cost.is_empty() && m.cost_step.is_empty() {
+                return Err(err(
+                    FILE,
+                    format!("`model.{name}` has a `cost` but no `cost_step` (Q42)"),
+                ));
+            }
+            for (part, map) in [("cost", &m.cost), ("cost_step", &m.cost_step)] {
+                if let Some((k, _)) = map.iter().find(|(_, v)| **v < Num::ZERO) {
+                    return Err(err(FILE, format!("`model.{name}.{part}.{k}` is negative")));
+                }
+            }
+        }
+        if models["printer"].print_ticks == 0 {
+            return Err(err(FILE, "`model.printer.print_ticks` must be at least 1"));
         }
         let loud_t = get(FILE, &t, "loudness")?
             .as_table()
@@ -389,6 +409,22 @@ mod tests {
         let text = MACHINES_TOML.replace("fault_damage = 1", "fault_damage = \"1.5\"");
         let d = MachinesData::parse(&text).expect("string literal");
         assert_eq!(d.fault_damage, Num::parse_literal("1.5").unwrap());
+    }
+
+    /// Q42: a buildable model needs both parts of its price, neither
+    /// negative, and a print takes at least a tick.
+    #[test]
+    fn a_price_needs_a_step_and_neither_part_negative() {
+        let no_step = MACHINES_TOML.replace("cost_step = { ore = 50 }", "");
+        let e = MachinesData::parse(&no_step).expect_err("no cost_step");
+        assert!(e.message.contains("cost_step"), "{e}");
+        let negative =
+            MACHINES_TOML.replace("cost_step = { ore = 50 }", "cost_step = { ore = -60 }");
+        let e = MachinesData::parse(&negative).expect_err("negative step");
+        assert!(e.message.contains("negative"), "{e}");
+        let instant = MACHINES_TOML.replace("print_ticks = 30", "print_ticks = 0");
+        let e = MachinesData::parse(&instant).expect_err("zero print_ticks");
+        assert!(e.message.contains("print_ticks"), "{e}");
     }
 
     #[test]

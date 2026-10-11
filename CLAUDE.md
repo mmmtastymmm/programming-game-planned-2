@@ -70,7 +70,7 @@ finds banned names, not banned behavior.
 
 Testing expectation: golden-replay tests (`(map, command log) → state hash`)
 guard determinism in CI. **A PR that changes a replay hash must explain why.**
-Regenerate with `UPDATE_GOLDEN=1 cargo test -p sim --test golden`. A fixture
+Regenerate with `UPDATE_GOLDEN=1 cargo test -p replay --test golden`. A fixture
 that gets silently regenerated whenever it goes red is worse than no fixture,
 because it looks like coverage. For the same reason, **a test that fails to run
 must not score green**: an error transcript hashes identically in every process,

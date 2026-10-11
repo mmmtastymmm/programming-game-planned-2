@@ -219,11 +219,40 @@ pub fn bare_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// Whether `path` is a file in `robots/` for no deployment a team holds
+/// (Q42) — `robots/1.py` from a tree written before Q42. It composes
+/// nothing; the editor shows it as an error the player may delete
+/// (`docs/07`).
+pub fn is_stray_robot(path: &str) -> bool {
+    robot_of(path).is_some_and(|d| !crate::world::is_deployment_name(d))
+}
+
+/// The stem of a robot file, `robots/<stem>.py`, if `path` is one.
+pub fn robot_of(path: &str) -> Option<&str> {
+    path.strip_prefix(ROBOTS)
+        .and_then(|f| f.strip_prefix('/'))
+        .and_then(|f| f.strip_suffix(".py"))
+        .filter(|d| !d.contains('/'))
+}
+
+/// The deployments a team holds, as prose: "`bot`, `printer` and `depot`".
+pub fn deployments_prose() -> String {
+    let names: Vec<String> = crate::world::DEPLOYMENTS
+        .iter()
+        .map(|d| format!("`{d}`"))
+        .collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => names.join(""),
+    }
+}
+
 /// Compose one bundle per deployment from a tree (`docs/07`, Q41):
 /// `robots/<d>.py` is `main.py`, plus every interrupt file and every
-/// player file by its bare name. A robot file that is empty makes no
-/// bundle; two files with one stem are an error, since folders are
-/// organisational only and the language has no packages.
+/// player file by its bare name. A robot file that is empty, or is for no
+/// deployment (`is_stray_robot`), makes no bundle; two files with one stem
+/// are an error, since folders are organisational only and the language
+/// has no packages.
 pub fn compose(tree: &Tree) -> Result<BTreeMap<String, Bundle>, String> {
     let mut shared: Vec<(String, String)> = Vec::new();
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
@@ -265,13 +294,10 @@ pub fn compose(tree: &Tree) -> Result<BTreeMap<String, Bundle>, String> {
     }
     let mut out = BTreeMap::new();
     for (path, text) in tree {
-        let Some(file) = path.strip_prefix(&format!("{ROBOTS}/")) else {
+        let Some(deployment) = robot_of(path) else {
             continue;
         };
-        let Some(deployment) = file.strip_suffix(".py") else {
-            continue;
-        };
-        if text.trim().is_empty() {
+        if text.trim().is_empty() || !crate::world::is_deployment_name(deployment) {
             continue;
         }
         let mut files = shared.clone();
@@ -294,20 +320,21 @@ mod tests {
     #[test]
     fn a_tree_composes_one_bundle_per_robot_with_the_shared_files() {
         let mut t = Tree::new();
-        t.insert("robots/1.py".into(), "import nav\n".into());
+        t.insert("robots/bot.py".into(), "import nav\n".into());
         t.insert("robots/2.py".into(), "".into());
-        t.insert("robots/printer.py".into(), "print(1)\n".into());
+        t.insert("robots/1.py".into(), "move('e')\n".into());
+        t.insert("robots/printer.py".into(), "wait(60)\n".into());
         t.insert(
             "interrupts/on_fault.py".into(),
             "def on_fault(e):\n    pass\n".into(),
         );
         t.insert("lib/nav.py".into(), "x = 1\n".into());
         let b = compose(&t).unwrap();
-        assert_eq!(b.keys().cloned().collect::<Vec<_>>(), ["1", "printer"]);
-        let names: Vec<&str> = b["1"].files.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(b.keys().cloned().collect::<Vec<_>>(), ["bot", "printer"]);
+        let names: Vec<&str> = b["bot"].files.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names, ["main.py", "nav.py", "on_dying.py", "on_fault.py"]);
-        assert_eq!(b["1"].files[0].1, "import nav\n");
-        assert_eq!(b["1"].files[3].1, "def on_fault(e):\n    pass\n");
+        assert_eq!(b["bot"].files[0].1, "import nav\n");
+        assert_eq!(b["bot"].files[3].1, "def on_fault(e):\n    pass\n");
         // The interrupt files are in every bundle even when the tree lacks
         // them, empty.
         assert_eq!(
