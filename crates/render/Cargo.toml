@@ -13,8 +13,8 @@ sim = { path = "../sim" }
 net = { path = "../net" }
 replay = { path = "../replay" }
 lang = { path = "../lang" }
-bevy = "0.19"
-bevy_egui = "0.41"
+bevy = "0.20"
+bevy_egui = "0.43"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.9"
 
