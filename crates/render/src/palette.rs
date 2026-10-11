@@ -16,6 +16,11 @@ pub const BOT_HALF: f32 = 0.35;
 pub const ROCK_HEIGHT: f32 = 0.55;
 /// Water sits a little below the plane so it reads as a depression.
 pub const WATER_SINK: f32 = -0.05;
+/// Half the thickness of a ground or water slab: its upper face sits this
+/// far above where it is spawned.
+pub const SLAB_HALF: f32 = 0.05;
+/// Half the thickness of the flat quad paint and paint plans draw with.
+pub const MARK_HALF: f32 = 0.01;
 
 // The lens on a bot's front face: a barrel half-sunk into the face and a
 // team-accent glass at its tip.
@@ -455,7 +460,7 @@ impl Palette {
             })
             .collect();
         Palette {
-            tile_slab: meshes.add(textured_slab_mesh(Vec3::new(0.48, 0.05, 0.48))),
+            tile_slab: meshes.add(textured_slab_mesh(Vec3::new(0.48, SLAB_HALF, 0.48))),
             rock_block: meshes.add(block_mesh(ROCK_HEIGHT)),
             bot_cube: meshes.add(atlas_box_mesh(Vec3::splat(BOT_HALF))),
             printer_box: meshes.add(atlas_box_mesh(Vec3::new(0.45, 0.25, 0.45))),
@@ -463,7 +468,7 @@ impl Palette {
             crate_box: meshes.add(textured_slab_mesh(Vec3::new(0.39, 0.15, 0.39))),
             site_cube: meshes.add(Cuboid::new(0.7, 0.7, 0.7)),
             cover_quad: meshes.add(Cuboid::new(1.0, 0.02, 1.0)),
-            mark_quad: meshes.add(Cuboid::new(0.9, 0.02, 0.9)),
+            mark_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
             overlay_cube: meshes.add(Cuboid::new(0.22, 0.22, 0.22)),
             ring: meshes.add(Annulus::new(0.36, 0.44)),
             team_ring: meshes.add(Annulus::new(0.40, 0.47)),

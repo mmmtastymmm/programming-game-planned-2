@@ -9,8 +9,8 @@ use crate::app::{DriverResource, Screen, Tool, ViewState};
 use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
 use crate::palette::{
-    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, Palette, ROCK_HEIGHT,
-    WATER_SINK, block_y_off,
+    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, MARK_HALF, Palette,
+    ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off,
 };
 use bevy::prelude::*;
 use sim::map::Terrain;
@@ -277,6 +277,17 @@ fn top_of(look: &TileLook) -> f32 {
     }
 }
 
+/// The height of a tile's upper face, which a flat mark must clear to be
+/// seen: a rock block's summit, or a slab's top, half its thickness above
+/// where the slab is spawned.
+fn surface_of(look: &TileLook) -> f32 {
+    match look.terrain {
+        Terrain::Rock => ROCK_HEIGHT,
+        Terrain::Water => WATER_SINK + SLAB_HALF,
+        Terrain::Ground => SLAB_HALF,
+    }
+}
+
 /// Rebuild every tile whose look changed since the last snapshot (Q21):
 /// unknown under the cover, remembered in the cold twin, visible live.
 pub fn sync_tiles(
@@ -341,7 +352,8 @@ pub fn sync_tiles(
 /// A tile's plans as a translucent version of their effect — the paint's
 /// color, the overlay's marker, the building — and a plan to clear a slot
 /// as that slot hatched (Q37). The overlay's label is painted over the map
-/// by the UI.
+/// by the UI. `surface` is the tile's upper face ([`surface_of`]); the
+/// paint plan sits just above any applied paint there.
 fn spawn_plans(
     commands: &mut Commands,
     frame: &Frame,
@@ -349,6 +361,7 @@ fn spawn_plans(
     materials: &mut Assets<StandardMaterial>,
     p: TilePos,
     top: f32,
+    surface: f32,
     plans: &Plans,
 ) -> Vec<Entity> {
     let mut out = Vec::new();
@@ -379,7 +392,7 @@ fn spawn_plans(
         spawn(
             palette.mark_quad.clone(),
             mat,
-            Transform::from_translation(frame.tile_xyz(p, top + 0.035)),
+            Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.01)),
         );
     }
     if let Some(plan) = &plans.overlay {
@@ -443,6 +456,7 @@ pub fn cursor_ghost(
         && let Some(plans) = crate::marks::ghost_of(tool)
     {
         let top = ents.top(*p);
+        let surface = ents.tiles.get(p).map_or(SLAB_HALF, |t| surface_of(&t.look));
         ents.cursor_entities = spawn_plans(
             &mut commands,
             &frame,
@@ -450,6 +464,7 @@ pub fn cursor_ghost(
             &mut materials,
             *p,
             top,
+            surface,
             &plans,
         );
     }
@@ -508,6 +523,7 @@ fn spawn_tile(
             .id(),
     );
     let top = top_of(look);
+    let surface = surface_of(look);
     if let Some(paint) = &look.paint {
         let live = palette
             .paint_mats
@@ -521,7 +537,7 @@ fn spawn_tile(
                     DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.mark_quad.clone()),
                     MeshMaterial3d(material),
-                    Transform::from_translation(frame.tile_xyz(p, top + 0.03)),
+                    Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.005)),
                 ))
                 .id(),
         );
@@ -542,7 +558,7 @@ fn spawn_tile(
     }
     if let Some(plans) = &look.plans {
         out.extend(spawn_plans(
-            commands, frame, palette, materials, p, top, plans,
+            commands, frame, palette, materials, p, top, surface, plans,
         ));
     }
     out
