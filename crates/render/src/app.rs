@@ -232,7 +232,7 @@ pub fn run(setup: Setup, autostart: bool) {
             view::cursor_ghost,
             view::markers,
             view::billboard_bars,
-            view::face_digits,
+            view::light_digits,
             view::recolor_teams,
         )
             .chain()

@@ -768,19 +768,26 @@ fn segment_material(color: Color) -> StandardMaterial {
     }
 }
 
-/// Where the number sits on a bot's top face, in the art's 64-unit
-/// square (`assets/art/bot_face_top.svg`, image up = the bot's front): its
-/// center, toward the back, so the block clears the chevron, the trim and
-/// the light through a whole turn (Q46).
-const DIGITS_AT: (f32, f32) = (32.0, 41.0);
-/// One digit's width, height and segment thickness, and the gap between
-/// digits, in art units.
-const DIGIT: (f32, f32, f32, f32) = (11.0, 18.0, 2.5, 3.0);
+/// Where the number's display sits on a bot's top face, in the art's
+/// 64-unit square (`assets/art/bot_face_top.svg`, image up = the bot's
+/// front): the bezel's center, and its cell, so the lattice's five cells
+/// fill the bezel's forty units (Q46).
+const DISPLAY_AT: (f32, f32) = (32.0, 41.0);
+const CELL: f32 = 8.0;
+/// A segment's thickness, and how much shorter than its cell it is so
+/// neighbours do not touch, in art units.
+const SEGMENT: (f32, f32) = (2.0, 2.6);
 
-/// A bot's number: a block of segments on its top face, lit in its team's
-/// color where its id's last three digits light them (Q46).
+/// A bot's number: the fixed segments on its lid, and which turn of the
+/// number they last showed (Q46).
 #[derive(Component)]
-pub struct BotDigits;
+pub struct BotDigits {
+    pub id: u32,
+    pub lit: Handle<StandardMaterial>,
+    /// One per `digits::lattice()` edge, in its order.
+    pub segments: Vec<Entity>,
+    pub quarter: Option<u8>,
+}
 
 fn spawn_digits(
     parent: &mut bevy::ecs::relationship::RelatedSpawnerCommands<ChildOf>,
@@ -789,55 +796,81 @@ fn spawn_digits(
     id: u32,
 ) {
     let unit = 2.0 * BOT_HALF / 64.0;
-    let (w, h, t, gap) = DIGIT;
+    let (t, short) = SEGMENT;
     let at = Vec3::new(
-        (DIGITS_AT.0 - 32.0) * unit,
+        (DISPLAY_AT.0 - 32.0) * unit,
         BOT_HALF + 0.003,
-        (DIGITS_AT.1 - 32.0) * unit,
+        (DISPLAY_AT.1 - 32.0) * unit,
     );
+    let mut segments = Vec::new();
     parent
-        .spawn((
-            BotDigits,
-            Transform::from_translation(at),
-            Visibility::Inherited,
-        ))
-        .with_children(|block| {
-            for (place, digit) in crate::digits::display(id).into_iter().enumerate() {
-                let dx = (place as f32 - 1.0) * (w + gap);
-                let on = digit.map(crate::digits::segments_of).unwrap_or_default();
-                for (i, lit_here) in on.into_iter().enumerate() {
-                    let (x, y, sw, sh) = crate::digits::segment_rect(i, w, h, t);
-                    // The block's up is -Z: it faces the camera that way.
-                    block.spawn((
-                        Mesh3d(palette.segment.clone()),
-                        MeshMaterial3d(if lit_here {
-                            lit.clone()
-                        } else {
-                            palette.segment_off_mat.clone()
-                        }),
-                        Transform::from_xyz((x + dx) * unit, 0.0, -y * unit).with_scale(Vec3::new(
-                            sw * unit,
-                            0.004,
-                            sh * unit,
-                        )),
-                    ));
-                }
+        .spawn((Transform::from_translation(at), Visibility::Inherited))
+        .with_children(|display| {
+            for ((x0, y0), (x1, y1)) in crate::digits::lattice() {
+                // Cells to art units about the display's center; the
+                // lattice's y is the bot's front, which is -Z.
+                let mid = |a: i32, b: i32, c: f32| ((a + b) as f32 / 2.0 - c) * CELL;
+                let x = mid(x0, x1, crate::digits::CENTER.0);
+                let y = mid(y0, y1, crate::digits::CENTER.1);
+                let (sx, sz) = if y0 == y1 {
+                    (CELL - short, t)
+                } else {
+                    (t, CELL - short)
+                };
+                segments.push(
+                    display
+                        .spawn((
+                            Mesh3d(palette.segment.clone()),
+                            MeshMaterial3d(palette.segment_off_mat.clone()),
+                            Transform::from_xyz(x * unit, 0.0, -y * unit).with_scale(Vec3::new(
+                                sx * unit,
+                                0.004,
+                                sz * unit,
+                            )),
+                        ))
+                        .id(),
+                );
             }
+        })
+        .insert(BotDigits {
+            id,
+            lit: lit.clone(),
+            segments,
+            quarter: None,
         });
 }
 
-/// A bot's number turns to face the camera, so it reads upright whichever
-/// way the bot faces; the chevron beside it still shows the heading.
-pub fn face_digits(
+/// Light each bot's number for the turn that reads upright from the
+/// camera: the segments stay where they are on the lid and only switch on
+/// and off, as the bot turns or the camera orbits past halfway (Q46).
+pub fn light_digits(
     cams: Query<&OrbitCam>,
-    bodies: Query<&Transform, (With<MachineBody>, Without<BotDigits>)>,
-    mut digits: Query<(&mut Transform, &ChildOf), With<BotDigits>>,
+    palette: Res<Palette>,
+    bodies: Query<&Transform, With<MachineBody>>,
+    mut displays: Query<(&mut BotDigits, &ChildOf)>,
+    mut segments: Query<&mut MeshMaterial3d<StandardMaterial>>,
 ) {
     let Ok(cam) = cams.single() else { return };
-    let facing = Quat::from_rotation_y(cam.yaw);
-    for (mut t, child_of) in &mut digits {
-        if let Ok(body) = bodies.get(child_of.parent()) {
-            t.rotation = body.rotation.inverse() * facing;
+    let lattice = crate::digits::lattice();
+    for (mut d, child_of) in &mut displays {
+        let Ok(body) = bodies.get(child_of.parent()) else {
+            continue;
+        };
+        let (bot_yaw, _, _) = body.rotation.to_euler(EulerRot::YXZ);
+        let quarter = crate::digits::quarter_for(cam.yaw - bot_yaw);
+        if d.quarter == Some(quarter) {
+            continue;
+        }
+        d.quarter = Some(quarter);
+        let on = crate::digits::lit(&lattice, d.id, quarter);
+        for (e, lit_here) in d.segments.iter().zip(on) {
+            if let Ok(mut m) = segments.get_mut(*e) {
+                m.0 = if lit_here {
+                    d.lit.clone()
+                } else {
+                    palette.segment_off_mat.clone()
+                };
+            }
         }
     }
 }

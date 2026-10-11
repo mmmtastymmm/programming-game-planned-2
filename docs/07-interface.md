@@ -68,7 +68,8 @@ here changes a hash; a peer with a different renderer sees the same match.
   saved in `colors.toml` beside the programs and never reaches a peer.
 - **Every bot wears its entity id on top (Q46, amending Q42 and Q43).**
   The id's last three digits, in a seven-segment display set into the top
-  face, lit in the team's color and turned to face the camera; the
+  face: fixed segments, lit in the team's color in whichever quarter turn
+  reads upright from the camera, so it redraws rather than spins; the
   chevron, the trim and the light around it keep the heading, the paint
   and the team readable from above.
 
@@ -168,8 +169,9 @@ clears only when those machines fault again or die.
   shapes in the neutral body color (Q43).
 - **Team:** a bot's lights glow in its team's color (Q45); a building is
   outlined in it (Q43).
-- **Number:** a bot's entity id, its last three digits, in seven segments
-  on its top face, lit in its team's color and facing the camera (Q46). The player's own team is green unless changed,
+- **Number:** a bot's entity id, its last three digits, in fixed seven
+  segments on its top face, lit in its team's color in the quarter turn
+  that reads upright from the camera (Q46). The player's own team is green unless changed,
   each other team's from the list in data unless changed, so friend and
   foe read at a glance and three teams stay three.
 - **Health:** a bar over the machine for a few seconds after any change.

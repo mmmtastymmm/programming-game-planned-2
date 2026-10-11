@@ -511,9 +511,11 @@ impl Palette {
                 ..default()
             }),
             scribble_mats,
+            // Just lighter than the bezel (#14181f), so the dark lattice
+            // shows and the lit number reads as segments switching on.
             segment_off_mat: materials.add(StandardMaterial {
-                base_color: Color::srgb(0.13, 0.15, 0.18),
-                perceptual_roughness: 0.8,
+                base_color: Color::srgb(0.105, 0.12, 0.15),
+                perceptual_roughness: 0.9,
                 ..default()
             }),
             lens_glass_mat: materials.add(StandardMaterial {
