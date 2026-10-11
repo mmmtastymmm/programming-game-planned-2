@@ -1,7 +1,6 @@
-# The Fool's red bots: carry ore from the nearest deposit to the nearest
-# place that takes it — a planned site first, a depot otherwise — and build
-# where the plans say. Printers cannot be built (Q31). Shipped source
-# (design-invariant DI8): every name here is docs/01's or docs/02's.
+# A starter bot: haul ore from the nearest deposit to the nearest place
+# that takes it, and build where the plans say. Place a building plan with
+# the mark tool in the game; the bots will fill and build it.
 
 CAPACITY = 10
 FAR = 1000
@@ -22,15 +21,7 @@ def adjacent(p):
     return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1
 
 
-def step_toward(p):
-    try:
-        move_to(p[0], p[1])
-    except ValueError:
-        wait(1)
-
-
 def step_off():
-    # Standing on the tile itself: an action wants it adjacent, so leave it.
     for d in ["n", "e", "s", "w"]:
         try:
             move(d)
@@ -41,14 +32,16 @@ def step_off():
 
 
 def approach(p):
-    # True once adjacent to p; otherwise one step nearer, or off it.
     here = me().pos
     if (here[0], here[1]) == (p[0], p[1]):
         step_off()
         return False
     if adjacent(p):
         return True
-    step_toward(p)
+    try:
+        move_to(p[0], p[1])
+    except ValueError:
+        wait(1)
     return False
 
 

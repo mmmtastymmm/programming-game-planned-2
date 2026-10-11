@@ -145,7 +145,7 @@ identity:
 | **kind** | `"bot"` or `"building"`; a building also has a **model** — `"printer"`, `"depot"` or `"site"` | at print or build, never changed |
 | **team** | the allegiance it acts for, a small integral `num`; every machine of a team shares senses, memory, stores, deployments and the bot cap | at print or build, from the machine that made it; never changed |
 | **program** | the bundle of its **deployment**, which is its model's name: every bot runs the `bot` bundle, a building the bundle deployed to its model (Q42) | by the command log, through the deployment (Q11) |
-| **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print, to `bot` plus the entity id (`bot17`); at build, to the name of the model the site will become plus its entity id (`printer23`), kept when it completes (Q42); changed by `rename` |
+| **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print, to `bot` plus the entity id (`bot17`); at build, a site to the name of the model it will become plus its entity id (`printer23`), and the completed building, a machine of its own, to its model plus its own id (Q42); changed by `rename` |
 
 Two machines with the same team, kind and deployment are the same program in
 two bodies, which is Q2's fleet; what tells them apart is the entity `id`,

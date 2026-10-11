@@ -1,4 +1,4 @@
-//! The tick (`docs/06`, The tick): eight steps in a fixed order, and
+//! The tick (`docs/06`, The tick): nine steps in a fixed order, and
 //! `Sim::step` is the only entry point that changes the world.
 
 use crate::command::{Bundle, Command, CommandKind, PlanKind, TeamId};
@@ -59,7 +59,7 @@ impl Sim {
             CommandKind::Deploy { deployment, bundle } => {
                 if !crate::world::is_deployment_name(deployment) {
                     return Err(format!(
-                        "no deployment `{deployment}`: a bot deployment is a positive number (Q40)"
+                        "no deployment `{deployment}`: a team's are `bot`, `printer` and `depot` (Q42)"
                     ));
                 }
                 load_bundle(bundle, &w.limits).map(|_| ())
@@ -69,9 +69,6 @@ impl Sim {
                     return Err(format!("({}, {}) is off the map", at.x, at.y));
                 }
                 match (plan, value) {
-                    (PlanKind::Building, Some(v)) if v == "printer" => {
-                        Err("a building plan cannot name `printer` (Q31)".into())
-                    }
                     (PlanKind::Building, Some(v))
                         if Model::from_name(v)
                             .is_none_or(|m| m == Model::Site || m == Model::Bot) =>
@@ -103,7 +100,7 @@ impl Sim {
         }
     }
 
-    /// Run one tick with its full command set, in the doc's eight steps.
+    /// Run one tick with its full command set, in the doc's nine steps.
     pub fn step(&mut self, commands: &[Command]) -> StepReport {
         let mut report = StepReport::default();
         if self.ended.is_some() {
@@ -111,7 +108,6 @@ impl Sim {
         }
         let w = &mut self.world;
         w.tick = w.tick.checked_add(1).expect("tick counter");
-        w.converted_this_tick.clear();
         w.pending_damage.clear();
         w.dead.clear();
         for m in w.machines.values_mut() {
@@ -139,9 +135,11 @@ impl Sim {
         self.damage();
         // 5. Out teams.
         self.out_teams();
-        // 6. Regrowth.
+        // 6. Printing.
+        self.print_step();
+        // 7. Regrowth.
         self.regrow();
-        // 7. The vision pass.
+        // 8. The vision pass.
         self.vision_pass();
         // The sounds emitted this tick are heard next tick.
         let w = &mut self.world;
@@ -169,26 +167,7 @@ impl Sim {
                 if !crate::world::is_deployment_name(deployment) {
                     return Err(());
                 }
-                // The slot exists once something is deployed to it (Q40).
-                w.teams
-                    .get_mut(&c.sender)
-                    .expect("team")
-                    .deployments
-                    .entry(deployment.clone())
-                    .or_default();
-                if w.is_unlocked(c.sender, deployment) {
-                    self.deploy(c.sender, deployment, loaded);
-                } else {
-                    // Waits in the slot until the deployment unlocks (docs/02).
-                    let slot = w
-                        .teams
-                        .get_mut(&c.sender)
-                        .expect("team")
-                        .deployments
-                        .get_mut(deployment)
-                        .expect("slot");
-                    slot.pending = Some(loaded);
-                }
+                self.deploy(c.sender, deployment, loaded);
                 Ok(())
             }
             CommandKind::Mark { at, plan, value } => {
@@ -253,23 +232,6 @@ impl Sim {
         }
     }
 
-    /// Deployments that unlocked with a pending deploy take it now
-    /// (docs/02, Locking).
-    fn apply_pending_deploys(&mut self, team: TeamId) {
-        let unlocked = self.world.unlocked_deployments(team);
-        for color in unlocked {
-            let pending = self
-                .world
-                .teams
-                .get_mut(&team)
-                .and_then(|t| t.deployments.get_mut(&color))
-                .and_then(|d| d.pending.take());
-            if let Some(b) = pending {
-                self.deploy(team, &color, b);
-            }
-        }
-    }
-
     /// Step 2 for one machine: take its program out of its body, run it
     /// against a host over the world, put it back, act on its events.
     fn run_slice(&mut self, id: EntityId) {
@@ -305,9 +267,11 @@ impl Sim {
         let _ = slice;
     }
 
-    /// Step 3 for one machine: count its action down and complete it, and
-    /// a site's construction.
+    /// Step 3 for one machine: count a printer's print down and complete
+    /// it, count its action down and complete it, and a site's
+    /// construction.
     fn complete(&mut self, id: EntityId) {
+        self.complete_print(id);
         let Some(m) = self.world.machines.get_mut(&id) else {
             return;
         };
@@ -422,24 +386,6 @@ impl Sim {
                     }
                 }
             }
-            Effect::Print { color } => {
-                let Some(printer) = w.machines.get(&id) else {
-                    return Value::None;
-                };
-                let (team, pos) = (printer.team, printer.pos);
-                let free = pos
-                    .neighbours()
-                    .into_iter()
-                    .find(|p| w.passable(*p) && !w.occupied(*p));
-                if let Some(p) = free
-                    && w.teams[&team]
-                        .deployments
-                        .get(&color)
-                        .is_some_and(|d| d.bundle.is_some())
-                {
-                    w.place(Model::Bot, team, p, Some(color));
-                }
-            }
             Effect::Build { model, at, remove } => {
                 if let Some(old) = remove {
                     self.remove_machine(old);
@@ -449,15 +395,13 @@ impl Sim {
                     return Value::None;
                 }
                 let team = w.machines[&id].team;
+                // The price is counted before the new site exists (Q42).
+                let price = w.price(team, model);
                 let site = w.place(Model::Site, team, at, None);
-                let cost = w.data.model(model.name()).cost.clone();
                 if let Some(s) = w.machines.get_mut(&site) {
                     s.becomes = Some(model);
                     s.name = format!("{}{}", model.name(), site.0);
-                    for k in w.data.machines.kinds.clone() {
-                        s.store_capacity
-                            .insert(k.clone(), cost.get(&k).copied().unwrap_or(Num::ZERO));
-                    }
+                    s.store_capacity = price;
                 }
                 // Placing the site consumes the plan.
                 if let Some(pl) = w.plans_mut(team, at) {
@@ -531,30 +475,6 @@ impl Sim {
                     }
                 }
             }
-            Effect::Convert { target } => {
-                let (team, here) = {
-                    let m = &w.machines[&id];
-                    (m.team, m.pos)
-                };
-                let old_team = w.machines.get(&target).map(|t| t.team);
-                let ok = w.machines.get(&target).is_some_and(|t| {
-                    t.model == Model::Printer && t.team != team && here.is_adjacent(t.pos)
-                }) && !w.converted_this_tick.contains(&target);
-                if ok {
-                    w.converted_this_tick.insert(target);
-                    if let Some(t) = w.machines.get_mut(&target) {
-                        t.team = team;
-                        t.deployment = Some("printer".to_string());
-                        if let Some(p) = &mut t.program {
-                            p.raise(Interrupt::Redeploy);
-                        }
-                    }
-                    self.apply_pending_deploys(team);
-                    if let Some(old) = old_team {
-                        self.apply_pending_deploys(old);
-                    }
-                }
-            }
             Effect::Wait => {}
         }
         Value::None
@@ -577,6 +497,82 @@ impl Sim {
 
     fn remove_machine(&mut self, id: EntityId) {
         self.world.machines.remove(&id);
+    }
+
+    /// Step 3, a printer's part: its print counts down, and at zero the
+    /// bot appears on the first adjacent tile of `n`, `e`, `s`, `w` that is
+    /// on the map, passable and unoccupied, or the print is cancelled
+    /// (`docs/02`, Printing).
+    fn complete_print(&mut self, id: EntityId) {
+        let w = &mut self.world;
+        let Some(m) = w.machines.get_mut(&id) else {
+            return;
+        };
+        if m.model != Model::Printer || m.printing == 0 {
+            return;
+        }
+        m.printing = m.printing.saturating_sub(1);
+        if m.printing > 0 {
+            return;
+        }
+        let (team, pos) = (m.team, m.pos);
+        let free = pos
+            .neighbours()
+            .into_iter()
+            .find(|p| w.passable(*p) && !w.occupied(*p));
+        if let Some(p) = free {
+            w.place(Model::Bot, team, p, Some("bot".to_string()));
+        }
+    }
+
+    /// Step 6: each team's printers begin prints by turns while its bots
+    /// and prints in progress fall short of its cap (Q42; `docs/02`,
+    /// Printing).
+    fn print_step(&mut self) {
+        let w = &mut self.world;
+        let ticks = w.data.model("printer").print_ticks.max(1);
+        let teams: Vec<TeamId> = w.teams.keys().copied().collect();
+        for team in teams {
+            if w.teams[&team].out {
+                continue;
+            }
+            let printing = w
+                .machines
+                .values()
+                .filter(|m| m.team == team && m.model == Model::Printer && m.printing > 0)
+                .count();
+            let mut shortfall = w
+                .bot_cap(team)
+                .saturating_sub(w.bots_of(team))
+                .saturating_sub(printing);
+            while shortfall > 0 {
+                let turn = w.teams[&team].print_turn;
+                let ready: Vec<EntityId> = w
+                    .machines
+                    .values()
+                    .filter(|m| {
+                        m.team == team
+                            && m.model == Model::Printer
+                            && m.printing == 0
+                            && m.health > Num::ZERO
+                    })
+                    .map(|m| m.id)
+                    .collect();
+                let Some(next) = ready
+                    .iter()
+                    .copied()
+                    .find(|id| *id > turn)
+                    .or_else(|| ready.first().copied())
+                else {
+                    break;
+                };
+                let pos = w.machines[&next].pos;
+                w.machines.get_mut(&next).expect("printer").printing = ticks;
+                w.sound("print", pos);
+                w.teams.get_mut(&team).expect("team").print_turn = next;
+                shortfall = shortfall.saturating_sub(1);
+            }
+        }
     }
 
     /// Step 4: attacks and printer defence, summed per target; `dying` and
@@ -649,6 +645,13 @@ impl Sim {
             w.machines.remove(&id);
         }
         w.dead.clear();
+        // A printer left at or below zero health loses its print (docs/02,
+        // Printing), whether the damage came from this step or a fault.
+        for m in w.machines.values_mut() {
+            if m.model == Model::Printer && m.health <= Num::ZERO {
+                m.printing = 0;
+            }
+        }
     }
 
     /// Step 5: every team that resigned or has no printer is out.
@@ -671,7 +674,7 @@ impl Sim {
         }
     }
 
-    /// Step 6: every deposit grows to its cap.
+    /// Step 7: every deposit grows to its cap.
     fn regrow(&mut self) {
         for tile in &mut self.world.tiles {
             if let Some(d) = tile.deposit.as_mut() {
@@ -684,7 +687,7 @@ impl Sim {
         }
     }
 
-    /// Step 7: each team's visible tiles, and their snapshots (Q21).
+    /// Step 8: each team's visible tiles, and their snapshots (Q21).
     fn vision_pass(&mut self) {
         let teams: Vec<TeamId> = self.world.teams.keys().copied().collect();
         let tick = self.world.tick;
@@ -724,7 +727,7 @@ impl Sim {
         }
     }
 
-    /// Step 8: the state hash (`docs/06`, The state hash), in its order.
+    /// Step 9: the state hash (`docs/06`, The state hash), in its order.
     pub fn state_hash(&self) -> u64 {
         let w = &self.world;
         let mut h = Fnv1a::new();
@@ -735,9 +738,9 @@ impl Sim {
             for (name, d) in &team.deployments {
                 h.write_str(name);
                 h.write_u64(d.bundle.as_ref().map(|b| b.version).unwrap_or(0));
-                h.write_u64(d.pending.as_ref().map(|b| b.version).unwrap_or(0));
             }
             h.write_u64(w.bot_cap(*tid) as u64);
+            h.write_u32(team.print_turn.0);
             let mut planned: Vec<(TilePos, &crate::world::Plans)> = Vec::new();
             for p in w.map.positions() {
                 if let Some(pl) = w.plans(*tid, p) {
@@ -874,6 +877,13 @@ fn write_record(h: &mut Fnv1a, r: &MachineRecord) {
     write_amounts(h, r.load.as_ref());
     write_amounts(h, r.store.as_ref());
     h.write_u64(r.progress);
+    match r.printing {
+        None => h.write_u8(0),
+        Some(t) => {
+            h.write_u8(1);
+            h.write_u64(t);
+        }
+    }
 }
 
 /// Load a bundle from the log's files (`docs/01`, The bundle).

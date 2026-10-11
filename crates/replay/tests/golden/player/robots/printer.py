@@ -1,8 +1,6 @@
-# The fixture's player printer: prints red bots while it can, and logs the
-# team's cap so a change in Q24's arithmetic moves the transcript.
+# The fixture's player printer: printers print by themselves (Q42), so it
+# logs its print's countdown and the team's bots it can see, so a change in
+# the printing rule moves the transcript.
 while True:
-    try:
-        print(1)
-    except ValueError:
-        log("cannot print", len(see()))
-        wait(5)
+    log("printing", me().printing, "sees", len(see()))
+    wait(5)

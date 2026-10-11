@@ -1,5 +1,5 @@
-# The fixture's second red program, deployed mid-match (Q11): every bot on
-# the color takes it at its next boundary. It stops hauling and stands
+# The fixture's second bot program, deployed mid-match (Q11): every bot
+# takes it at its next boundary. It stops hauling and stands
 # guard, attacking anything of another team it can see.
 class Guard:
     def __init__(self):

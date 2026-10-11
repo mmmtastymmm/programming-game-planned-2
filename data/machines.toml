@@ -9,11 +9,11 @@
 kinds = ["ore"]
 
 [deployment]
-# bot deployments, unlocked one per printer, in this order (Q24)
-# the paint colors a plan may name (Q10), and the cycle a bot's drawn color is
-# read from by its deployment's number (Q40); deployments themselves are
-# numbered, not named
+# a team's deployments are one per model, `bot`, `printer` and `depot` (Q42);
+# this table holds what is shared across them
+# the paint colors a plan may name (Q10)
 colors = ["red", "blue", "green", "yellow", "purple", "orange", "cyan", "magenta"]
+# the bot cap: this many bots per standing printer (Q24)
 bots_per_printer = 10
 # scalars a name may hold (docs/02, A machine)
 name_max = 32
@@ -36,8 +36,6 @@ drop_ticks = 1
 attack_range = 1
 attack_damage = 1
 attack_ticks = 3
-# converting an adjacent enemy printer (Q30)
-convert_ticks = 10
 defence_damage = 0
 # how far build_nearest looks, in tiles by squared distance
 build_reach = 3
@@ -53,7 +51,12 @@ hearing = 6
 health = 60
 death_threshold = -30
 store = { ore = 0 }
-# no cost and no build time: printers are the map's and are never built (Q31)
+# built by bots (Q42): the first printer site holds `cost`, and each printer
+# or printer site the team already has adds `cost_step`. Tuning placeholders,
+# to be set by playtesting
+cost = { ore = 100 }
+cost_step = { ore = 50 }
+build_ticks = 60
 deconstruct_ticks = 30
 print_ticks = 30
 # damage dealt each tick to every adjacent enemy bot (Q30); zero on other models
@@ -66,13 +69,15 @@ health = 40
 death_threshold = -20
 store = { ore = 500 }
 cost = { ore = 40 }
+# depots do not get dearer (Q42)
+cost_step = { ore = 0 }
 build_ticks = 20
 deconstruct_ticks = 10
 defence_damage = 0
 
 [model.site]
-# a site's store capacity is the cost of what it becomes; its ranges and
-# health are these
+# a site's store capacity is the price of what it becomes (Q42); its ranges
+# and health are these
 vision = 2
 hearing = 2
 health = 10
@@ -89,4 +94,3 @@ print = 4
 build = 4
 deconstruct = 3
 attack = 3
-convert = 3

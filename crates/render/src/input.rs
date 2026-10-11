@@ -48,6 +48,9 @@ pub fn keys(
     if keys.just_pressed(KeyCode::Digit5) {
         state.tool = Tool::Unmark(PlanKind::Building);
     }
+    if keys.just_pressed(KeyCode::Digit6) {
+        state.tool = Tool::Building("printer".into());
+    }
     if keys.just_pressed(KeyCode::KeyL) {
         crate::ui::toggle(&mut state, "log");
     }

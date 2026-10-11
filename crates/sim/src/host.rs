@@ -413,46 +413,12 @@ impl<'a> GameHost<'a> {
         self.begin("drop", ticks, Effect::Drop { kind, into }, true)
     }
 
-    fn action_print(&mut self, args: &[Value]) -> R<HostCall> {
-        if self.me().model != Model::Printer {
-            return Err(value_error());
-        }
-        let [n] = args else {
-            return Err(type_error());
-        };
-        // A bot deployment is a positive integral `num` (Q40).
-        let n = n.expect_num()?;
-        let one = lang::Num::ONE.raw();
-        let whole = n
-            .raw()
-            .checked_div(one)
-            .filter(|_| n.raw().checked_rem(one) == Some(0));
-        let color = match whole {
-            Some(k) if k >= 1 => k.to_string(),
-            _ => return Err(value_error()),
-        };
-        let team = self.team();
-        if !self.world.unlocked_deployments(team).contains(&color) {
-            return Err(value_error());
-        }
-        let has_bundle = self.world.teams[&team]
-            .deployments
-            .get(&color)
-            .is_some_and(|d| d.bundle.is_some());
-        if !has_bundle {
-            return Err(value_error());
-        }
-        if self.world.bots_of(team) >= self.world.bot_cap(team) {
-            return Err(value_error());
-        }
-        let ticks = self.model_data().print_ticks;
-        self.begin("print", ticks, Effect::Print { color }, true)
-    }
-
     /// `build` on a given tile: the checks shared with `build_nearest`.
     fn build_at(&mut self, model: &str, at: TilePos, must_be_adjacent: bool) -> R<HostCall> {
+        // Any building model but a site; printers too (Q42).
         let model = match model {
             "depot" => Model::Depot,
+            "printer" => Model::Printer,
             _ => return Err(value_error()),
         };
         let here = self.pos();
@@ -640,24 +606,6 @@ impl<'a> GameHost<'a> {
         self.begin("attack", md.attack_ticks, Effect::Attack { target }, true)
     }
 
-    fn action_convert(&mut self, args: &[Value]) -> R<HostCall> {
-        self.require_bot()?;
-        let [id] = args else {
-            return Err(type_error());
-        };
-        let target = EntityId(u32::try_from(id.expect_integral()?).map_err(|_| value_error())?);
-        let team = self.team();
-        let here = self.pos();
-        let ok = self.world.machines.get(&target).is_some_and(|m| {
-            m.model == Model::Printer && m.team != team && here.is_adjacent(m.pos)
-        });
-        if !ok {
-            return Err(value_error());
-        }
-        let ticks = self.model_data().convert_ticks;
-        self.begin("convert", ticks, Effect::Convert { target }, true)
-    }
-
     fn action_wait(&mut self, args: &[Value]) -> R<HostCall> {
         let [n] = args else {
             return Err(type_error());
@@ -738,7 +686,6 @@ impl<'a> Host for GameHost<'a> {
             "move_to" => self.action_move_to(&args),
             "pick" => self.action_pick(&args),
             "drop" => self.action_drop(&args),
-            "print" => self.action_print(&args),
             "build" => self.action_build(&args),
             "build_nearest" => self.action_build_nearest(&args),
             "paint" => self.action_paint(&args, Slot::Paint, true),
@@ -747,7 +694,6 @@ impl<'a> Host for GameHost<'a> {
             "unoverlay" => self.action_paint(&args, Slot::Overlay, false),
             "deconstruct" => self.action_deconstruct(&args),
             "attack" => self.action_attack(&args),
-            "convert" => self.action_convert(&args),
             "wait" => self.action_wait(&args),
             "log" => self.log(&args, &kwargs),
             "rename" => self.rename(&args),

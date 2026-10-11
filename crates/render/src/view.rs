@@ -559,7 +559,7 @@ fn spawn_machine(
     // (Q35). The tint of a white base by white is the base itself.
     let (mesh, live_mat) = match model {
         Model::Bot => {
-            let color = palette.bot_color(m.record.deployment.as_deref());
+            let color = palette.bot_color();
             let base = palette.bot_mats[color].clone();
             (palette.bot_cube.clone(), base)
         }

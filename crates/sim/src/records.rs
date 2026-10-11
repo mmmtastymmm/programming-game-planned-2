@@ -63,17 +63,8 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
         ("kind", Value::str(r.kind)),
         ("model", Value::str(r.model.name())),
         ("team", int(i128::from(r.team.0))),
-        // A bot's deployment is its number (Q40); a building's its model.
-        (
-            "deployment",
-            match r.deployment.as_deref() {
-                Some(d) => match crate::world::deployment_number(d) {
-                    Some(n) => int(i128::from(n)),
-                    None => Value::str(d),
-                },
-                None => Value::None,
-            },
-        ),
+        // Its model's name (Q42); `None` for a site.
+        ("deployment", opt_str(r.deployment.as_deref())),
         ("pos", pos_value(r.pos)),
         ("health", Value::Num(r.health)),
         ("busy", opt_str(r.busy)),
@@ -85,6 +76,9 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
         fields.push(("store", s));
     }
     fields.push(("progress", int(i128::from(r.progress))));
+    if let Some(t) = r.printing {
+        fields.push(("printing", int(i128::from(t))));
+    }
     record("machine", fields)
 }
 

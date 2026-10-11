@@ -39,14 +39,16 @@ pub struct ModelData {
     pub capacity: BTreeMap<String, Num>,
     /// A building's store capacity per kind.
     pub store: BTreeMap<String, Num>,
-    /// What building it costs, per kind (a site's store capacity).
+    /// What building the first costs, per kind, and what each one the
+    /// team already has adds (Q42): a site's store capacity is
+    /// `cost + n × cost_step`.
     pub cost: BTreeMap<String, Num>,
+    pub cost_step: BTreeMap<String, Num>,
     pub pick_rate: BTreeMap<String, Num>,
     pub move_ticks: u64,
     pub pick_ticks: u64,
     pub drop_ticks: u64,
     pub attack_ticks: u64,
-    pub convert_ticks: u64,
     pub print_ticks: u64,
     pub build_ticks: u64,
     pub deconstruct_ticks: u64,
@@ -234,12 +236,12 @@ impl MachinesData {
                     "capacity" => d.capacity = num_map(FILE, &key(k), v)?,
                     "store" => d.store = num_map(FILE, &key(k), v)?,
                     "cost" => d.cost = num_map(FILE, &key(k), v)?,
+                    "cost_step" => d.cost_step = num_map(FILE, &key(k), v)?,
                     "pick_rate" => d.pick_rate = num_map(FILE, &key(k), v)?,
                     "move_ticks" => d.move_ticks = uint(FILE, &key(k), v)?,
                     "pick_ticks" => d.pick_ticks = uint(FILE, &key(k), v)?,
                     "drop_ticks" => d.drop_ticks = uint(FILE, &key(k), v)?,
                     "attack_ticks" => d.attack_ticks = uint(FILE, &key(k), v)?,
-                    "convert_ticks" => d.convert_ticks = uint(FILE, &key(k), v)?,
                     "print_ticks" => d.print_ticks = uint(FILE, &key(k), v)?,
                     "build_ticks" => d.build_ticks = uint(FILE, &key(k), v)?,
                     "deconstruct_ticks" => d.deconstruct_ticks = uint(FILE, &key(k), v)?,

@@ -294,20 +294,20 @@ mod tests {
     #[test]
     fn a_tree_composes_one_bundle_per_robot_with_the_shared_files() {
         let mut t = Tree::new();
-        t.insert("robots/1.py".into(), "import nav\n".into());
+        t.insert("robots/bot.py".into(), "import nav\n".into());
         t.insert("robots/2.py".into(), "".into());
-        t.insert("robots/printer.py".into(), "print(1)\n".into());
+        t.insert("robots/printer.py".into(), "wait(60)\n".into());
         t.insert(
             "interrupts/on_fault.py".into(),
             "def on_fault(e):\n    pass\n".into(),
         );
         t.insert("lib/nav.py".into(), "x = 1\n".into());
         let b = compose(&t).unwrap();
-        assert_eq!(b.keys().cloned().collect::<Vec<_>>(), ["1", "printer"]);
-        let names: Vec<&str> = b["1"].files.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(b.keys().cloned().collect::<Vec<_>>(), ["bot", "printer"]);
+        let names: Vec<&str> = b["bot"].files.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names, ["main.py", "nav.py", "on_dying.py", "on_fault.py"]);
-        assert_eq!(b["1"].files[0].1, "import nav\n");
-        assert_eq!(b["1"].files[3].1, "def on_fault(e):\n    pass\n");
+        assert_eq!(b["bot"].files[0].1, "import nav\n");
+        assert_eq!(b["bot"].files[3].1, "def on_fault(e):\n    pass\n");
         // The interrupt files are in every bundle even when the tree lacks
         // them, empty.
         assert_eq!(

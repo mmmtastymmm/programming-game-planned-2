@@ -1,4 +1,4 @@
-# The fixture's first red program: walk east, look around, pick from the
+# The fixture's first bot program: walk east, look around, pick from the
 # first deposit found, and keep a tally that a redeploy will throw away.
 steps = 0
 while True:

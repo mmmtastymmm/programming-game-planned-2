@@ -29,7 +29,7 @@ pub struct Doc {
 /// The tree and what it composes to.
 #[derive(Debug, Clone, Default)]
 pub struct Editor {
-    /// Every file by its tree path (`robots/1.py`, `lib/nav.py`).
+    /// Every file by its tree path (`robots/bot.py`, `lib/nav.py`).
     pub files: BTreeMap<String, Doc>,
     /// The player's folders, including empty ones.
     pub folders: BTreeSet<String>,
@@ -218,18 +218,6 @@ impl Editor {
             .filter(|d| self.deployment_ahead(d, team.deployments.get(*d).copied().flatten()))
             .cloned()
             .collect()
-    }
-
-    /// The number after the highest robot file: what *next* opens (Q40).
-    pub fn next_deployment(&self) -> String {
-        let max = self
-            .files
-            .keys()
-            .filter_map(|p| robot_of(p))
-            .filter_map(sim::world::deployment_number)
-            .max()
-            .unwrap_or(0);
-        (max + 1).to_string()
     }
 
     /// Add a file at `path` if none exists; `Err` names why not.
@@ -883,7 +871,6 @@ enum Menu {
     NewFolder(String),
     Rename(String),
     Delete(String),
-    NextRobot,
 }
 
 /// The tree (`docs/07`, Q41): `robots`, `interrupts`, then the player's
@@ -1029,23 +1016,9 @@ pub fn tree_panel(
                         .cloned()
                         .collect();
                     robots = deployment_order_paths(robots);
+                    // One file per deployment, and no others (Q42).
                     for p in &robots {
                         file_row(ui, state, p, &mut menus);
-                    }
-                    let next = state.editor.next_deployment();
-                    if ui
-                        .small_button("+")
-                        .on_hover_text(format!("a file for deployment {next}"))
-                        .clicked()
-                    {
-                        menus.push(Menu::NextRobot);
-                    }
-                })
-                .header_response
-                .context_menu(|ui| {
-                    if ui.button("new robot file").clicked() {
-                        menus.push(Menu::NextRobot);
-                        ui.close();
                     }
                 });
             // The handlers are fixed: a lock says nothing can be added here.
@@ -1114,12 +1087,6 @@ pub fn tree_panel(
                 Ok(()) => state.editor.selected = None,
                 Err(e) => state.status = e,
             },
-            Menu::NextRobot => {
-                let p = robot_path(&state.editor.next_deployment());
-                state.editor.files.entry(p.clone()).or_default();
-                state.editor.recompose();
-                actions.push(TreeAction::Open(p));
-            }
         }
     }
 
@@ -1226,17 +1193,16 @@ pub fn tree_panel(
     actions
 }
 
-/// Robot files in deployment order: printer, depot, then the numbers.
+/// Robot files in deployment order: bot, printer, depot (Q42), then
+/// anything else a programs directory held.
 fn deployment_order_paths(mut paths: Vec<String>) -> Vec<String> {
-    let rank = |p: &str| -> (u64, u64) {
+    let rank = |p: &str| -> usize {
         match robot_of(p) {
-            Some("printer") => (0, 0),
-            Some("depot") => (1, 0),
-            Some(d) => match sim::world::deployment_number(d) {
-                Some(k) => (2, k),
-                None => (3, 0),
-            },
-            None => (4, 0),
+            Some(d) => sim::world::DEPLOYMENTS
+                .iter()
+                .position(|x| *x == d)
+                .unwrap_or(sim::world::DEPLOYMENTS.len()),
+            None => sim::world::DEPLOYMENTS.len() + 1,
         }
     };
     paths.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.cmp(b)));
@@ -1296,25 +1262,24 @@ mod tests {
     #[test]
     fn a_tree_composes_reaches_and_reports_errors_at_the_file() {
         let mut t = Tree::new();
-        t.insert("robots/1.py".into(), "import nav\nx = 1\nif x\n".into());
-        t.insert("robots/printer.py".into(), "print(1)\n".into());
+        t.insert("robots/bot.py".into(), "import nav\nx = 1\nif x\n".into());
+        t.insert("robots/printer.py".into(), "wait(60)\n".into());
         t.insert("lib/nav.py".into(), "y = 2\n".into());
         let mut e = Editor::from_tree(&t);
         assert!(e.files.contains_key("interrupts/on_fault.py"));
-        assert_eq!(e.reaches("robots/1.py"), ["1"]);
-        assert_eq!(e.reaches("lib/nav.py"), ["1", "printer"]);
+        assert_eq!(e.reaches("robots/bot.py"), ["bot"]);
+        assert_eq!(e.reaches("lib/nav.py"), ["bot", "printer"]);
         let (dep, err) = e
-            .error_at("robots/1.py")
+            .error_at("robots/bot.py")
             .expect("a load error at the robot file");
-        assert_eq!(dep, "1");
+        assert_eq!(dep, "bot");
         assert!(err.line >= 1);
-        assert!(!line_range(&e.files["robots/1.py"].text, err.line).is_empty());
-        e.files.get_mut("robots/1.py").unwrap().text = "import nav\nx = 1\n".into();
+        assert!(!line_range(&e.files["robots/bot.py"].text, err.line).is_empty());
+        e.files.get_mut("robots/bot.py").unwrap().text = "import nav\nx = 1\n".into();
         e.recompose();
-        assert!(e.error_at("robots/1.py").is_none());
-        assert!(matches!(e.loaded.get("1"), Some(Ok(_))));
-        assert_eq!(e.next_deployment(), "2");
-        assert!(e.add_file("robots/3.py").is_err());
+        assert!(e.error_at("robots/bot.py").is_none());
+        assert!(matches!(e.loaded.get("bot"), Some(Ok(_))));
+        assert!(e.add_file("robots/extra.py").is_err());
         assert!(e.add_file("lib/Nav.py").is_err());
         e.add_file("util/nav.py").unwrap();
         assert!(
@@ -1327,7 +1292,7 @@ mod tests {
         assert!(e.delete("interrupts/on_fault.py").is_err());
         e.rename("lib/nav.py", "lib/path.py").unwrap();
         assert!(
-            e.error_at("robots/1.py").is_some(),
+            e.error_at("robots/bot.py").is_some(),
             "the import of nav now fails"
         );
         // Suggestions: a free name under the selected folder, the root when
@@ -1339,7 +1304,7 @@ mod tests {
         assert_eq!(e.suggest_folder("lib"), "folder_2");
         e.selected = Some("lib/path.py".into());
         assert_eq!(e.selected_folder(), "lib");
-        e.selected = Some("robots/1.py".into());
+        e.selected = Some("robots/bot.py".into());
         assert_eq!(e.selected_folder(), "");
         assert_eq!(e.suggest_file(), "module.py");
         e.add_file("module.py").unwrap();
@@ -1355,7 +1320,7 @@ mod tests {
         let moved = e.rename_leaf("a/folder", "tools").unwrap();
         assert_eq!(moved, "a/tools");
         assert!(e.files.contains_key("a/tools/module_2.py") && !e.folders.contains("a/folder"));
-        assert!(e.rename_leaf("robots/1.py", "x.py").is_err());
+        assert!(e.rename_leaf("robots/bot.py", "x.py").is_err());
         assert_eq!(line_range("ab\ncd", 7), 4..5);
     }
 }
