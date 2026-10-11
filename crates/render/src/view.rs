@@ -881,7 +881,8 @@ pub fn fault_marks(
 }
 
 /// Draw each machine between its previous and current tile by the fraction
-/// of the tick elapsed (Q6), turning the shortest way round.
+/// of the tick elapsed (Q6), turning the shortest way round on the tick it
+/// moves and holding its heading otherwise.
 pub fn interpolate(
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
@@ -910,12 +911,20 @@ pub fn interpolate(
         };
         let lift = body_lift(view.model);
         let cur = frame.tile_xyz(m.record.pos, ents.top(m.record.pos) + lift);
-        let from = prev
-            .get(&m.record.id)
-            .map(|p| frame.tile_xyz(*p, ents.top(*p) + lift))
+        let was = prev.get(&m.record.id).copied();
+        let from = was
+            .map(|p| frame.tile_xyz(p, ents.top(p) + lift))
             .unwrap_or(cur);
         t.translation = from.lerp(cur, f);
-        t.rotation = Quat::from_rotation_y(view.yaw_prev).slerp(Quat::from_rotation_y(view.yaw), f);
+        // Turn only on the tick the machine moved: the headings change only
+        // on a move, so a machine standing still after a turn would
+        // otherwise replay that turn every tick.
+        let yaw = Quat::from_rotation_y(view.yaw);
+        t.rotation = if was.is_some_and(|p| p != m.record.pos) {
+            Quat::from_rotation_y(view.yaw_prev).slerp(yaw, f)
+        } else {
+            yaw
+        };
     }
 }
 
