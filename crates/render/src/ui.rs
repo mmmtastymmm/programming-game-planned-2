@@ -308,6 +308,16 @@ fn inspector(
                         Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
                         None => ui.label("idle"),
                     };
+                    // Printing is not an action (Q42): a printer's own line.
+                    match r.printing {
+                        Some(0) => {
+                            ui.label("not printing");
+                        }
+                        Some(t) => {
+                            ui.label(format!("printing ({t})"));
+                        }
+                        None => {}
+                    }
                     let running = r.deployment.as_ref().and_then(|dep| {
                         snap.teams
                             .iter()

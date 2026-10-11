@@ -8,7 +8,7 @@
 //! Layout: [`data`] the tuning tables, [`map`] the rectangle and its
 //! terrain, [`world`] the state, [`sense`] line of sight and vision,
 //! [`records`] what programs read, [`host`] the game builtins as the
-//! language's host, [`tick`] the eight steps and the state hash,
+//! language's host, [`tick`] the nine steps and the state hash,
 //! [`snapshot`] what the renderer reads, [`script`] scripted teams, and
 //! [`command`] the one way in.
 

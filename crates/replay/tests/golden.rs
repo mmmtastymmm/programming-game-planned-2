@@ -11,7 +11,9 @@
 //! player team running the bundles under `tests/golden/player/`, and the
 //! Fool as the opposition, with a **mid-match redeploy** of the player's
 //! `bot` deployment (T7: the hash-affecting path most likely to differ
-//! between peers), a speed change, and marks, a printer plan among them. The alive test asserts on what the
+//! between peers), a speed change, and marks — among them a printer plan
+//! the player's bots build, so the rising price, construction and two
+//! printers taking turns (Q42) all feed the hash. The alive test asserts on what the
 //! match must have done, so a run that did nothing cannot score green.
 
 use replay::Replay;
@@ -88,6 +90,19 @@ fn golden_replay() -> Replay {
             value: Some("a".into()),
         },
     ));
+    // A printer plan (Q42), which the player's bots haul ore into and
+    // build: the rising price, construction and the turn order between two
+    // printers all feed the hash.
+    commands.push(Command::new(
+        0,
+        player,
+        4,
+        CommandKind::Mark {
+            at: printer_plan(&map),
+            plan: PlanKind::Building,
+            value: Some("printer".into()),
+        },
+    ));
     // The Fool's script, tiles relative to its first start.
     let script =
         sim::script::Script::load(&data_dir().join("opposition/fool")).expect("the Fool's script");
@@ -104,7 +119,7 @@ fn golden_replay() -> Replay {
         },
     ));
     commands.push(Command::new(
-        90,
+        360,
         player,
         0,
         CommandKind::Deploy {
@@ -112,21 +127,11 @@ fn golden_replay() -> Replay {
             bundle: bundle(&fixture_dir().join("red2")),
         },
     ));
-    // A printer plan, which Q42 allows; no player bot builds it here.
-    commands.push(Command::new(
-        95,
-        player,
-        0,
-        CommandKind::Mark {
-            at: printer_plan(&map),
-            plan: PlanKind::Building,
-            value: Some("printer".into()),
-        },
-    ));
+
     Replay {
         map: map_text,
         commands,
-        ticks: 220,
+        ticks: 400,
     }
 }
 
@@ -182,7 +187,7 @@ fn golden_scenario_is_alive() {
     );
     assert_eq!(
         run.hashes.len(),
-        220,
+        400,
         "the match ended early: {:?}",
         run.sim.ended()
     );
@@ -223,17 +228,16 @@ fn golden_scenario_is_alive() {
     });
     assert!(ore_moved, "no ore was ever picked");
     assert_eq!(w.speed, 2, "the SetSpeed did not land");
-    assert!(
-        matches!(
-            w.plans(TeamId(0), printer_plan(&run.sim.world.map)).and_then(|p| p.building.as_ref()),
-            Some(sim::world::Plan::Set(v)) if v == "printer"
-        ),
-        "the printer plan did not land"
-    );
-    assert!(
-        w.teams[&TeamId(0)].print_turn.0 > 0,
-        "the player's printers never took a turn"
-    );
+    // The bots built the planned printer (by about tick 300), so the
+    // player ends with two, and the plan was consumed.
+    let printers: Vec<u32> = w
+        .machines
+        .values()
+        .filter(|m| m.team == TeamId(0) && m.model == Model::Printer)
+        .map(|m| m.id.0)
+        .collect();
+    assert_eq!(printers.len(), 2, "the planned printer was never built");
+    assert!(w.plans(TeamId(0), printer_plan(&w.map)).is_none());
     let remembered = w.teams[&TeamId(0)]
         .memory
         .iter()

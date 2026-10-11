@@ -229,14 +229,15 @@ The hash is FNV-1a 64-bit over a canonical encoding of the world after step
 version of each bundle, its cap, its print turn (Q42), its plans by tile in
 row-then-column order, its memory table by tile; every tile in
 row-then-column order — terrain, deposit, paint, overlay; every machine in
-ascending entity id — every attribute, its load or store, its health, its
-action in progress and `progress`, its fault record, and its **execution
-state**: the program counter, every frame's locals, every global, the
-deficit, the pending interrupt set, whether it is in main flow or a handler
-and which kind, the hook budget spent so far in that handler, and the set
-of modules already run in this run (`01`). Every `num` is its i128; every
-`str` its UTF-8 bytes length-prefixed; every collection its elements in
-iteration order.
+ascending entity id — every attribute, its load or store and its store
+capacity, which for a site is its price, fixed at placement (Q42), its
+health, its action in progress and `progress`, its fault record, and its
+**execution state**: the program counter, every frame's locals, every
+global, the deficit, the pending interrupt set, whether it is in main flow
+or a handler and which kind, the hook budget spent so far in that handler,
+and the set of modules already run in this run (`01`). Every `num` is its
+i128; every `str` its UTF-8 bytes length-prefixed; every collection its
+elements in iteration order.
 
 What is **not** hashed: the diagnostic log, the speed (the driver's, not the
 sim's), anything the renderer holds, and the live sensing list, which is a

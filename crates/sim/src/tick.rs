@@ -59,7 +59,8 @@ impl Sim {
             CommandKind::Deploy { deployment, bundle } => {
                 if !crate::world::is_deployment_name(deployment) {
                     return Err(format!(
-                        "no deployment `{deployment}`: a team's are `bot`, `printer` and `depot` (Q42)"
+                        "no deployment `{deployment}`: a team's are {} (Q42)",
+                        crate::script::deployments_prose()
                     ));
                 }
                 load_bundle(bundle, &w.limits).map(|_| ())
@@ -115,7 +116,14 @@ impl Sim {
         }
         // 1. Commands, by sender then submission order.
         let mut ordered: Vec<&Command> = commands.iter().collect();
-        ordered.sort_by(|a, b| a.sender.cmp(&b.sender).then(a.seq.cmp(&b.seq)));
+        // Tick 0's opening set, applied with tick 1, before tick 1's own
+        // (`docs/06`, The command log); then by sender and submission.
+        ordered.sort_by(|a, b| {
+            a.tick
+                .cmp(&b.tick)
+                .then(a.sender.cmp(&b.sender))
+                .then(a.seq.cmp(&b.seq))
+        });
         for c in ordered {
             if let Err(()) = self.apply(c, &mut report) {
                 report.dropped.push(c.clone());
@@ -391,7 +399,7 @@ impl Sim {
                     self.remove_machine(old);
                 }
                 let w = &mut self.world;
-                if !w.buildable(at) || w.machines.values().any(|m| m.pos == at) {
+                if !w.buildable(at) || w.occupied(at) {
                     return Value::None;
                 }
                 let team = w.machines[&id].team;
@@ -512,9 +520,9 @@ impl Sim {
         if m.model != Model::Printer || m.printing == 0 {
             return;
         }
-        // A printer whose `death` ran in its slice, or that is at or below
-        // zero health, has lost its print (docs/02, Printing).
-        if dead || m.health <= Num::ZERO {
+        // A printer whose `death` ran in its slice has lost its print
+        // (docs/02, Printing); one at or below zero lost it in `set_health`.
+        if dead {
             m.printing = 0;
             return;
         }
@@ -537,7 +545,7 @@ impl Sim {
     /// Printing).
     fn print_step(&mut self) {
         let w = &mut self.world;
-        let ticks = w.data.model("printer").print_ticks.max(1);
+        let ticks = w.data.model("printer").print_ticks;
         let teams: Vec<TeamId> = w.teams.keys().copied().collect();
         for team in teams {
             if w.teams[&team].out {
@@ -548,36 +556,31 @@ impl Sim {
                 .values()
                 .filter(|m| m.team == team && m.model == Model::Printer && m.printing > 0)
                 .count();
-            let mut shortfall = w
+            let shortfall = w
                 .bot_cap(team)
                 .saturating_sub(w.bots_of(team))
                 .saturating_sub(printing);
-            while shortfall > 0 {
-                let turn = w.teams[&team].print_turn;
-                let ready: Vec<EntityId> = w
-                    .machines
-                    .values()
-                    .filter(|m| {
-                        m.team == team
-                            && m.model == Model::Printer
-                            && m.printing == 0
-                            && m.health > Num::ZERO
-                    })
-                    .map(|m| m.id)
-                    .collect();
-                let Some(next) = ready
-                    .iter()
-                    .copied()
-                    .find(|id| *id > turn)
-                    .or_else(|| ready.first().copied())
-                else {
-                    break;
-                };
+            // The ready printers in id order, rotated to start past the
+            // print turn: each begins at most once this step, in that order.
+            let ready: Vec<EntityId> = w
+                .machines
+                .values()
+                .filter(|m| {
+                    m.team == team
+                        && m.model == Model::Printer
+                        && m.printing == 0
+                        && m.health > Num::ZERO
+                })
+                .map(|m| m.id)
+                .collect();
+            let turn = w.teams[&team].print_turn;
+            let split = ready.partition_point(|id| *id <= turn);
+            let order = ready[split..].iter().chain(&ready[..split]);
+            for &next in order.take(shortfall) {
                 let pos = w.machines[&next].pos;
                 w.machines.get_mut(&next).expect("printer").printing = ticks;
                 w.sound("print", pos);
                 w.teams.get_mut(&team).expect("team").print_turn = next;
-                shortfall = shortfall.saturating_sub(1);
             }
         }
     }
@@ -611,17 +614,18 @@ impl Sim {
         }
         let mut to_deliver: Vec<(EntityId, Interrupt)> = Vec::new();
         for (id, dmg) in hits {
-            let Some(m) = w.machines.get_mut(&id) else {
+            let Some(m) = w.machines.get(&id) else {
                 continue;
             };
             if m.dying {
                 continue;
             }
-            m.health = m.health.checked_sub(dmg).unwrap_or(Num::MIN);
+            let health = m.health.checked_sub(dmg).unwrap_or(Num::MIN);
             let threshold = w.data.model(m.model.name()).death_threshold;
-            if m.health <= threshold {
+            w.set_health(id, health);
+            if health <= threshold {
                 to_deliver.push((id, Interrupt::Death));
-            } else if m.health <= Num::ZERO {
+            } else if health <= Num::ZERO {
                 to_deliver.push((id, Interrupt::Dying));
             }
         }
@@ -652,13 +656,6 @@ impl Sim {
             w.machines.remove(&id);
         }
         w.dead.clear();
-        // A printer left at or below zero health loses its print (docs/02,
-        // Printing), whether the damage came from this step or a fault.
-        for m in w.machines.values_mut() {
-            if m.model == Model::Printer && m.health <= Num::ZERO {
-                m.printing = 0;
-            }
-        }
     }
 
     /// Step 5: every team that resigned or has no printer is out.
@@ -816,6 +813,9 @@ impl Sim {
             }
             h.write_u64(m.construction.unwrap_or(0));
             write_opt_str(&mut h, m.becomes.map(Model::name));
+            // A site's capacity is its price, fixed at placement from the
+            // team's count then (Q42): history, so hashed.
+            write_amounts(&mut h, Some(&m.store_capacity));
             match &m.program {
                 None => h.write_u8(0),
                 Some(p) => {

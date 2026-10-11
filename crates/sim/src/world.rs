@@ -597,6 +597,18 @@ impl World {
         id
     }
 
+    /// Set a machine's health: the one place health changes, so a printer
+    /// that falls to zero or below loses its print there (`docs/02`,
+    /// Printing), whatever dealt the damage.
+    pub fn set_health(&mut self, id: EntityId, health: Num) {
+        if let Some(m) = self.machines.get_mut(&id) {
+            m.health = health;
+            if m.model == Model::Printer && health <= Num::ZERO {
+                m.printing = 0;
+            }
+        }
+    }
+
     /// Emit a sound at `pos` (`docs/02`, Sounds).
     pub fn sound(&mut self, cause: &str, pos: TilePos) {
         let loudness = self.data.machines.loudness.get(cause).copied().unwrap_or(0);

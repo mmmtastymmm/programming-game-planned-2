@@ -91,9 +91,9 @@ text, edited in place. A deployment's **running version** is the sim's
 The two meet only through `Deploy`.
 
 - **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`, one
-  per deployment (Q42) — and `interrupts/`
-  with `on_fault.py` and `on_dying.py`; both folders and every file in
-  them always exist and cannot be renamed, moved or deleted. Everything
+  per deployment (Q42) — and `interrupts/` with `on_fault.py` and
+  `on_dying.py`; both folders, every deployment's file and both interrupt
+  files always exist and cannot be renamed, moved or deleted. Everything
   else is the player's: files and folders they add, rename, move and
   delete, shared by every robot. A file's name is `[a-z_][a-z0-9_]*.py`
   (`01`) and its stem is unique across the tree, since folders are
@@ -101,7 +101,9 @@ The two meet only through `Deploy`.
   load error shown in the tree. A file in `robots/` for no deployment —
   `robots/1.py` from a tree written before Q42 — composes nothing, is
   marked as an error in the tree and its window, and the player may delete
-  it; the match starts without it.
+  it; the match starts without it. A file that calls a builtin Q42 removed
+  — `print` or `convert` — is marked the same way at that line, since it
+  loads but faults every time the call runs.
 - **Composition.** Deployment `d`'s bundle is `robots/d.py` as `main.py`,
   plus every interrupt file and every player file by its bare name. A hook
   binds from `robots/d.py` if it defines one, else from the interrupt file

@@ -645,3 +645,55 @@ fn a_team_has_one_deployment_per_model() {
         ["bot", "depot", "printer"]
     );
 }
+
+/// A tile a bot is moving onto is occupied for `build` as for `move`: a
+/// site never lands under a bot (docs/02, Occupancy).
+#[test]
+fn a_build_refuses_a_tile_a_bot_is_moving_onto() {
+    let program = "if me().pos[0] == -1:\n    move('e')\nelse:\n    try:\n        build('depot', 0, 0)\n    except ValueError:\n        log('refused')\nwait(1000)\n";
+    let mut s = sim();
+    run(&mut s, vec![deploy(0, "bot", program)], 1);
+    // The mover has the lower id, so its move begins first in the slice.
+    let mover = s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(-1, 0),
+        Some("bot".into()),
+    );
+    let builder = s.world.place(
+        Model::Bot,
+        TeamId(0),
+        TilePos::new(0, -1),
+        Some("bot".into()),
+    );
+    assert!(mover < builder);
+    run(&mut s, vec![], 1);
+    assert!(
+        s.world.machines[&builder]
+            .log
+            .iter()
+            .any(|l| l.text == "refused"),
+        "the build was not refused"
+    );
+    assert!(!s.world.machines.values().any(|m| m.model == Model::Site));
+    run(&mut s, vec![], 1);
+    assert_eq!(s.world.machines[&mover].pos, TilePos::new(0, 0));
+}
+
+/// Tick 0's opening set applies with tick 1, before tick 1's own commands,
+/// whatever their sequence numbers (docs/06, The command log).
+#[test]
+fn the_opening_set_applies_before_tick_ones_commands() {
+    let mut s = sim();
+    let mut opening = deploy(0, "bot", "wait(1)\n");
+    opening.seq = 1;
+    let mut newer = deploy(0, "bot", "wait(2)\n");
+    newer.tick = 1;
+    newer.seq = 0;
+    let want = sim::tick::load_bundle(&bundle_of("wait(2)\n"), &s.world.limits)
+        .unwrap()
+        .version;
+    s.step(&[opening, newer]);
+    let slot = &s.world.teams[&TeamId(0)].deployments["bot"];
+    assert_eq!(slot.bundle.as_ref().map(|b| b.version), Some(want));
+}

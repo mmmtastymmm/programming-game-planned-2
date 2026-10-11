@@ -14,7 +14,11 @@ use crate::view;
 use bevy_egui::egui;
 use lang::errors::LoadError;
 use lang::{Limits, Program};
-use sim::script::{INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose, is_stray_robot};
+pub use sim::script::robot_of;
+use sim::script::{
+    INTERRUPT_FILES, INTERRUPTS, ROBOTS, Tree, bare_name, compose, deployments_prose,
+    is_stray_robot,
+};
 use sim::snapshot::Snapshot;
 use sim::{Bundle, CommandKind, TeamId};
 use std::collections::{BTreeMap, BTreeSet};
@@ -65,13 +69,6 @@ pub fn robot_path(deployment: &str) -> String {
     format!("{ROBOTS}/{deployment}.py")
 }
 
-/// The deployment a robot file is, if `path` is one.
-pub fn robot_of(path: &str) -> Option<&str> {
-    path.strip_prefix(&format!("{ROBOTS}/"))
-        .and_then(|f| f.strip_suffix(".py"))
-        .filter(|d| !d.contains('/'))
-}
-
 /// Whether the path is one of the fixed entries the player cannot rename,
 /// move or delete: a deployment's robot file, or an interrupt file. A
 /// robot file for no deployment is the player's to delete (Q42).
@@ -80,13 +77,47 @@ pub fn is_fixed(path: &str) -> bool {
         || interrupt_paths().iter().any(|p| p == path)
 }
 
+/// The builtins Q42 removed. A program that still calls one loads, then
+/// raises `NameError` and faults every time the call runs.
+const REMOVED_BUILTINS: [&str; 2] = ["print", "convert"];
+
+/// The first call in `text` to a builtin Q42 removed, with its line,
+/// unless the file defines a function of that name itself.
+pub fn removed_call(text: &str) -> Option<(&'static str, u32)> {
+    let toks = lang::lexer::Lexer::new("", text).tokenize().ok()?;
+    let defined = |name: &str| {
+        toks.windows(2).any(|w| {
+            w[0].tok == lang::lexer::Tok::Keyword("def")
+                && w[1].tok == lang::lexer::Tok::Name(name.to_string())
+        })
+    };
+    toks.windows(2).find_map(|w| match (&w[0].tok, &w[1].tok) {
+        (lang::lexer::Tok::Name(n), lang::lexer::Tok::Op("(")) => REMOVED_BUILTINS
+            .iter()
+            .find(|r| **r == n.as_str() && !defined(r))
+            .map(|r| (*r, w[0].line)),
+        _ => None,
+    })
+}
+
+/// What `removed_call` found, as the window and the tree say it.
+pub fn removed_warning(text: &str) -> Option<String> {
+    removed_call(text).map(|(name, line)| {
+        format!(
+            "line {line} calls `{name}`, which Q42 removed — printers print by themselves and \
+             nothing converts — so it raises NameError and faults every time it runs"
+        )
+    })
+}
+
 /// What is wrong with a robot file for no deployment (Q42), if `path` is
 /// one: it is never deployed, and the match starts without it.
 pub fn stray_error(path: &str) -> Option<String> {
     is_stray_robot(path).then(|| {
         format!(
-            "`{path}` is for no deployment — a team's are `bot`, `printer` and `depot` (Q42); \
-             it is never deployed: move what you want into `{ROBOTS}/bot.py` and delete it"
+            "`{path}` is for no deployment — a team's are {} (Q42); \
+             it is never deployed: move what you want into `{ROBOTS}/bot.py` and delete it",
+            deployments_prose()
         )
     })
 }
@@ -322,7 +353,13 @@ impl Editor {
     pub fn selected_folder(&self) -> String {
         match &self.selected {
             Some(sel) if self.folders.contains(sel) => sel.clone(),
-            Some(sel) if sel.is_empty() || sel == ROBOTS || sel == INTERRUPTS || is_fixed(sel) => {
+            Some(sel)
+                if sel.is_empty()
+                    || sel == ROBOTS
+                    || sel == INTERRUPTS
+                    || is_fixed(sel)
+                    || robot_of(sel).is_some() =>
+            {
                 String::new()
             }
             Some(sel) => sel
@@ -710,7 +747,12 @@ pub fn title(state: &ViewState, path: &str, snap: &Snapshot, player: TeamId) -> 
     let bare = bare_name(path);
     if state.editor.error_at(path).is_some()
         || state.editor.compose_error.is_some()
-        || stray_error(path).is_some()
+        || is_stray_robot(path)
+        || state
+            .editor
+            .files
+            .get(path)
+            .is_some_and(|d| removed_call(&d.text).is_some())
     {
         format!("{bare} !")
     } else if state.editor.ahead(path, snap, player) {
@@ -780,10 +822,20 @@ pub fn window_body(
     } else if let Some((dep, e)) = &error {
         ui.colored_label(egui::Color32::LIGHT_RED, format!("{dep}: {e}"));
     }
+    if let Some(w) = state
+        .editor
+        .files
+        .get(path)
+        .and_then(|d| removed_warning(&d.text))
+    {
+        ui.colored_label(egui::Color32::LIGHT_RED, w);
+    }
     // What the file reaches, and each deployment's state.
     let reaches = state.editor.reaches(path);
     if reaches.is_empty() {
-        ui.small(if robot_of(path).is_some() {
+        ui.small(if is_stray_robot(path) {
+            "for no deployment: never composed"
+        } else if robot_of(path).is_some() {
             "empty: composes nothing until it has text"
         } else {
             "reaches no deployment yet"
@@ -904,7 +956,12 @@ pub fn tree_panel(
     let mut actions = Vec::new();
     let mark = |state: &ViewState, path: &str| -> String {
         let mut s = String::new();
-        if state.editor.error_at(path).is_some() || stray_error(path).is_some() {
+        let removed = state
+            .editor
+            .files
+            .get(path)
+            .is_some_and(|d| removed_call(&d.text).is_some());
+        if state.editor.error_at(path).is_some() || is_stray_robot(path) || removed {
             s.push_str(" !");
         } else if state.editor.ahead(path, snap, player) {
             s.push_str(" *");
@@ -935,7 +992,9 @@ pub fn tree_panel(
                     ui.close();
                 }
                 if !fixed {
-                    if ui.button("rename").clicked() {
+                    // A stray robot file can only go: `robots/` takes no
+                    // new name (Q42).
+                    if !is_stray_robot(path) && ui.button("rename").clicked() {
                         menus.push(Menu::Rename(path.to_string()));
                         ui.close();
                     }
@@ -1292,8 +1351,24 @@ mod tests {
         assert!(stray_error("robots/bot.py").is_none());
         assert!(is_fixed("robots/bot.py") && !is_fixed("robots/1.py"));
         assert!(e.delete("robots/bot.py").is_err());
+        // Selected, it puts new files at the root, not in `robots/`.
+        e.selected = Some("robots/1.py".into());
+        assert_eq!(e.selected_folder(), "");
         e.delete("robots/1.py").unwrap();
         assert!(!e.files.contains_key("robots/1.py"));
+    }
+
+    /// A program still calling a builtin Q42 removed is flagged at its
+    /// line; one that defines its own of that name is not.
+    #[test]
+    fn a_call_to_a_removed_builtin_is_flagged() {
+        let old =
+            "while True:\n    try:\n        print(1)\n    except ValueError:\n        wait(10)\n";
+        assert_eq!(removed_call(old), Some(("print", 3)));
+        assert!(removed_warning(old).is_some_and(|w| w.contains("line 3")));
+        assert_eq!(removed_call("x = 'print(1)'  # print(2)\n"), None);
+        assert_eq!(removed_call("def print(x):\n    log(x)\nprint(1)\n"), None);
+        assert_eq!(removed_call("convert(7)\n"), Some(("convert", 1)));
     }
 
     #[test]

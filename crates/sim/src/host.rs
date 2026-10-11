@@ -448,8 +448,8 @@ impl<'a> GameHost<'a> {
             ),
             Some(_) => return Err(value_error()),
         };
-        if remove.is_none() && self.world.machines.values().any(|m| m.pos == at) {
-            // A bot stands there: not free.
+        if remove.is_none() && self.world.occupied(at) {
+            // A bot stands there or is moving onto it: not free.
             return Err(value_error());
         }
         self.begin("build", ticks, Effect::Build { model, at, remove }, true)
@@ -714,19 +714,16 @@ impl<'a> Host for GameHost<'a> {
                 self.cancel();
                 let damage = self.world.data.machines.fault_damage;
                 let threshold = self.model_data().death_threshold;
-                let me = self.me_mut();
+                let me = self.me();
                 if me.dying {
                     return None;
                 }
-                me.health = me.health.checked_sub(damage).unwrap_or(Num::MIN);
-                // A printer at or below zero loses its print at once
-                // (docs/02, Printing).
-                if me.model == Model::Printer && me.health <= Num::ZERO {
-                    me.printing = 0;
-                }
-                if me.health <= threshold {
+                let health = me.health.checked_sub(damage).unwrap_or(Num::MIN);
+                let id = self.id;
+                self.world.set_health(id, health);
+                if health <= threshold {
                     Some(Interrupt::Death)
-                } else if me.health <= Num::ZERO {
+                } else if health <= Num::ZERO {
                     Some(Interrupt::Dying)
                 } else {
                     None

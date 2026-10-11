@@ -224,9 +224,27 @@ pub fn bare_name(path: &str) -> &str {
 /// nothing; the editor shows it as an error the player may delete
 /// (`docs/07`).
 pub fn is_stray_robot(path: &str) -> bool {
-    path.strip_prefix(&format!("{ROBOTS}/"))
+    robot_of(path).is_some_and(|d| !crate::world::is_deployment_name(d))
+}
+
+/// The stem of a robot file, `robots/<stem>.py`, if `path` is one.
+pub fn robot_of(path: &str) -> Option<&str> {
+    path.strip_prefix(ROBOTS)
+        .and_then(|f| f.strip_prefix('/'))
         .and_then(|f| f.strip_suffix(".py"))
-        .is_some_and(|d| !d.contains('/') && !crate::world::is_deployment_name(d))
+        .filter(|d| !d.contains('/'))
+}
+
+/// The deployments a team holds, as prose: "`bot`, `printer` and `depot`".
+pub fn deployments_prose() -> String {
+    let names: Vec<String> = crate::world::DEPLOYMENTS
+        .iter()
+        .map(|d| format!("`{d}`"))
+        .collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => names.join(""),
+    }
 }
 
 /// Compose one bundle per deployment from a tree (`docs/07`, Q41):
@@ -276,13 +294,10 @@ pub fn compose(tree: &Tree) -> Result<BTreeMap<String, Bundle>, String> {
     }
     let mut out = BTreeMap::new();
     for (path, text) in tree {
-        let Some(file) = path.strip_prefix(&format!("{ROBOTS}/")) else {
+        let Some(deployment) = robot_of(path) else {
             continue;
         };
-        let Some(deployment) = file.strip_suffix(".py") else {
-            continue;
-        };
-        if text.trim().is_empty() || is_stray_robot(path) {
+        if text.trim().is_empty() || !crate::world::is_deployment_name(deployment) {
             continue;
         }
         let mut files = shared.clone();

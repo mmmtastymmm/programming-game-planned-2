@@ -555,12 +555,12 @@ fn spawn_machine(
     let model = m.record.model;
     let team = m.record.team;
     let team_color = interface.team_color(player, team);
-    // A bot's body is its deployment's color; a building wears the team's
-    // (Q35). The tint of a white base by white is the base itself.
+    // A bot's body is the neutral one until T25 draws its `color` (Q43); a
+    // building wears the team's. The tint of a white base by white is the
+    // base itself.
     let (mesh, live_mat) = match model {
         Model::Bot => {
-            let color = palette.bot_color();
-            let base = palette.bot_mats[color].clone();
+            let base = palette.bot_mats[crate::palette::NEUTRAL_BOT].clone();
             (palette.bot_cube.clone(), base)
         }
         Model::Printer => {
