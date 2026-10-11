@@ -10,7 +10,7 @@ use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
 use crate::palette::Interface;
-use crate::view::{self, Entities, MachineBody};
+use crate::view;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use sim::world::TileState;
@@ -35,9 +35,6 @@ pub fn panels(
     mut contexts: EguiContexts,
     time: Res<Time>,
     interface: Res<Interface>,
-    ents: Res<Entities>,
-    cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
-    bodies: Query<&GlobalTransform, With<MachineBody>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
