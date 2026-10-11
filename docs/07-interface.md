@@ -51,12 +51,15 @@ here changes a hash; a peer with a different renderer sees the same match.
   faults by file and line in the programs panel, the full record in the
   inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
-- **Every machine's body is its team's color, and so is its ring (Q35,
-  as Q40 and Q42 amended).** A team has one bot deployment (Q42), so a
-  bot's color says only its team: bots, printers, depots and sites alike
-  wear the team's ring color on their body, and no bot wears a number. The
-  team shows as a ring under every machine, the player's own in white and
-  each other team's in a color from `data/interface.toml`.
+- **A bot's body is the color its program set, and every team is an
+  outline the player colors (Q43, amending Q35 and Q42).** A bot is drawn
+  in its `color` (`02`), or a neutral body color while it has none; a
+  building's body is the neutral color. Every machine has an outline in
+  its team's outline color: the player's own green by default, each other
+  team's the next of a list in `data/interface.toml`. The player may
+  change any team's outline color, their own included, from the
+  inspector; the choice is saved in `colors.toml` beside the programs and
+  never reaches a peer. No bot wears a number.
 
 ## The screen
 
@@ -68,7 +71,7 @@ floats over it (Q39, Q41):
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end; nothing else | Q6, Q12, `06`, Q41 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools and the log | Q41 |
 | **one per open file** | the file being edited, the versions it is deployed as, the deploy and export buttons; the faults naming this file | Q33, Q34, Q39, Q41 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions | Q34 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's outline color to change | Q34, Q43 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 
@@ -139,10 +142,13 @@ clears only when those machines fault again or die.
 
 ## Machines on the map
 
-- **Body:** a bot is an atlas cube, and a printer, a depot and a site
-  are their own shapes, all in the team's ring color (Q42).
-- **Ring:** every machine stands on a ring in its team's color, the
-  player's own team white.
+- **Body:** a bot is an atlas cube in its `color`, or the neutral body
+  color while it is `None`; a printer, a depot and a site are their own
+  shapes in the neutral body color (Q43).
+- **Outline:** every machine is outlined in its team's outline color —
+  the player's own green unless changed, each other team's from the list
+  in data unless changed — so friend and foe read at a glance and three
+  teams stay three (Q43).
 - **Health:** a bar over the machine for a few seconds after any change.
 - **Fault:** the mark above.
 - **Fog:** as Q21 rules — a machine on a remembered tile is drawn as last
@@ -201,7 +207,9 @@ awaited and the match continues, with a line in the log.
 ## Costs
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
-`fault_mark_ticks`, and the team ring colors. None is a sim value.
+`fault_mark_ticks`, the neutral body color, the player's default outline
+color and the outline list for the other teams. None is a sim value; the
+player's own outline choices live in `colors.toml` beside the programs.
 
 ## What this doc leaves open
 

@@ -88,7 +88,7 @@ pass.
   Decided entries, and they are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
 - **The interface's rulings live in [07-interface](07-interface.md)** —
-  Q33 (the editor), Q34 (faults), Q35 (a bot's color), Q36 (the start and
+  Q33 (the editor), Q34 (faults), Q35 and Q43 (a bot's color and the team outline), Q36 (the start and
   end screens), Q37 (the mark tools), Q38 (the stall and the desync), Q39
   (windows, amending Q33) and Q41 (the program tree, amending Q33 and Q39)
   are its Decided entries, and they are not repeated here.

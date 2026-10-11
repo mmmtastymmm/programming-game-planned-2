@@ -116,6 +116,11 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   adjacent bot of another team, in the damage step, so attacking or
   deconstructing a printer is a fight. Progression is
   [05-progression](05-progression.md)'s doc; the mechanism is this one's.
+- **A bot's program sets its color (Q43, amending Q35 and Q42).** A bot's
+  `set_color(color)` sets its `color` attribute to a color from the paint
+  list in data, or `None`, which it is when printed; the color survives a
+  redeploy and a fault, and a sighting carries it like every attribute.
+  Buildings have none. How a color and a team are drawn is `07`'s.
 - **Bots attack, and nothing else does (Q25).** A bot's `attack(id)` hits a
   machine its team can see, within `attack_range` and in line of sight, for
   `attack_damage` health when the action completes, landed in the tick's
@@ -187,6 +192,7 @@ classDiagram
   }
   class bot {
     load
+    color
     move()
     move_to()
     pick()
@@ -195,6 +201,7 @@ classDiagram
     build_nearest()
     deconstruct()
     attack()
+    set_color()
     paint()
     unpaint()
     overlay()
@@ -254,6 +261,7 @@ writable except through an action.
 | `health` | `num` | current health; the model's maximum is in data |
 | `busy` | `str` or `None` | the name of the action in progress — any of the action builtins below, `"move"` for both move forms — or `None` |
 | `load` | `dict` of kind to `num` | a bot's carried resources, every kind present; absent on a building |
+| `color` | `str` or `None` | a bot's color, set by `set_color` (Q43), from the paint list `deployment.colors` in [data/machines.toml](../data/machines.toml); `None` when printed; absent on a building |
 | `store` | `dict` of kind to `num` | a building's held resources, every kind present; absent on a bot |
 | `progress` | `num` | ticks remaining on `busy`, or on a site's construction; `0` when idle |
 | `printing` | `num` | a printer's ticks remaining on its print in progress, `0` when not printing (Printing, below); absent on every other model |
@@ -350,6 +358,7 @@ sound.
 | `wait(ticks)` | any | nothing, for `ticks` ticks, integral and `≥ 1` | `ticks` | no |
 | `log(*values, level="info")` | any | appends `str` of each value, joined by spaces, at `level` — one of `"debug"`, `"info"`, `"warn"`, `"error"` — to the machine's diagnostic log, which the renderer shows and which is **not** world state | `0` | no |
 | `rename(name)` | any | sets `name`; a `str` longer than `name_max` is a `ValueError` | `0` | no |
+| `set_color(color)` | bot | sets `color` (Q43); `color` a color from the paint list, or `None`; anything else is a `ValueError` | `0` | no |
 
 **Ordering across machines** (determinism rule 6): actions begin in slice
 order within a tick (`06`) and complete in entity-id order among those that

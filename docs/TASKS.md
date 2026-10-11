@@ -64,3 +64,16 @@ printer programs stop calling `print`, and the Fool's script deploys to
 `bot`. The renderer: one robot file per model in the tree, bots in the
 team's color with no number, `printer` on the mark strip. The tests and
 the golden fixtures, regenerated with the reason in the PR.
+
+**T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
+
+Q43, ruled in `02` and `07`. The sim: a `color` attribute on bots, `None`
+when printed, kept across redeploy and fault, in sightings and the hash;
+the zero-tick `set_color(color)` action, refusing anything not in the
+paint list or `None`, with its row in `data/language/costs.toml`. The
+renderer: a bot's body in its color or the neutral body color, buildings
+in the neutral color, an outline on every machine in its team's color
+replacing the ring, the player's own green by default and the others from
+a list in `data/interface.toml`, changed from the inspector and saved in
+`colors.toml` beside the programs. The golden fixtures, regenerated with
+the reason in the PR.
