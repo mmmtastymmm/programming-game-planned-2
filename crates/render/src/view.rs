@@ -5,17 +5,17 @@
 //! The look is the predecessor's: fog as an opaque cover over the unknown
 //! and a cold, unlit twin of every material for the remembered.
 
-use crate::app::{DriverResource, Screen, ViewState};
+use crate::app::{DriverResource, Screen, Tool, ViewState};
 use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
 use crate::palette::{
-    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, Palette, ROCK_HEIGHT,
-    WATER_SINK, block_y_off,
+    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, MARK_HALF, Palette,
+    ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off,
 };
 use bevy::prelude::*;
 use sim::map::Terrain;
 use sim::snapshot::{MachineSnapshot, Snapshot};
-use sim::world::{Model, TileMemory, TileState};
+use sim::world::{Model, Plan, Plans, TileMemory, TileState};
 use sim::{EntityId, TilePos};
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, PI};
@@ -29,7 +29,8 @@ pub struct TileLook {
     pub mask: u8,
     pub paint: Option<String>,
     pub overlay: Option<String>,
-    pub plan: Option<String>,
+    /// The player's team's plans here, drawn as their effect (Q37).
+    pub plans: Option<Plans>,
 }
 
 pub struct TileView {
@@ -88,6 +89,10 @@ pub struct Entities {
     pub tops: HashMap<TilePos, f32>,
     pub synced_tick: Option<u64>,
     pub sounds_tick: Option<u64>,
+    /// The armed tool's ghost: what it shows, and on which tiles — the one
+    /// under the cursor, or a `Shift`+drag's rectangle (Q44).
+    pub cursor: (Tool, Vec<TilePos>),
+    pub cursor_entities: Vec<Entity>,
 }
 
 impl Entities {
@@ -232,7 +237,7 @@ fn look_of(
     p: TilePos,
     mem: &TileMemory,
     memory: &HashMap<TilePos, &TileMemory>,
-    plan: Option<String>,
+    plans: Option<Plans>,
 ) -> TileLook {
     let ore = mem.deposit.is_some();
     // A NESW same-neighbour mask (bit 0 = N … bit 3 = W); off the map or
@@ -261,7 +266,7 @@ fn look_of(
         mask,
         paint: mem.paint.clone(),
         overlay: mem.overlay.clone(),
-        plan,
+        plans,
     }
 }
 
@@ -270,6 +275,17 @@ fn top_of(look: &TileLook) -> f32 {
         Terrain::Rock => ROCK_HEIGHT,
         Terrain::Water => WATER_SINK,
         Terrain::Ground => 0.0,
+    }
+}
+
+/// The height of a tile's upper face, which a flat mark must clear to be
+/// seen: a rock block's summit, or a slab's top, half its thickness above
+/// where the slab is spawned.
+fn surface_of(look: &TileLook) -> f32 {
+    match look.terrain {
+        Terrain::Rock => ROCK_HEIGHT,
+        Terrain::Water => WATER_SINK + SLAB_HALF,
+        Terrain::Ground => SLAB_HALF,
     }
 }
 
@@ -294,8 +310,9 @@ pub fn sync_tiles(
         return;
     };
     let memory: HashMap<TilePos, &TileMemory> = team.tiles.iter().map(|(p, m)| (*p, m)).collect();
+    let plans: HashMap<TilePos, &Plans> = team.plans.iter().map(|(p, x)| (*p, x)).collect();
     for (p, mem) in &team.tiles {
-        let look = look_of(*p, mem, &memory, driver.0.snapshot_plan(player, *p));
+        let look = look_of(*p, mem, &memory, plans.get(p).map(|x| (*x).clone()));
         if let Some(&c) = ents.covers.get(p)
             && let Ok(mut v) = covers.get_mut(c)
         {
@@ -331,6 +348,127 @@ pub fn sync_tiles(
         );
         ents.tiles.insert(*p, TileView { look, entities });
     }
+}
+
+/// A tile's plans as a translucent version of their effect — the paint's
+/// color, the overlay's marker, the building — and a plan to clear a slot
+/// as that slot hatched (Q37). The overlay's label is painted over the map
+/// by the UI. `surface` is the tile's upper face ([`surface_of`]); the
+/// paint plan sits just above any applied paint there.
+fn spawn_plans(
+    commands: &mut Commands,
+    frame: &Frame,
+    palette: &mut Palette,
+    materials: &mut Assets<StandardMaterial>,
+    p: TilePos,
+    top: f32,
+    surface: f32,
+    plans: &Plans,
+) -> Vec<Entity> {
+    let mut out = Vec::new();
+    let mut spawn = |mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, t: Transform| {
+        out.push(
+            commands
+                .spawn((
+                    DespawnOnEnter(Screen::Start),
+                    Mesh3d(mesh),
+                    MeshMaterial3d(mat),
+                    t,
+                ))
+                .id(),
+        );
+    };
+    if let Some(plan) = &plans.paint {
+        let mat = match plan {
+            Plan::Set(c) => {
+                let live = palette
+                    .paint_mats
+                    .get(c)
+                    .cloned()
+                    .unwrap_or_else(|| palette.paint_mats["white"].clone());
+                palette.ghost(materials, &live)
+            }
+            Plan::Clear => palette.hatch_mat.clone(),
+        };
+        spawn(
+            palette.mark_quad.clone(),
+            mat,
+            Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.01)),
+        );
+    }
+    if let Some(plan) = &plans.overlay {
+        let mat = match plan {
+            Plan::Set(_) => {
+                let live = palette.overlay_mat.clone();
+                palette.ghost(materials, &live)
+            }
+            Plan::Clear => palette.hatch_mat.clone(),
+        };
+        spawn(
+            palette.overlay_cube.clone(),
+            mat,
+            Transform::from_translation(frame.tile_xyz(p, top + 0.16))
+                .with_rotation(Quat::from_rotation_y(0.6)),
+        );
+    }
+    if let Some(plan) = &plans.building {
+        let model = match plan {
+            Plan::Set(m) => Model::from_name(m).unwrap_or(Model::Depot),
+            Plan::Clear => Model::Depot,
+        };
+        let (mesh, live) = match model {
+            Model::Site => (palette.site_cube.clone(), palette.site_mat.clone()),
+            _ => (palette.crate_box.clone(), palette.crate_mat.clone()),
+        };
+        let mat = match plan {
+            Plan::Set(_) => palette.ghost(materials, &live),
+            Plan::Clear => palette.hatch_mat.clone(),
+        };
+        spawn(
+            mesh,
+            mat,
+            Transform::from_translation(frame.tile_xyz(p, top + body_lift(model))),
+        );
+    }
+    out
+}
+
+/// The armed tool's ghost under the cursor, or over a `Shift`+drag's
+/// rectangle: what marking there would plan (Q37, Q44), rebuilt when the
+/// tool or the tiles change.
+pub fn cursor_ghost(
+    mut commands: Commands,
+    state: Res<ViewState>,
+    frame: Res<Frame>,
+    mut palette: ResMut<Palette>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ents: ResMut<Entities>,
+) {
+    let want = (state.tool.clone(), state.preview());
+    if ents.cursor == want {
+        return;
+    }
+    for e in std::mem::take(&mut ents.cursor_entities) {
+        commands.entity(e).despawn();
+    }
+    if let Some(plans) = crate::marks::ghost_of(&want.0) {
+        for p in &want.1 {
+            let top = ents.top(*p);
+            let surface = ents.tiles.get(p).map_or(SLAB_HALF, |t| surface_of(&t.look));
+            let spawned = spawn_plans(
+                &mut commands,
+                &frame,
+                &mut palette,
+                &mut materials,
+                *p,
+                top,
+                surface,
+                &plans,
+            );
+            ents.cursor_entities.extend(spawned);
+        }
+    }
+    ents.cursor = want;
 }
 
 fn spawn_tile(
@@ -385,6 +523,7 @@ fn spawn_tile(
             .id(),
     );
     let top = top_of(look);
+    let surface = surface_of(look);
     if let Some(paint) = &look.paint {
         let live = palette
             .paint_mats
@@ -398,7 +537,7 @@ fn spawn_tile(
                     DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.mark_quad.clone()),
                     MeshMaterial3d(material),
-                    Transform::from_translation(frame.tile_xyz(p, top + 0.03)),
+                    Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.005)),
                 ))
                 .id(),
         );
@@ -417,23 +556,10 @@ fn spawn_tile(
                 .id(),
         );
     }
-    if let Some(plan) = &look.plan {
-        let m = match plan.as_str() {
-            "building" => palette.plan_building_mat.clone(),
-            "paint" => palette.plan_paint_mat.clone(),
-            _ => palette.plan_overlay_mat.clone(),
-        };
-        out.push(
-            commands
-                .spawn((
-                    DespawnOnEnter(Screen::Start),
-                    Mesh3d(palette.mark_quad.clone()),
-                    MeshMaterial3d(m),
-                    Transform::from_translation(frame.tile_xyz(p, top + 0.05))
-                        .with_scale(Vec3::new(0.8, 1.0, 0.8)),
-                ))
-                .id(),
-        );
+    if let Some(plans) = &look.plans {
+        out.extend(spawn_plans(
+            commands, frame, palette, materials, p, top, surface, plans,
+        ));
     }
     out
 }
@@ -755,7 +881,8 @@ pub fn fault_marks(
 }
 
 /// Draw each machine between its previous and current tile by the fraction
-/// of the tick elapsed (Q6), turning the shortest way round.
+/// of the tick elapsed (Q6), turning the shortest way round on the tick it
+/// moves and holding its heading otherwise.
 pub fn interpolate(
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
@@ -784,12 +911,20 @@ pub fn interpolate(
         };
         let lift = body_lift(view.model);
         let cur = frame.tile_xyz(m.record.pos, ents.top(m.record.pos) + lift);
-        let from = prev
-            .get(&m.record.id)
-            .map(|p| frame.tile_xyz(*p, ents.top(*p) + lift))
+        let was = prev.get(&m.record.id).copied();
+        let from = was
+            .map(|p| frame.tile_xyz(p, ents.top(p) + lift))
             .unwrap_or(cur);
         t.translation = from.lerp(cur, f);
-        t.rotation = Quat::from_rotation_y(view.yaw_prev).slerp(Quat::from_rotation_y(view.yaw), f);
+        // Turn only on the tick the machine moved: the headings change only
+        // on a move, so a machine standing still after a turn would
+        // otherwise replay that turn every tick.
+        let yaw = Quat::from_rotation_y(view.yaw);
+        t.rotation = if was.is_some_and(|p| p != m.record.pos) {
+            Quat::from_rotation_y(view.yaw_prev).slerp(yaw, f)
+        } else {
+            yaw
+        };
     }
 }
 

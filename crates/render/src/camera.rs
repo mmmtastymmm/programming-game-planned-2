@@ -46,6 +46,7 @@ pub fn orbit_camera(
     mut last_cursor: Local<Option<Vec2>>,
     mut wheel: MessageReader<MouseWheel>,
     mut cams: Query<(&mut OrbitCam, &mut Transform)>,
+    state: Option<Res<crate::app::ViewState>>,
 ) {
     let over_ui = contexts
         .ctx_mut()
@@ -105,9 +106,11 @@ pub fn orbit_camera(
             gesture.panning = true;
         }
     }
+    // With a mark armed a left drag marks instead (Q37).
+    let armed = state.is_some_and(|s| s.tool != crate::app::Tool::Select);
     let panning = buttons.pressed(MouseButton::Middle)
         || (buttons.pressed(MouseButton::Right) && shift)
-        || (buttons.pressed(MouseButton::Left) && gesture.panning);
+        || (buttons.pressed(MouseButton::Left) && gesture.panning && !armed);
     if panning && delta != Vec2::ZERO {
         let right = transform.right();
         let up = transform.up();

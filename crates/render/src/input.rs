@@ -2,20 +2,37 @@
 //! submits a command and forgets it; nothing here changes what a machine
 //! does. The camera is `camera.rs`.
 
-use crate::app::{DriverResource, Tool, ViewState};
+use crate::app::{Drag, DriverResource, Tool, ViewState};
 use crate::camera::{LmbGesture, cursor_tile};
+use crate::marks::{self, MarkRows};
 use crate::palette::Frame;
 use crate::view::Entities;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
+use sim::world::Plans;
 use sim::{CommandKind, PlanKind};
+use std::collections::BTreeMap;
 
-/// Keys: tools 1–6, speed with `-`/`=`, `Shift+D` deploys, `L` toggles the
-/// log, `Escape` drops the tool, `Shift+R` resigns.
+const DIGITS: [KeyCode; 9] = [
+    KeyCode::Digit1,
+    KeyCode::Digit2,
+    KeyCode::Digit3,
+    KeyCode::Digit4,
+    KeyCode::Digit5,
+    KeyCode::Digit6,
+    KeyCode::Digit7,
+    KeyCode::Digit8,
+    KeyCode::Digit9,
+];
+
+/// Keys: `B`/`P`/`O` pick a row of the mark strip and `1`–`9` arm an entry
+/// in it (Q37), `Escape` disarms, speed with `-`/`=`, `Shift+D` deploys,
+/// `L` toggles the log, `Shift+R` resigns.
 pub fn keys(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
+    rows: Res<MarkRows>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
@@ -33,23 +50,23 @@ pub fn keys(
             state.selected = None;
         }
     }
-    if keys.just_pressed(KeyCode::Digit1) {
-        state.tool = Tool::Building("depot".into());
+    for (key, plan) in [
+        (KeyCode::KeyB, PlanKind::Building),
+        (KeyCode::KeyP, PlanKind::Paint),
+        (KeyCode::KeyO, PlanKind::Overlay),
+    ] {
+        if keys.just_pressed(key) {
+            state.row = Some(plan);
+        }
     }
-    if keys.just_pressed(KeyCode::Digit2) {
-        state.tool = Tool::Paint("red".into());
-    }
-    if keys.just_pressed(KeyCode::Digit3) {
-        state.tool = Tool::Overlay("a".into());
-    }
-    if keys.just_pressed(KeyCode::Digit4) {
-        state.tool = Tool::Clear(PlanKind::Paint);
-    }
-    if keys.just_pressed(KeyCode::Digit5) {
-        state.tool = Tool::Unmark(PlanKind::Building);
-    }
-    if keys.just_pressed(KeyCode::Digit6) {
-        state.tool = Tool::Building("printer".into());
+    if let Some(row) = state.row {
+        for (i, key) in DIGITS.iter().enumerate() {
+            if keys.just_pressed(*key)
+                && let Some(tool) = rows.pick(row, i + 1, &state.tool)
+            {
+                state.tool = tool;
+            }
+        }
     }
     if keys.just_pressed(KeyCode::KeyL) {
         crate::ui::toggle(&mut state, "log");
@@ -115,12 +132,16 @@ pub fn submit(
     }
 }
 
-/// The tile under the cursor every frame; a click (a left press that did
-/// not become a drag) on it with a tool is a `Mark` or `Unmark`, and with
-/// no tool selects the machine there.
+/// The tile under the cursor every frame. Unarmed, a click (a left press
+/// that did not become a drag) selects the machine there. Armed, the press
+/// marks the tile and a drag every tile the cursor crosses, each once
+/// (Q37); a press with `Shift` held instead anchors a rectangle, which
+/// fills on release — or on nothing, if `Esc` disarms first (Q44).
 pub fn click(
     mut contexts: EguiContexts,
     gesture: Res<LmbGesture>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     frame: Res<Frame>,
@@ -141,73 +162,99 @@ pub fn click(
         cursor_tile(window, camera, cam_tf, &frame, |p| ents.top(p))
     };
     state.hover = tile;
+    let tool = state.tool.clone();
+    // A drag lives while the left button is held from a press on the map:
+    // the camera's gesture only starts on one.
+    if !buttons.pressed(MouseButton::Left) || gesture.travel.is_none() {
+        if let Some(Drag {
+            anchor: Some(a),
+            last: Some(b),
+            ..
+        }) = state.drag.take()
+        {
+            mark_tiles(&mut driver.0, &mut state, &tool, marks::rect(a, b));
+        }
+        if tool == Tool::Select {
+            select(&gesture, tile, &driver, &ents, &mut state);
+        }
+        return;
+    }
+    if tool == Tool::Select {
+        return;
+    }
+    let Some(tile) = tile else { return };
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let corner = clamp(tile, driver.0.bounds);
+    let mut drag = state.drag.take().unwrap_or_else(|| Drag {
+        anchor: shift.then_some(corner),
+        ..Drag::default()
+    });
+    let crossed = match (drag.anchor, drag.last) {
+        (Some(_), _) => vec![],
+        (None, Some(last)) => marks::walk(last, tile),
+        (None, None) => vec![tile],
+    };
+    drag.last = Some(if drag.anchor.is_some() { corner } else { tile });
+    let fresh: Vec<_> = crossed
+        .into_iter()
+        .filter(|p| drag.done.insert(*p))
+        .collect();
+    mark_tiles(&mut driver.0, &mut state, &tool, fresh);
+    state.drag = Some(drag);
+}
+
+/// `p` moved onto the map: a rectangle's corner stops at the edge.
+fn clamp(p: sim::TilePos, (min, max): (sim::TilePos, sim::TilePos)) -> sim::TilePos {
+    sim::TilePos::new(p.x.clamp(min.x, max.x), p.y.clamp(min.y, max.y))
+}
+
+/// Submit what marking each of `tiles` on the map with `tool` becomes,
+/// given the team's plans there as the sim last reported them.
+fn mark_tiles(
+    driver: &mut crate::driver::Driver,
+    state: &mut ViewState,
+    tool: &Tool,
+    tiles: Vec<sim::TilePos>,
+) {
+    if tiles.is_empty() {
+        return;
+    }
+    let (min, max) = driver.bounds;
+    let player = driver.player;
+    let held: BTreeMap<sim::TilePos, Plans> = driver
+        .snapshot()
+        .teams
+        .iter()
+        .find(|t| t.id == player)
+        .map(|t| t.plans.iter().cloned().collect())
+        .unwrap_or_default();
+    for p in tiles {
+        let on_map = (min.x..=max.x).contains(&p.x) && (min.y..=max.y).contains(&p.y);
+        if on_map && let Some(kind) = marks::command(tool, p, held.get(&p)) {
+            submit(driver, state, kind);
+        }
+    }
+}
+
+/// Unarmed, a click selects the machine on the tile.
+fn select(
+    gesture: &LmbGesture,
+    tile: Option<sim::TilePos>,
+    driver: &DriverResource,
+    ents: &Entities,
+    state: &mut ViewState,
+) {
     let Some(tile) = tile else { return };
     if !gesture.clicked {
         return;
     }
-    let tool = state.tool.clone();
-    match tool {
-        Tool::Select => {
-            let snap = driver.0.snapshot();
-            state.selected = snap
-                .machines
-                .iter()
-                .filter(|m| {
-                    m.record.pos == tile && ents.machines.get(&m.record.id).is_some_and(|v| v.shown)
-                })
-                .map(|m| m.record.id)
-                .next();
-        }
-        Tool::Building(model) => {
-            submit(
-                &mut driver.0,
-                &mut state,
-                CommandKind::Mark {
-                    at: tile,
-                    plan: PlanKind::Building,
-                    value: Some(model),
-                },
-            );
-        }
-        Tool::Paint(color) => {
-            submit(
-                &mut driver.0,
-                &mut state,
-                CommandKind::Mark {
-                    at: tile,
-                    plan: PlanKind::Paint,
-                    value: Some(color),
-                },
-            );
-        }
-        Tool::Overlay(label) => {
-            submit(
-                &mut driver.0,
-                &mut state,
-                CommandKind::Mark {
-                    at: tile,
-                    plan: PlanKind::Overlay,
-                    value: Some(label),
-                },
-            );
-        }
-        Tool::Clear(plan) => {
-            submit(
-                &mut driver.0,
-                &mut state,
-                CommandKind::Mark {
-                    at: tile,
-                    plan,
-                    value: None,
-                },
-            );
-        }
-        Tool::Unmark(plan) => {
-            submit(
-                &mut driver.0,
-                &mut state,
-                CommandKind::Unmark { at: tile, plan },
-            );
-        }
-    }
+    let snap = driver.0.snapshot();
+    state.selected = snap
+        .machines
+        .iter()
+        .filter(|m| {
+            m.record.pos == tile && ents.machines.get(&m.record.id).is_some_and(|v| v.shown)
+        })
+        .map(|m| m.record.id)
+        .next();
 }

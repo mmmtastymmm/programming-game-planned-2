@@ -16,6 +16,11 @@ pub const BOT_HALF: f32 = 0.35;
 pub const ROCK_HEIGHT: f32 = 0.55;
 /// Water sits a little below the plane so it reads as a depression.
 pub const WATER_SINK: f32 = -0.05;
+/// Half the thickness of a ground or water slab: its upper face sits this
+/// far above where it is spawned.
+pub const SLAB_HALF: f32 = 0.05;
+/// Half the thickness of the flat quad paint and paint plans draw with.
+pub const MARK_HALF: f32 = 0.01;
 
 // The lens on a bot's front face: a barrel half-sunk into the face and a
 // team-accent glass at its tip.
@@ -127,6 +132,33 @@ pub fn paint_color(name: &str) -> Color {
         "black" => Color::srgb(0.10, 0.10, 0.12),
         _ => Color::srgb(0.70, 0.70, 0.50),
     }
+}
+
+/// Diagonal stripes on clear: what a plan to empty a slot draws (Q37).
+fn hatch_image() -> Image {
+    const SIZE: u32 = 32;
+    let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let on = (x + y) % 8 < 3;
+            data.extend_from_slice(if on {
+                &[235, 235, 225, 190]
+            } else {
+                &[20, 20, 24, 40]
+            });
+        }
+    }
+    Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    )
 }
 
 /// The frame: tile `(x, y)` sits at world `(x - cx, _, -(y - cy))`, so north
@@ -289,9 +321,8 @@ pub struct Palette {
     pub unknown_mat: Handle<StandardMaterial>,
     pub paint_mats: HashMap<String, Handle<StandardMaterial>>,
     pub overlay_mat: Handle<StandardMaterial>,
-    pub plan_building_mat: Handle<StandardMaterial>,
-    pub plan_paint_mat: Handle<StandardMaterial>,
-    pub plan_overlay_mat: Handle<StandardMaterial>,
+    /// A plan to clear a slot: the slot hatched (Q37).
+    pub hatch_mat: Handle<StandardMaterial>,
     pub select_mat: Handle<StandardMaterial>,
     pub hover_mat: Handle<StandardMaterial>,
     pub ring_mats: Vec<Handle<StandardMaterial>>,
@@ -299,6 +330,8 @@ pub struct Palette {
     pub bar_fill_mat: Handle<StandardMaterial>,
     /// Memory twins: the live material's id to its darkened, unlit copy.
     pub dim: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
+    /// Plan ghosts: the live material's id to its translucent copy.
+    pub ghosts: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     /// Team tints: a base material and a team's ring color to the tinted
     /// copy — buildings, rings and lens glass are these.
     pub tints: HashMap<(AssetId<StandardMaterial>, u32), Handle<StandardMaterial>>,
@@ -427,7 +460,7 @@ impl Palette {
             })
             .collect();
         Palette {
-            tile_slab: meshes.add(textured_slab_mesh(Vec3::new(0.48, 0.05, 0.48))),
+            tile_slab: meshes.add(textured_slab_mesh(Vec3::new(0.48, SLAB_HALF, 0.48))),
             rock_block: meshes.add(block_mesh(ROCK_HEIGHT)),
             bot_cube: meshes.add(atlas_box_mesh(Vec3::splat(BOT_HALF))),
             printer_box: meshes.add(atlas_box_mesh(Vec3::new(0.45, 0.25, 0.45))),
@@ -435,7 +468,7 @@ impl Palette {
             crate_box: meshes.add(textured_slab_mesh(Vec3::new(0.39, 0.15, 0.39))),
             site_cube: meshes.add(Cuboid::new(0.7, 0.7, 0.7)),
             cover_quad: meshes.add(Cuboid::new(1.0, 0.02, 1.0)),
-            mark_quad: meshes.add(Cuboid::new(0.9, 0.02, 0.9)),
+            mark_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
             overlay_cube: meshes.add(Cuboid::new(0.22, 0.22, 0.22)),
             ring: meshes.add(Annulus::new(0.36, 0.44)),
             team_ring: meshes.add(Annulus::new(0.40, 0.47)),
@@ -490,15 +523,19 @@ impl Palette {
                 emissive: LinearRgba::new(0.6, 0.6, 0.5, 1.0),
                 ..default()
             }),
-            plan_building_mat: plain(materials, Color::srgba(0.95, 0.9, 0.3, 0.45), true),
-            plan_paint_mat: plain(materials, Color::srgba(0.95, 0.3, 0.9, 0.45), true),
-            plan_overlay_mat: plain(materials, Color::srgba(0.3, 0.95, 0.95, 0.45), true),
+            hatch_mat: materials.add(StandardMaterial {
+                base_color_texture: Some(assets.add(hatch_image())),
+                alpha_mode: AlphaMode::Blend,
+                unlit: true,
+                ..default()
+            }),
             select_mat: plain(materials, Color::srgba(0.4, 0.85, 0.95, 0.5), true),
             hover_mat: plain(materials, Color::srgba(1.0, 1.0, 1.0, 0.18), true),
             ring_mats,
             bar_bg_mat: plain(materials, Color::srgb(0.05, 0.05, 0.06), true),
             bar_fill_mat: plain(materials, Color::srgb(0.9, 0.2, 0.15), true),
             dim: HashMap::new(),
+            ghosts: HashMap::new(),
         }
     }
 
@@ -531,6 +568,29 @@ impl Palette {
     }
 
     /// The memory twin of a live material: darkened, blue-shifted, unlit.
+    /// The translucent copy of `live` a plan previews its effect with
+    /// (Q37): the same look at half alpha, unlit so it reads as a ghost.
+    pub fn ghost(
+        &mut self,
+        materials: &mut Assets<StandardMaterial>,
+        live: &Handle<StandardMaterial>,
+    ) -> Handle<StandardMaterial> {
+        if let Some(g) = self.ghosts.get(&live.id()) {
+            return g.clone();
+        }
+        let Some(src) = materials.get(live) else {
+            return live.clone();
+        };
+        let mut m = src.clone();
+        let c = m.base_color.to_linear();
+        m.base_color = LinearRgba::new(c.red, c.green, c.blue, 0.45).into();
+        m.alpha_mode = AlphaMode::Blend;
+        m.unlit = true;
+        let g = materials.add(m);
+        self.ghosts.insert(live.id(), g.clone());
+        g
+    }
+
     pub fn dim(
         &mut self,
         materials: &mut Assets<StandardMaterial>,

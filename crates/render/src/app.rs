@@ -6,6 +6,7 @@ use crate::driver::Driver;
 use crate::editor::Editor;
 use crate::launch::Setup;
 use crate::layout::Layout;
+use crate::marks::MarkRows;
 use crate::palette::{CLEAR, Interface};
 use crate::screens::{self, StartScreen};
 use crate::{input, ui, view};
@@ -24,28 +25,34 @@ pub enum Screen {
     End,
 }
 
-/// What the player is doing with the mouse (`docs/06`, Q10): nothing, or
-/// one of the mark tools.
+/// What the player is doing with the mouse (`docs/07`, Marks; Q37):
+/// nothing — a click selects and a drag pans — or a mark armed until `Esc`,
+/// its kind and its value (`None` is *clear*, the plan to empty the slot).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Tool {
     #[default]
     Select,
-    /// A building plan for the model.
-    Building(String),
-    /// A paint plan for the color.
-    Paint(String),
-    /// An overlay plan for the label.
-    Overlay(String),
-    /// A plan to clear the slot.
-    Clear(sim::PlanKind),
-    /// Withdraw the team's plan of that kind.
-    Unmark(sim::PlanKind),
+    Mark(sim::PlanKind, Option<String>),
+}
+
+/// A left drag with a tool armed: where the cursor last was on the map,
+/// and the tiles already marked, so each is marked once per drag (Q37).
+/// A drag begun with `Shift` held has an anchor instead: it marks nothing
+/// until release, then fills the rectangle from the anchor to `last` (Q44).
+#[derive(Debug, Default)]
+pub struct Drag {
+    pub last: Option<sim::TilePos>,
+    pub done: std::collections::BTreeSet<sim::TilePos>,
+    pub anchor: Option<sim::TilePos>,
 }
 
 /// Renderer-side state no system shares with the sim.
 #[derive(Resource)]
 pub struct ViewState {
     pub tool: Tool,
+    /// The strip's row `B`, `P` or `O` last picked, which `1`–`9` index.
+    pub row: Option<sim::PlanKind>,
+    pub drag: Option<Drag>,
     pub selected: Option<sim::EntityId>,
     /// The programs directory, re-read on `Shift+D`.
     pub programs: Option<PathBuf>,
@@ -66,10 +73,31 @@ pub struct ViewState {
     pub faults_seen: std::collections::HashMap<sim::EntityId, u64>,
 }
 
+impl ViewState {
+    /// The tiles the armed tool's ghost covers: a `Shift`+drag's rectangle
+    /// so far, or else the tile under the cursor. Empty unarmed.
+    pub fn preview(&self) -> Vec<sim::TilePos> {
+        if self.tool == Tool::Select {
+            return Vec::new();
+        }
+        if let Some(Drag {
+            anchor: Some(a),
+            last: Some(b),
+            ..
+        }) = &self.drag
+        {
+            return crate::marks::rect(*a, *b);
+        }
+        self.hover.into_iter().collect()
+    }
+}
+
 impl Default for ViewState {
     fn default() -> Self {
         ViewState {
             tool: Tool::Select,
+            row: None,
+            drag: None,
             selected: None,
             programs: None,
             deployed: Default::default(),
@@ -170,6 +198,10 @@ pub fn run(setup: Setup, autostart: bool) {
     .init_state::<Screen>()
     .insert_resource(ClearColor(CLEAR))
     .insert_resource(interface)
+    .insert_resource(MarkRows::load().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }))
     .insert_resource(view::Tuning::load())
     .insert_resource(view::Entities::default())
     .insert_resource(LmbGesture::default())
@@ -196,6 +228,7 @@ pub fn run(setup: Setup, autostart: bool) {
             orbit_camera,
             input::keys.run_if(in_match.clone()),
             input::click.run_if(in_match),
+            view::cursor_ghost,
             view::markers,
             view::billboard_bars,
             view::level_rings,

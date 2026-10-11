@@ -63,6 +63,8 @@ pub enum Model {
 }
 
 impl Model {
+    pub const ALL: [Model; 4] = [Model::Bot, Model::Printer, Model::Depot, Model::Site];
+
     pub fn name(self) -> &'static str {
         match self {
             Model::Bot => "bot",

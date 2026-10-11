@@ -713,3 +713,71 @@ fn the_sounds_hear_reads_are_in_the_hash() {
     });
     assert_ne!(s.state_hash(), before);
 }
+
+#[test]
+fn the_markable_values_are_exactly_what_validation_accepts() {
+    let data = Data::load().unwrap();
+    let sim = sim();
+    let mark = |plan, value: &str| {
+        Command::new(
+            1,
+            TeamId(0),
+            0,
+            CommandKind::Mark {
+                at: TilePos::new(0, 0),
+                plan,
+                value: Some(value.into()),
+            },
+        )
+    };
+    for plan in [PlanKind::Building, PlanKind::Paint, PlanKind::Overlay] {
+        let values = Sim::markable(&data, plan);
+        assert!(!values.is_empty(), "{plan:?} has nothing to mark");
+        for v in &values {
+            assert!(sim.validate(&mark(plan, v)).is_ok(), "{plan:?} {v}");
+        }
+    }
+    assert_eq!(
+        Sim::markable(&data, PlanKind::Building),
+        vec!["printer", "depot"]
+    );
+    for refused in ["site", "bot"] {
+        assert!(sim.validate(&mark(PlanKind::Building, refused)).is_err());
+    }
+}
+
+#[test]
+fn the_snapshot_carries_each_teams_own_plans_and_no_one_elses() {
+    let mut sim = sim();
+    let at = TilePos::new(0, 0);
+    let mark = |team, plan, value: Option<&str>| {
+        Command::new(
+            1,
+            TeamId(team),
+            0,
+            CommandKind::Mark {
+                at,
+                plan,
+                value: value.map(str::to_string),
+            },
+        )
+    };
+    let before = sim.state_hash();
+    let empty = sim.snapshot();
+    assert!(empty.teams.iter().all(|t| t.plans.is_empty()));
+    sim.step(&[
+        mark(0, PlanKind::Paint, Some("red")),
+        mark(0, PlanKind::Overlay, None),
+    ]);
+    assert_ne!(sim.state_hash(), before, "a plan is world state");
+    let snap = sim.snapshot();
+    let mine = &snap.teams.iter().find(|t| t.id == TeamId(0)).unwrap().plans;
+    assert_eq!(mine.len(), 1);
+    let (p, plans) = &mine[0];
+    assert_eq!(*p, at);
+    assert_eq!(plans.paint, Some(sim::world::Plan::Set("red".into())));
+    assert_eq!(plans.overlay, Some(sim::world::Plan::Clear));
+    assert_eq!(plans.building, None);
+    let theirs = &snap.teams.iter().find(|t| t.id == TeamId(1)).unwrap().plans;
+    assert!(theirs.is_empty(), "plans are private");
+}
