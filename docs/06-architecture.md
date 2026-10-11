@@ -87,7 +87,8 @@ flowchart LR
 `render` type cannot appear in a `sim` signature. The review rule CLAUDE.md
 states — flag any code that feeds sim state from the ECS side — covers what
 the compiler cannot see: a `render` system holding a mutable reference to
-the sim resource outside the driver.
+the sim resource outside the driver. A fork (Forks) is not that resource,
+and the debugger's systems may hold one mutably.
 
 **`lang` is separate from `sim`** so the determinism suite can run the
 interpreter on its own fixtures (T14) without a world, and so the
@@ -112,14 +113,17 @@ loop:
         wait until (real time since last tick) ≥ 1 / speed
         if not net.have_all_sets(first ..= tick + 1): stall; continue
     commands = net.sets_for(first ..= tick + 1)  # every peer's, ordered
-    sim.step(commands)                           # exactly one tick
+    sim.step(commands, watches)                  # exactly one tick; watches
+                                                 # are the debugger's (Forks)
     snapshot = sim.snapshot()                    # published, never shared
     hash = sim.hash()                            # sent to peers, checked
     tick += 1
 ```
 
 - **`sim.step` is the only entry point that changes the world**, and it
-  takes the tick's full command set. There is no other mutating call on the
+  takes the tick's full command set, with the team's watched lines when
+  the player has breakpoints (Forks). A fork is not the match's world and
+  has entry points of its own (Forks). There is no other mutating call on the
   sim; the snapshot and the hash are reads.
 - **Speed lives in the driver**, set by the `SetSpeed` command when
   `sim.step` reports it applied. The sim carries no rate (Q6). **A paused
@@ -275,13 +279,21 @@ by re-running `(map, command log)`, and either way its state hash equals
 the match's at that tick. It runs the tick loop of The tick, unchanged,
 and it is never a peer: it sends nothing and receives nothing, and nothing
 it does reaches the match. Only `sim` and its callers in `render` and
-`replay` hold one.
+`replay` hold one, and a fork is not the match's sim: the rule that
+`sim.step` is the only entry point that changes the world, and the review
+rule on mutable references (Crates), are the match's, and a fork has the
+further entry points below.
 
-- **Hits.** Given a set of watched `(file, line)` pairs and the team they
-  belong to, `sim.step` reports every machine of that team that begins an
-  operation on a watched line, with the tick, beside its usual report. It
-  charges nothing and changes nothing, and the set is no part of the state
-  hash, so a peer watching lines hashes as one that is not.
+- **Watched lines.** A watch is `(deployment, bundle version, file in the
+  bundle, line)` for one team — the deployment and version because every
+  deployment's robot file is its bundle's `main.py` (`01`, `07`). The
+  driver passes the team's watches to `sim.step` with the tick's commands;
+  they are no part of the state hash, so a peer watching lines hashes as
+  one that is not. `sim.step` reports, beside its usual report, each
+  machine of that team running that version of that deployment that
+  **enters** a watched line: begins an operation on it when its previous
+  operation was on another line or in another frame, or the frame is new.
+  It charges nothing and changes nothing.
 - **Stopping.** A fork can stop inside a tick, at an operation boundary
   (`01`, Metering) of any machine's slice, and resume from there; a fork
   stopped mid-tick has no state hash until the tick completes. It reports
@@ -289,20 +301,30 @@ it does reaches the match. Only `sim` and its callers in `render` and
   globals, its budget and deficit, and its pending interrupts.
 - **Steps**, each stopping on one selected machine and running every other
   machine in tick-loop order meanwhile: **line** — until the selected
-  machine begins an operation on another line or in another frame;
-  **over** — until it next begins an operation in the frame it was in, so
-  a call or a waiting action is one step; **tick** — to the end of the
-  tick; **continue** — to the next watched line. Metering is unchanged, so
-  an untouched fork reproduces the match hash for hash.
-- **Back.** Checkpoints of the live sim and of every fork are kept every
-  `debug_checkpoint_ticks`, the last `debug_checkpoints_kept`; stepping
-  back restores the latest checkpoint at or before the target and re-runs
-  to it.
+  machine enters another line, or a frame other than its current one;
+  **over** — until it next enters a line in the frame it was in, or in the
+  frame below if that one returns or is abandoned, so a call or a waiting
+  action is one step; **tick** — to the end of the tick; **continue** —
+  until it, or with no machine selected any watched machine, next enters a
+  watched line, never counting the line it stands on. Every step also
+  stops when the selected machine dies or a restart begins its program
+  again, and after `debug_step_max_ticks` ticks with no other stop, a
+  tuning constant of the caller; in PvP, at the live tick (The present).
+  Metering is unchanged, so an untouched fork reproduces the match hash
+  for hash.
+- **Checkpoints.** A fork can save its state at a tick boundary and be
+  restored to a saved state; *back* restores the latest saved state at or
+  before the target and steps to it. How often to save, and how many to
+  keep, is the caller's policy (`07`'s `debug_checkpoint_ticks` and
+  `debug_checkpoints_kept` for `render`).
 - **Editing.** A local or global of a machine on a paused fork may be set
-  to a value the language parses as a literal; the fork is **diverged**
-  from then on and its hashes are no longer the match's.
-- **What-if** applies `Deploy` commands to a fork at its current point and
-  runs it on; the commands enter the fork's log, never the match's.
+  to a value the language parses as a literal. The fork saves a state at
+  the edit, so *back* never re-runs across it, and is **diverged** from
+  then on: its hashes are no longer the match's.
+- **What-if** gives a fork `Deploy` commands, which enter the fork's log —
+  never the match's — agreed for the fork's next tick and applied in its
+  step 1 like any command, so a fork stopped mid-tick finishes that tick
+  on the old bundles. A fork given one is diverged.
 - **The present.** In PvP a fork's tick never exceeds the live match's
   latest completed tick, and what-if is refused. In single-player, PvE and
   replays a fork runs ahead freely, with a scripted team's commands, which

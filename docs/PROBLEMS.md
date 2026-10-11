@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-11: 4 opened, 1 fixed — 3 open.**
+**Status 2026-10-11: 5 opened, 1 fixed — 4 open.**
 
 ## Open
 
@@ -75,3 +75,15 @@ fixed list of tools on keys `1`–`6`, marks one tile per click, and draws no
 preview. The work is [T20](TASKS.md), open since before Q42; this entry
 records the gap the registers require beside it, and closes with the
 commit that finishes T20.
+
+**P5 — The code lags Q45: no forks, breakpoints or what-if**
+
+Q45 ruled that a program is debugged on a fork, and `06`'s Forks section
+and `07`'s Debugging section state it as current: watched lines passed to
+`sim.step`, forks that stop mid-tick, step, save and restore, editable
+variables, what-if, and a saved replay that records its team. None of it
+exists yet: `sim.step` takes commands only, the language VM cannot stop
+mid-slice, the renderer has no breakpoints or debugger window, and a
+replay records no team. The work is [T26](TASKS.md), [T27](TASKS.md) and
+[T28](TASKS.md); this entry closes with the commit that finishes the
+last of them.

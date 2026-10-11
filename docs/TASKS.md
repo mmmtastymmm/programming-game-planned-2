@@ -64,31 +64,38 @@ fixtures, regenerated with the reason in the PR. Finishing it fixes
 
 ## M8 — The debugger
 
-**T26 — Forks in `sim`: hit reporting, stopping mid-tick, steps, editing**
+**T26 — Forks in `sim`: watches, stopping mid-tick, steps, saved states, editing**
 
 Q45, ruled in `06`'s Forks section. A fork built by cloning the sim or by
-re-running a log, agreeing with the match's hash; `sim.step` reporting a
-team's machines beginning an operation on watched `(file, line)` pairs,
-read-only and outside the hash; the language VM stopping at an operation
-boundary mid-slice and resuming, and reporting each frame's file, line,
-function and locals, the globals, budget, deficit and pending interrupts;
-the line, over, tick and continue steps; checkpoints and back; setting a
-local or global from a literal, marking the fork diverged; the PvP bound
-at the live tick. Tests that an untouched fork reproduces the golden
-stream hash for hash, and that watching lines changes no hash.
+re-running a log, agreeing with the match's hash; `sim.step` taking a
+team's watches — `(deployment, bundle version, file, line)` — and
+reporting the machines that enter a watched line, read-only and outside
+the hash; the language VM stopping at an operation boundary mid-slice and
+resuming, and reporting each frame's file, line, function and locals, the
+globals, budget, deficit and pending interrupts; the line, over, tick and
+continue steps with their stops for a returned frame, death, a restart,
+the step limit and the live tick; saving and restoring a state; setting a
+local or global from a literal, saving a state there and marking the fork
+diverged; what-if `Deploy`s entering the fork's log for its next tick; the
+PvP bound. Tests that an untouched fork reproduces the golden stream hash
+for hash, and that watching lines changes no hash.
 
 **T27 — The debugger in `render`, live and on replays**
 
-Q45, ruled in `07`'s Debugging section. Gutter breakpoints scoped to a
-machine or a file, kept with the tree; a hit opening a fork and, outside
-PvP, submitting the pause; the debugger window and the fork banner; the
-map drawing the fork in the team's view; the step keys; variable editing;
-opening a fork by hand and from a replay on the start screen;
-`debug_checkpoint_ticks` and `debug_checkpoints_kept` in
+Q45, ruled in `07`'s Debugging section. Gutter breakpoints on a deployed
+version, scoped to a machine or a file, greyed while the file is ahead,
+kept with the tree; a hit opening a fork and, outside PvP, submitting one
+pause; further hits counted; the debugger window, its stop reasons and
+the fork banner; the map drawing the fork in the team's view; the step
+keys; variable editing; the checkpoint policy and rewind; opening a fork
+by hand and from a replay on the start screen; the saver's team recorded
+in a saved replay, outside its identity; `debug_checkpoint_ticks`,
+`debug_checkpoints_kept` and `debug_step_max_ticks` in
 `data/interface.toml`.
 
 **T28 — What-if**
 
-Q45: deploying a file into the open fork instead of the match, running the
-fork at a chosen speed, and *take it* deploying the same text to the
-match; refused in PvP.
+Q45: deploying a file into the open fork, for its next tick, instead of
+the match; running the fork at a chosen speed; *take it* deploying the
+same text to the match; refused in PvP. Together with T26 and T27,
+finishing it fixes [P5](PROBLEMS.md).
