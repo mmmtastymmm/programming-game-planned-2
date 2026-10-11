@@ -332,6 +332,12 @@ pub struct Palette {
     /// team's color (Q45): a bot's material is made per color and team.
     pub bot_textures: HashMap<String, Handle<Image>>,
     pub bot_lights: Handle<Image>,
+    /// The printer's and the depot's art and the masks their lights glow
+    /// through (Q47).
+    pub printer_texture: Handle<Image>,
+    pub printer_lights: Handle<Image>,
+    pub crate_texture: Handle<Image>,
+    pub crate_lights: Handle<Image>,
     /// The white printer atlas, tinted per team on demand.
     pub printer_mat: Handle<StandardMaterial>,
     pub printer_ruined_mat: Handle<StandardMaterial>,
@@ -502,6 +508,10 @@ impl Palette {
             rock_mats,
             bot_textures,
             bot_lights: assets.load("textures/bot_atlas_lights.png"),
+            printer_texture: assets.load("textures/printer_atlas_white.png"),
+            printer_lights: assets.load("textures/printer_atlas_lights.png"),
+            crate_texture: assets.load("textures/crate.png"),
+            crate_lights: assets.load("textures/crate_lights.png"),
             printer_mat,
             printer_ruined_mat: atlas(materials, assets.load("textures/printer_atlas_ruined.png")),
             lens_barrel_mat: materials.add(StandardMaterial {

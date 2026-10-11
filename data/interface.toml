@@ -7,8 +7,8 @@
 fault_mark_ticks = 30
 
 [teams]
-# The team colors (Q43, Q45): a bot's lights glow in its team's color and
-# a building is outlined in it. The player's own team defaults to `player`,
+# The team colors (Q43, Q45, Q47): the lights of a bot, a printer and a
+# depot glow in their team's color, and a site is outlined in it. The player's own team defaults to `player`,
 # green; every other team to the next of `outlines`, in team order
 # skipping the player's. Blue comes first,
 # so a default one-on-one is green against blue, which the commonest

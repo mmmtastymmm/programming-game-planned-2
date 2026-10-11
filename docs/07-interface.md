@@ -56,16 +56,18 @@ here changes a hash; a peer with a different renderer sees the same match.
   record in the inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
 - **A bot's body is the color its program set, and every team is a color
-  the player chooses (Q43, amending Q35 and Q42; amended by Q45).** A bot
-  is drawn in its `color` (`02`), or a neutral body color while it has
-  none, and its lights — the lens, the marker lights, the tail light, the
-  dot on top — glow in its team's color over that paint; a building's body
-  is the neutral color, outlined in its team's color. The player's own
-  team is green by default, each other team's the next of a list in
-  `data/interface.toml` in team order, skipping the player's — blue first,
-  so a default one-on-one is green against blue. The player may change
-  any team's color, their own included, from the inspector; the choice is
-  saved in `colors.toml` beside the programs and never reaches a peer.
+  the player chooses (Q43, amending Q35 and Q42; amended by Q45 and
+  Q47).** A bot is drawn in its `color` (`02`), or a neutral body color
+  while it has none, and its lights — the lens, the marker lights, the
+  tail light, the dot on top — glow in its team's color over that paint; a
+  printer's and a depot's body is the neutral color with its lights
+  glowing in its team's color, and a site, which has no lights, is
+  outlined in it. The player's own team is green by default, each other
+  team's the next of a list in `data/interface.toml` in team order,
+  skipping the player's — blue first, so a default one-on-one is green
+  against blue. The player may change any team's color, their own
+  included, from the inspector; the choice is saved in `colors.toml`
+  beside the programs and never reaches a peer.
 - **Every bot wears its entity id on top (Q46, amending Q42 and Q43).**
   The id's last three digits, in a seven-segment display set into the top
   face: fixed segments, lit in the team's color in whichever quarter turn
@@ -167,8 +169,10 @@ clears only when those machines fault again or die.
 - **Body:** a bot is an atlas cube in its `color`, or the neutral body
   color while it is `None`; a printer, a depot and a site are their own
   shapes in the neutral body color (Q43).
-- **Team:** a bot's lights glow in its team's color (Q45); a building is
-  outlined in it (Q43).
+- **Team:** a bot's lights glow in its team's color (Q45), and so do a
+  printer's — its panel light, side markers and status light — and a
+  depot's lamp where its braces cross (Q47); a site, which has no lights,
+  is outlined in it (Q43).
 - **Number:** a bot's entity id, its last three digits, in fixed seven
   segments on its top face, lit in its team's color in the quarter turn
   that reads upright from the camera (Q46). The player's own team is green unless changed,

@@ -683,9 +683,10 @@ pub fn sync_machines(
     }
 }
 
-/// A machine's body material: a bot's atlas in its `color`, or the
-/// neutral one while it has none (Q43), its lights glowing in its team's
-/// color (Q45); a building's own neutral material.
+/// A machine's body material, its lights glowing in its team's color: a
+/// bot's atlas in its `color`, or the neutral one while it has none (Q43,
+/// Q45); a printer's and a depot's own neutral art (Q47). A site, which
+/// has no lights, is its own translucent material, outlined instead.
 fn body_mat(
     palette: &Palette,
     interface: &Interface,
@@ -694,33 +695,50 @@ fn body_mat(
     player: sim::TeamId,
     m: &MachineSnapshot,
 ) -> Handle<StandardMaterial> {
-    match m.record.model {
+    let (key, base, lights, rough) = match m.record.model {
         Model::Bot => {
             let color = m.record.color.as_ref().and_then(|c| c.as_deref());
             let atlas = color
                 .filter(|c| palette.bot_textures.contains_key(*c))
                 .unwrap_or(&interface.bodies.neutral)
                 .to_string();
-            let team = m.record.team;
-            if let Some(h) = colors.bodies.get(&(team.0, atlas.clone())) {
-                return h.clone();
-            }
-            let glow = colors.color(interface, player, team);
-            let h = materials.add(StandardMaterial {
-                base_color_texture: Some(palette.bot_textures[&atlas].clone()),
-                emissive: glow_of(glow),
-                emissive_texture: Some(palette.bot_lights.clone()),
-                metallic: 0.1,
-                perceptual_roughness: 0.5,
-                ..default()
-            });
-            colors.bodies.insert((team.0, atlas), h.clone());
-            h
+            let base = palette.bot_textures[&atlas].clone();
+            (
+                format!("bot_{atlas}"),
+                base,
+                palette.bot_lights.clone(),
+                0.5,
+            )
         }
-        Model::Printer => palette.printer_mat.clone(),
-        Model::Depot => palette.crate_mat.clone(),
-        Model::Site => palette.site_mat.clone(),
+        Model::Printer => (
+            "printer".to_string(),
+            palette.printer_texture.clone(),
+            palette.printer_lights.clone(),
+            0.5,
+        ),
+        Model::Depot => (
+            "depot".to_string(),
+            palette.crate_texture.clone(),
+            palette.crate_lights.clone(),
+            0.9,
+        ),
+        Model::Site => return palette.site_mat.clone(),
+    };
+    let team = m.record.team;
+    if let Some(h) = colors.bodies.get(&(team.0, key.clone())) {
+        return h.clone();
     }
+    let glow = colors.color(interface, player, team);
+    let h = materials.add(StandardMaterial {
+        base_color_texture: Some(base),
+        emissive: glow_of(glow),
+        emissive_texture: Some(lights),
+        metallic: 0.1,
+        perceptual_roughness: rough,
+        ..default()
+    });
+    colors.bodies.insert((team.0, key), h.clone());
+    h
 }
 
 /// How brightly a team's lights glow: its color, past white so it reads as
@@ -1007,9 +1025,9 @@ fn spawn_machine(
                 }
                 Model::Depot | Model::Site => {}
             }
-            // A building's team is its outline (Q43): the body's own mesh,
-            // a little larger. A bot's is its lights (Q45).
-            if model != Model::Bot {
+            // A site's team is its outline (Q43): the body's own mesh, a
+            // little larger. Every other machine's is its lights (Q45, Q47).
+            if model == Model::Site {
                 parent.spawn((
                     Mesh3d(mesh_for_outline),
                     MeshMaterial3d(outline_mat),

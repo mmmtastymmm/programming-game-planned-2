@@ -96,6 +96,32 @@ fn render(svg: &str, px: u32) -> tiny_skia::Pixmap {
     pixmap
 }
 
+/// An art's light mask: drawn with its lights white and then black, the
+/// difference kept, so antialiased edges stay soft — white where a light
+/// glows, black elsewhere (Q45).
+fn light_mask(svg: &str, px: u32) -> tiny_skia::Pixmap {
+    let on = render(&svg.replace(LIGHT, "#ffffff"), px);
+    let off = render(&svg.replace(LIGHT, "#000000"), px);
+    let mut mask = tiny_skia::Pixmap::new(px, px).expect("mask alloc");
+    for ((dst, a), b) in mask
+        .pixels_mut()
+        .iter_mut()
+        .zip(on.pixels())
+        .zip(off.pixels())
+    {
+        let d = [
+            a.red().abs_diff(b.red()),
+            a.green().abs_diff(b.green()),
+            a.blue().abs_diff(b.blue()),
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0);
+        *dst = tiny_skia::PremultipliedColorU8::from_rgba(d, d, d, 255).expect("opaque");
+    }
+    mask
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=assets/art");
 
@@ -109,9 +135,15 @@ fn main() {
     };
 
     for name in PLAIN {
-        render(&read(name), SIZE)
+        let svg = read(name);
+        render(&svg.replace(LIGHT, LIGHT_BASE), SIZE)
             .save_png(out.join(format!("{name}.png")))
             .expect("save png");
+        if svg.contains(LIGHT) {
+            light_mask(&svg, SIZE)
+                .save_png(out.join(format!("{name}_lights.png")))
+                .expect("save light mask png");
+        }
     }
     for (f, name) in GROUND.iter().enumerate() {
         render(&read(name), SIZE)
@@ -196,30 +228,10 @@ fn main() {
     }
 
     for (svg_prefix, out_prefix) in ATLASES {
-        // The light mask: each face drawn with its lights white and then
-        // black, the difference kept, so antialiased edges stay soft.
+        // The light mask, face by face (`light_mask`).
         let mut mask = tiny_skia::Pixmap::new(SIZE * 3, SIZE * 2).expect("mask alloc");
         for (face, col, row) in FACES {
-            let svg = read(&format!("{svg_prefix}_{face}"));
-            let on = render(&svg.replace(LIGHT, "#ffffff"), SIZE);
-            let off = render(&svg.replace(LIGHT, "#000000"), SIZE);
-            let mut face_px = tiny_skia::Pixmap::new(SIZE, SIZE).expect("face alloc");
-            for ((dst, a), b) in face_px
-                .pixels_mut()
-                .iter_mut()
-                .zip(on.pixels())
-                .zip(off.pixels())
-            {
-                let d = [
-                    a.red().abs_diff(b.red()),
-                    a.green().abs_diff(b.green()),
-                    a.blue().abs_diff(b.blue()),
-                ]
-                .into_iter()
-                .max()
-                .unwrap_or(0);
-                *dst = tiny_skia::PremultipliedColorU8::from_rgba(d, d, d, 255).expect("opaque");
-            }
+            let face_px = light_mask(&read(&format!("{svg_prefix}_{face}")), SIZE);
             mask.draw_pixmap(
                 (col * SIZE) as i32,
                 (row * SIZE) as i32,
