@@ -27,9 +27,11 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   terrain, and a hearing query returns the previous tick's sounds. A query
   from any machine returns the union of what every machine of its team
   senses, each thing once, sightings sorted by distance then entity id and
-  sounds by distance, position and cause. The live list is computed at query
+  sounds by distance, position and cause. Sightings are computed at query
   time from the world and never stored, so the state hash carries none of
-  it; what the colony *remembers* is Q21's table, which is stored. A sighting
+  them; the previous tick's sounds are kept for one tick for `hear()`, and
+  hashed (`06`); what the colony *remembers* is Q21's table, which is
+  stored. A sighting
   carries the sighted machine's attributes as this doc defines them; a sound
   carries its cause, position, loudness and tick, never its emitter. Whether
   a sound can also interrupt a program was Q16, which ruled it cannot:
@@ -44,7 +46,8 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   by bots (Q22). A printed bot appears on a tile adjacent to the printer on
   the tick the print completes, running the team's `bot` bundle from the
   top. The opening program set is the command log's first entries, one
-  deploy per deployment agreed for tick 0; a machine whose deployment has
+  deploy per deployment the team has a program for, agreed for tick 0
+  (`06`); a machine whose deployment has
   no bundle runs the empty program, which restarts once per tick and is not
   a state. The building list is this doc's table.
 - **The colony remembers tiles, not machines (Q21).** The world is a grid of
@@ -85,11 +88,11 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   print and Q22's opening stock and printer store are withdrawn; Q23's own
   bound, printers and time, is replaced by Q24's cap.
 - **Every machine has health; damage lowers it; zero is `dying`, the
-  threshold below is `death`; a fault costs one health; a team may have
+  threshold below is `death`; a fault costs `fault_damage`; a team may have
   `bots_per_printer` bots per printer (Q24, as Q42 amended).** Health is
   a `num` per machine, starting at the kind's maximum, never regenerating by
   itself; sites have it too. Damage is the one mechanism; the `fault`
-  prologue charges one health beside the record it writes, so a
+  prologue charges `fault_damage` beside the record it writes, so a
   fault-restart loop is finite, and attacks (Q25) and a printer's defence
   (Q30) are the other causes. `dying` is raised at the
   boundary where health reaches zero or below; `death` directly when health

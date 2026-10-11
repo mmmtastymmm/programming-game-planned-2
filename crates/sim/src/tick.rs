@@ -839,6 +839,15 @@ impl Sim {
                 }
             }
         }
+        // This tick's sounds, which `hear()` reads next tick: stored, so
+        // hashed (`docs/06`, The state hash).
+        h.write_u64(w.sounds_prev.len() as u64);
+        for snd in &w.sounds_prev {
+            h.write_str(&snd.cause);
+            write_pos(&mut h, snd.pos);
+            h.write_i64(snd.loudness);
+            h.write_u64(snd.tick);
+        }
         h.finish()
     }
 }

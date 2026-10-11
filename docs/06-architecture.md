@@ -96,15 +96,17 @@ contract:
 
 ```text
 loop:
+    first = 0 if tick == 0 else tick + 1         # tick 0 is never stepped:
+                                                 # its set applies with tick 1
     if speed == 0:
         T = net.next_tick_with_a_command(tick)   # lowest T > tick whose sets are not all empty
         if T is None: wait for a command; continue
-        if not net.have_all_sets(tick + 1 ..= T): stall; continue
+        if not net.have_all_sets(first ..= T): stall; continue
         # run the ticks up to T without consulting the clock (Q32)
     else:
         wait until (real time since last tick) ≥ 1 / speed
-        if not net.have_all_sets(tick + 1): stall; continue
-    commands = net.sets_for(tick + 1)            # every peer's, ordered
+        if not net.have_all_sets(first ..= tick + 1): stall; continue
+    commands = net.sets_for(first ..= tick + 1)  # every peer's, ordered
     sim.step(commands)                           # exactly one tick
     snapshot = sim.snapshot()                    # published, never shared
     hash = sim.hash()                            # sent to peers, checked
@@ -247,8 +249,13 @@ of modules already run in this run (`01`). Every `num` is its i128; every
 `str` its UTF-8 bytes length-prefixed; every collection its elements in
 iteration order.
 
+The sounds of the tick just run are hashed after the machines, in emission
+order — cause, position, loudness, tick — since `hear()` reads them next
+tick: they are stored for one tick, and a peer that heard differently would
+otherwise agree on the hash until a program acted on it.
+
 What is **not** hashed: the diagnostic log, the speed (the driver's, not the
-sim's), anything the renderer holds, and the live sensing list, which is a
+sim's), anything the renderer holds, and the live sightings, which are a
 function of the world rather than part of it (Q7).
 
 Two peers whose hashes differ on a tick have desynced. `net` reports it, the

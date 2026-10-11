@@ -55,8 +55,9 @@ renderer's.
    each later tick, and at zero the print completes there: the bot appears
    on the first adjacent tile of `n`, `e`, `s`, `w` that is on the map,
    passable and unoccupied, or the print is cancelled with nothing made if
-   none is. A printer whose health is at or below zero after the damage
-   step, or that dies or is deconstructed, loses its print. Either way the
+   none is. A printer loses its print the moment its health falls to zero
+   or below — in a fault's prologue during its slice or in the damage step
+   — and when it dies or is deconstructed; a print so lost never completes. Either way the
    shortfall is simply recomputed in the next print step; nothing is queued
    and nothing is redistributed.
 7. **Nothing converts.** `convert`, `convert_ticks`, its sound and Q30's

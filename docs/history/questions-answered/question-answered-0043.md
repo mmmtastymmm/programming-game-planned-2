@@ -63,6 +63,8 @@ renderer's and reach no hash.
   [QUESTIONS.md](../../QUESTIONS.md) — the status block.
 - **Task:** [T25](../../TASKS.md) — the builtin, the attribute, its cost
   row, the renderer's body and outline, and the color settings. `⚠HASH`.
+- **Problem:** [P2](../../PROBLEMS.md) — the docs state Q43 as current
+  until T25 lands.
 
 ## Worksheet
 

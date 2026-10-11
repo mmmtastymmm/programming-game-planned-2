@@ -46,10 +46,11 @@ here changes a hash; a peer with a different renderer sees the same match.
   tick and the wait; everything else keeps working. A desync's banner
   carries the report and the replay's path, and *leave* goes to the end
   screen.
-- **A fault reaches the player on every channel (Q34).** A mark over the
-  machine while its fault record is fresh, a line per deployment counting
-  faults by file and line in the programs panel, the full record in the
-  inspector, and a line in the log. The record itself is the sim's (Q20);
+- **A fault reaches the player on every channel (Q34, as Q39 and Q41
+  moved the panel into each file's window).** A mark over the machine
+  while its fault record is fresh, a summary in each file's window counting
+  its faults by line across every deployment the file reaches, the full
+  record in the inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
 - **A bot's body is the color its program set, and every team is an
   outline the player colors (Q43, amending Q35 and Q42).** A bot is drawn

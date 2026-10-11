@@ -80,7 +80,9 @@ other printer standing (Q42). A printer site, however near complete, bots
 and ore do not keep it in the match, and nothing it once held is anyone
 else's. An out team's machines are removed, its plans cleared and its
 command log closed in the tick's out-teams step (`06`, step 5), after damage
-and before printing, whatever put it out: further commands from it are dropped at submission. `Resign` (Q10)
+and before printing, whatever put it out: further commands from it are
+dropped in `sim.step` on their tick and recorded nowhere (`06`), since a
+peer cannot know at submission that the team will be out. `Resign` (Q10)
 puts a team out at once on its agreed tick.
 
 **A match ends** on the first tick at which at most one team is not out.

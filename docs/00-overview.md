@@ -78,10 +78,10 @@ pass.
   interrupts), Q14 and Q19 (numbers) and Q41's hook sources are the Decided
   entries of the parts that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9, Q23, Q24, Q25, Q30 and Q42 (production,
-  health, the cap, combat, the printer and the deployments), Q43 (a bot's
-  color) and Q22 (the economy, which `docs/03` will cite) are its Decided
-  entries, and they are not repeated here; Q31 and Q40, which Q42
+  (sensing and memory), Q9 (production), Q22 and Q23 (the economy, which
+  `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
+  (combat), Q30 (a printer's defence), Q42 (building printers, printing and
+  the deployments) and Q43 (a bot's color) are its Decided entries, and they are not repeated here; Q31 and Q40, which Q42
   withdrew, have none.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),

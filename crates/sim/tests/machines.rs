@@ -697,3 +697,19 @@ fn the_opening_set_applies_before_tick_ones_commands() {
     let slot = &s.world.teams[&TeamId(0)].deployments["bot"];
     assert_eq!(slot.bundle.as_ref().map(|b| b.version), Some(want));
 }
+
+/// The previous tick's sounds are stored for `hear()`, so they are hashed:
+/// two worlds that heard differently do not agree (docs/06).
+#[test]
+fn the_sounds_hear_reads_are_in_the_hash() {
+    let mut s = sim();
+    run(&mut s, vec![], 1);
+    let before = s.state_hash();
+    s.world.sounds_prev.push(sim::world::Sound {
+        cause: "move".into(),
+        pos: TilePos::new(0, 0),
+        loudness: 1,
+        tick: 1,
+    });
+    assert_ne!(s.state_hash(), before);
+}
