@@ -78,18 +78,20 @@ pass.
   interrupts), Q14 and Q19 (numbers) and Q41's hook sources are the Decided
   entries of the parts that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and Q21
-  (sensing and memory), Q9, Q23, Q24, Q25, Q30, Q31, Q40 and Q42
-  (production, health, the cap, combat, the printer and the deployments), and
-  Q22 (the economy, which `docs/03` will cite) are its Decided entries, and
-  they are not repeated here.
+  (sensing and memory), Q9, Q23, Q24, Q25, Q30 and Q42 (production,
+  health, the cap, combat, the printer and the deployments), Q43 (a bot's
+  color) and Q22 (the economy, which `docs/03` will cite) are its Decided
+  entries, and they are not repeated here; Q31 and Q40, which Q42
+  withdrew, have none.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling), Q15 (the renderer) and Q32 (the paused driver) are its
   Decided entries, and they are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
 - **The interface's rulings live in [07-interface](07-interface.md)** —
-  Q33 (the editor), Q34 (faults), Q35 and Q43 (a bot's color and the team outline), Q36 (the start and
-  end screens), Q37 (the mark tools), Q38 (the stall and the desync), Q39
+  Q33 (the editor), Q34 (faults), Q35 and Q43 (a bot's color and the team
+  outline), Q36 (the start and end screens), Q37 (the mark tools), Q38 (the
+  stall and the desync), Q39
   (windows, amending Q33) and Q41 (the program tree, amending Q33 and Q39)
   are its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —

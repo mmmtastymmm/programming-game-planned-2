@@ -147,11 +147,14 @@ loop:
 4. **Damage and death**: health changes from this tick's causes are applied
    — attacks that completed, and every printer's defence against adjacent
    enemy bots (Q30) — `dying` and `death` are raised where Q24 says, and
-   `death` epilogues remove machines. A machine removed here is absent from everything below.
-5. **Out teams**: every team that is out — it resigned this tick, or step 4
-   left it with no printer (`04`) — has its machines removed, its plans
-   cleared and its log closed, in team order.
-6. **Printing**: in team order, each team's idle printers begin prints by
+   `death` epilogues remove machines; a printer left at or below zero health
+   loses its print in progress (`02`, Printing). A machine removed here is
+   absent from everything below.
+5. **Out teams**: every team that is out — it resigned this tick, or steps
+   3 and 4 left it with no printer, by deconstruction or death (`04`) — has
+   its machines removed, its plans cleared and its log closed, in team
+   order.
+6. **Printing**: in team order, each team's ready printers begin prints by
    turns until its bots and prints in progress reach its cap (Q42; `02`,
    Printing).
 7. **Regrowth**: every deposit grows (`03`).

@@ -80,7 +80,7 @@ other printer standing (Q42). A printer site, however near complete, bots
 and ore do not keep it in the match, and nothing it once held is anyone
 else's. An out team's machines are removed, its plans cleared and its
 command log closed in the tick's out-teams step (`06`, step 5), after damage
-and before regrowth, whatever put it out: further commands from it are dropped at submission. `Resign` (Q10)
+and before printing, whatever put it out: further commands from it are dropped at submission. `Resign` (Q10)
 puts a team out at once on its agreed tick.
 
 **A match ends** on the first tick at which at most one team is not out.
@@ -99,8 +99,9 @@ new question number.
 The printer is the team's one source of bots, and its bots can build more
 of them (Q42) — each dearer than the last, and cheaper again as they are
 lost. Any printer can be replaced but the last: a team that ends a tick
-with none is out then, not when its last bot dies, so a rebuild must start
-while a printer still stands. That keeps the last printer the thing a
+with none is out then, not when its last bot dies, and a printer site does
+not count, so a replacement must be **finished** while a printer still
+stands. That keeps the last printer the thing a
 match is about.
 
 ## PvE

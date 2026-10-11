@@ -22,13 +22,16 @@ nothing persists when the match ends.
 
 A team's reach is measured in printers. Each one it holds is
 `bots_per_printer` more bots its printers will print (Q24). There is one
-way up and two ways down:
+way up, and every way down is damage or deconstruction, from a rival or
+from the team itself:
 
 | Way | Costs | Ruled in |
 |---|---|---|
-| **build** one | a site of `cost + n × cost_step` ore, `n` the team's printers and printer sites when it is placed, hauled by bots, then `build_ticks` | Q42, [02-machines](02-machines.md) |
+| **build** one | a site of `cost + n × cost_step` ore, `n` the team's printers and other printer sites just before it is placed, hauled by bots, then `build_ticks` | Q42, [02-machines](02-machines.md) |
 | **lose** one to a rival's attacks | the rival's bots, within `attack_range`, taking `defence_damage` every tick they stand adjacent | Q25, Q30 |
 | **lose** one to a rival's deconstruction | a rival's bot adjacent to it for its `deconstruct_ticks`, taking the same | Q28, Q30 |
+| **lose** one to its own program | `fault_damage` for every fault: a printer program that faults on every restart is `dying` after `health / fault_damage` faults | Q24, [02-machines](02-machines.md) |
+| **lose** one to its own bots | an attack or a deconstruction by its own team, which 02 allows and the printer does not resist | Q25, Q28 |
 
 **The price rises with what a team has, not with what it ever built.** A
 team that loses printers pays less for the next one, so a beaten-down team
@@ -37,9 +40,10 @@ on purpose. A team far ahead pays more for each printer than it did for the
 last, so a lead costs more to extend than to hold.
 
 **The last printer is not replaceable.** A team that ends a tick with no
-printer is out (`04`), whatever site it was building, so a rebuild must
-start while a printer still stands. Defending the last one is the one thing
-a program cannot leave to later.
+printer is out (`04`), whatever site it was building, so a replacement must
+be finished while a printer still stands. Defending the last one, and
+keeping its program from faulting, is the one thing a team cannot leave to
+later.
 
 ## Between matches
 

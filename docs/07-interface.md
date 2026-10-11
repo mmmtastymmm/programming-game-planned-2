@@ -56,7 +56,9 @@ here changes a hash; a peer with a different renderer sees the same match.
   in its `color` (`02`), or a neutral body color while it has none; a
   building's body is the neutral color. Every machine has an outline in
   its team's outline color: the player's own green by default, each other
-  team's the next of a list in `data/interface.toml`. The player may
+  team's the next of a list in `data/interface.toml` in team order,
+  skipping the player's — blue first, so a default one-on-one is green
+  against blue. The player may
   change any team's outline color, their own included, from the
   inspector; the choice is saved in `colors.toml` beside the programs and
   never reaches a peer. No bot wears a number.

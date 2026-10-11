@@ -50,30 +50,30 @@ makes, in no hash — replacing the driver's `snapshot_plan` peek.
 Q42, ruled in `02`'s Decided entry and its Printing section, `04`'s
 ending, `05` and `06`'s print step. The sim: `build` and plans accept
 `printer`; a site's capacity is `cost + n × cost_step`, `n` the team's
-printers and printer sites at placement; the `print` builtin and its cost
-row go, printing becomes tick step 6 with a per-team print turn in the
-hash and a `printing` attribute on printers; `convert` and
-`converted_this_tick` go; a team is out at the end of a tick with no
-printer; deployments are `bot`, `printer` and `depot` only, a `Deploy`
-naming another is refused at submission, and bots are named `bot<id>`.
-The data: the printer's `cost`, `cost_step` and `build_ticks`, a
-`cost_step` of zero on the depot, `convert_ticks` and the conversion sound
-removed, the paint list's comment. The shipped programs: `data/starter`
-and `data/opposition/fool` move `robots/1.py` to `robots/bot.py`, their
+printers and other printer sites just before placement; the `print` and
+`convert` builtins and their `[game]` cost rows go; printing becomes tick
+step 6 with a per-team print turn in the hash and a `printing` attribute
+on printers; `converted_this_tick` goes; a team is out at the end of a
+tick with no printer; deployments are `bot`, `printer` and `depot` only, a
+`Deploy` naming another is refused at submission, and bots are named
+`bot<id>`. The data: the printer's `cost`, `cost_step` and `build_ticks`,
+a `cost_step` of zero on the depot, `convert_ticks` and the conversion
+sound removed. The shipped programs: `data/starter` and
+`data/opposition/fool` move `robots/1.py` to `robots/bot.py`, their
 printer programs stop calling `print`, and the Fool's script deploys to
-`bot`. The renderer: one robot file per model in the tree, bots in the
-team's color with no number, `printer` on the mark strip. The tests and
-the golden fixtures, regenerated with the reason in the PR.
+`bot`. The renderer: one robot file per model in the tree, no number on a
+bot, `printer` on the mark strip; how a bot is colored is T25's. The
+tests and the golden fixtures, regenerated with the reason in the PR.
 
 **T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
 
 Q43, ruled in `02` and `07`. The sim: a `color` attribute on bots, `None`
 when printed, kept across redeploy and fault, settable while `dying`, in
 sightings and the hash; the zero-tick `set_color(color)` action, refusing
-anything not in the paint list or `None`, with its row in `data/language/costs.toml`. The
-renderer: a bot's body in its color or the neutral body color, buildings
-in the neutral color, an outline on every machine in its team's color
-replacing the ring, the player's own green by default and the others from
-a list in `data/interface.toml`, changed from the inspector and saved in
-`colors.toml` beside the programs. The golden fixtures, regenerated with
-the reason in the PR.
+anything not in the paint list or `None`, with its row in
+`data/language/costs.toml`. The renderer: a bot's body in its color or the
+neutral body color, buildings in the neutral color, an outline on every
+machine in its team's color replacing the ring, the player's own green by
+default and the others from a list in `data/interface.toml`, changed from
+the inspector and saved in `colors.toml` beside the programs. The golden
+fixtures, regenerated with the reason in the PR.

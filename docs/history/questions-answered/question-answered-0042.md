@@ -44,20 +44,21 @@ renderer's.
 5. **Printing is automatic, and printers take turns.** There is no `print`
    action. In a new tick step after out teams and before regrowth (`06`,
    step 6), each team's **shortfall** is its cap minus its bots minus its
-   prints in progress. While the shortfall is above zero and the team has an
-   idle printer, one begins a print: the idle printer with the least entity
-   id greater than the team's **print turn**, or failing one, the least
-   idle id at all. The print turn becomes that printer's id. A printer is
-   idle when it is not printing and not `dying`. The print turn is team
-   state, in the hash, and starts as no printer.
+   prints in progress. While the shortfall is above zero and the team has a
+   printer that is not printing and whose health is above zero, one begins
+   a print: such a printer with the least entity id greater than the team's
+   **print turn**, or failing one, the least such id at all. The print turn
+   becomes that printer's id. The print turn is team state, in the hash,
+   and starts as `0`, which no entity id is.
 6. **A print belongs to its printer once begun.** A printer's `printing`
-   attribute is `print_ticks` when it begins, falls by one in step 3 of each
-   later tick, and at zero the print completes there: the bot appears on
-   the first free tile of `n`, `e`, `s`, `w`, or the print is cancelled with
-   nothing made if none is free. A printer that dies, goes `dying`, or is
-   deconstructed loses its print. Either way the shortfall is simply
-   recomputed in the next print step; nothing is queued and nothing is
-   redistributed.
+   attribute is `print_ticks` when it begins, falls by one in step 3 of
+   each later tick, and at zero the print completes there: the bot appears
+   on the first adjacent tile of `n`, `e`, `s`, `w` that is on the map,
+   passable and unoccupied, or the print is cancelled with nothing made if
+   none is. A printer whose health is at or below zero after the damage
+   step, or that dies or is deconstructed, loses its print. Either way the
+   shortfall is simply recomputed in the next print step; nothing is queued
+   and nothing is redistributed.
 7. **Nothing converts.** `convert`, `convert_ticks`, its sound and Q30's
    same-tick tie rule are withdrawn. A printer still deals
    `defence_damage` to every adjacent bot of another team each tick, and
@@ -99,7 +100,8 @@ renderer's.
   [04-opposition.md](../../04-opposition.md) — Ending and Why the printer.
   [05-progression.md](../../05-progression.md) — rewritten for building.
   [06-architecture.md](../../06-architecture.md) — the Decided entry, the
-  tick's new print step, the command log, the snapshot and the hash.
+  tick's new print step and its out-teams step, the command log and the
+  hash.
   [07-interface.md](../../07-interface.md) — the Decided entry, the tree,
   the script's `bundle`, Machines on the map and the mark strip.
   [01-language/syntax.md](../../01-language/syntax.md) — the game `print`.

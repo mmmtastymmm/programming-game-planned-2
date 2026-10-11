@@ -32,7 +32,9 @@ renderer's and reach no hash.
 5. **Every machine has an outline in its team's outline color**, replacing
    Q35's ring. The player's own team defaults to green; every other team
    defaults to the next color of the outline list in
-   `data/interface.toml`, in team order.
+   `data/interface.toml`, in team order, skipping the player's. The list
+   starts with blue, so a default two-team match is green against blue,
+   which the commonest colorblindness tells apart.
 6. **The player may change any team's outline color**, their own
    included, from the inspector's team list, for colorblindness or taste.
    The choice is saved beside the programs in `colors.toml`, restored at

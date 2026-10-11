@@ -67,16 +67,17 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   cost, load and deposit amount is a map from kind to `num`, so a second
   resource is a data row. Deposits are terrain with an amount, a cap and a
   regrowth rate per tick, remembered by Q21 as last seen. A bot has a
-  capacity and a load, `pick`s from an adjacent deposit or depot and `drop`s
-  into an adjacent building, and carries while doing anything else. Every
-  building has a store with a capacity per kind: the printer's is zero, since
-  Q23 made prints free; the **depot** is a building whose store is large and
-  whose purpose is to hold. A `build` places a site with a store whose
-  capacity is the building's cost; bots fill it, construction runs for the
-  build time, and the building appears with an empty store. Nothing starts
-  stocked and nothing spends from a store it does not own; ore goes into
-  sites and depots only. The building list holds printer and depot; the
-  numbers are tuning in data; `03` defines deposits and places them.
+  capacity and a load, `pick`s from an adjacent deposit or depot and
+  `drop`s into an adjacent building, and carries while doing anything else.
+  Every building has a store with a capacity per kind: the printer's is
+  zero, since Q23 made prints free; the **depot** is a building whose store
+  is large and whose purpose is to hold. A `build` places a site with a
+  store whose capacity is the building's price (Q42's bullet below); bots
+  fill it, construction runs for the build time, and the building appears
+  with an empty store. Nothing starts stocked and nothing spends from a
+  store it does not own; ore goes into sites and depots only. The building
+  list holds printer and depot; the numbers are tuning in data; `03`
+  defines deposits and places them.
 - **Printing costs time only; building costs resources (Q23).** A printer
   prints one bot per print time and consults no store; a `drop` into a
   printer is a fault. The printer itself is built for ore like any building
@@ -87,9 +88,10 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   threshold below is `death`; a fault costs one health; a team may have ten
   bots per printer (Q24, as Q42 amended).** Health is
   a `num` per machine, starting at the kind's maximum, never regenerating by
-  itself; sites have it too. Damage is the one mechanism, and today's one
-  cause is the `fault` prologue, which charges one health beside the record
-  it writes, so a fault-restart loop is finite. `dying` is raised at the
+  itself; sites have it too. Damage is the one mechanism; the `fault`
+  prologue charges one health beside the record it writes, so a
+  fault-restart loop is finite, and attacks (Q25) and a printer's defence
+  (Q30) are the other causes. `dying` is raised at the
   boundary where health reaches zero or below; `death` directly when health
   reaches the kind's death threshold, a negative number in data, or when the
   tile is destroyed. A dying machine's health is frozen. A team's bot cap is
@@ -101,16 +103,18 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
 - **Printers are built at a price that rises with how many the team has,
   print by themselves in turn up to the cap, and never change hands; a team
   has one deployment per model (Q42, amending Q9, Q23, Q24, Q30, Q31, Q35
-  and Q40).** `build` accepts the model `printer`. A site's store capacity
-  is `cost[model] + n × cost_step[model]`, `n` the team's standing buildings
-  of that model and its sites for one, counted when it is placed, so losing printers lowers the
+  and Q40).** `build` accepts the model `printer`. A site's store
+  capacity, its **price**, is `cost[model] + n × cost_step[model]`, `n` the
+  team's standing buildings of that model and its other sites for one,
+  counted just before the new site is placed, so losing printers lowers the
   next one's price. The map's starting printers count toward `n`. After
   out teams, each team's printers begin prints by turns while its bots and
   prints in progress fall short of its cap — the turn order, the print and
   its loss are Printing below. Nothing converts a printer. A team is out at
   the end of any tick it has no printer, whatever sites, bots or ore it
   holds (`04`). A team's deployments are `"bot"`, `"printer"` and
-  `"depot"`, and nothing else.
+  `"depot"`, and nothing else. Q31 and Q40 are withdrawn and have no entry
+  here.
 - **Printers defend themselves (Q30, as Q42 amended, which withdrew
   conversion).** Every printer deals `defence_damage` each tick to every
   adjacent bot of another team, in the damage step, so attacking or
@@ -127,8 +131,9 @@ Q22's is shared with `docs/03`, which will cite it. Where a ruling says
   `attack_damage` health when the action completes, landed in the tick's
   damage step; both numbers are per model in data and start at one. Anything
   with health is a target, on any team. An attack is loud. No building
-  defends by rule, nothing repairs, and the world deals no damage; each is a
-  new question number if wanted.
+  attacks — a printer's defence (Q30) is a rule, not an attack — nothing
+  repairs, and the world deals no damage; each is a new question number if
+  wanted.
 
 ## A machine
 
@@ -140,7 +145,7 @@ identity:
 | **kind** | `"bot"` or `"building"`; a building also has a **model** — `"printer"`, `"depot"` or `"site"` | at print or build, never changed |
 | **team** | the allegiance it acts for, a small integral `num`; every machine of a team shares senses, memory, stores, deployments and the bot cap | at print or build, from the machine that made it; never changed |
 | **program** | the bundle of its **deployment**, which is its model's name: every bot runs the `bot` bundle, a building the bundle deployed to its model (Q42) | by the command log, through the deployment (Q11) |
-| **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print or build, to the model's name plus the entity id (`bot17`, `depot23`; Q42); changed by `rename` |
+| **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print, to `bot` plus the entity id (`bot17`); at build, to the name of the model the site will become plus its entity id (`printer23`), kept when it completes (Q42); changed by `rename` |
 
 Two machines with the same team, kind and deployment are the same program in
 two bodies, which is Q2's fleet; what tells them apart is the entity `id`,
@@ -236,7 +241,7 @@ carries a team and a position like any building.
 | `bot` | yes | none; a **load** up to its capacity | a printer, in `print_ticks`, under the team's cap | senses, moves, picks, drops, builds |
 | `printer` | no | capacity zero | the map, one on each starting tile at tick 0 (`03`); then a bot's `build`, at a price rising with the team's printers (Q42) | senses; prints by turns and defends itself, by rule; raises the cap by ten bots |
 | `depot` | no | capacity per kind, large | a bot's `build` | senses, holds |
-| `site` | no | capacity equal to the cost of what it becomes | a bot's `build`, at once | holds; becomes its building when full and built |
+| `site` | no | capacity equal to the price of what it becomes (Q42) | a bot's `build`, at once | holds; becomes its building when full and built |
 
 A **site** is a building for every purpose but one: it has a team, a tile, a
 store, ranges and health, and appears in sightings and memory like any
@@ -371,32 +376,37 @@ tick are resolved lower `id` first.
 A printer prints by rule, not by its program (Q42), so printing is not an
 action: it never sets `busy`, and a printer's program may `wait`, `log` and
 `rename` while it prints. A printer's own attribute `printing` counts its
-print down.
+print down. A printer that is not printing is **ready**, a different thing
+from idle (`busy` is `None`): a printer whose program waits may be ready,
+and one that prints may be idle.
 
 - **Beginning**, in the tick's print step (`06`, step 6), team by team in
   order. A team's **shortfall** is its cap (Q24) minus its bots, `dying`
   ones included, minus its printers whose `printing` is above zero. A
-  printer is **idle** if its `printing` is `0` and it is not `dying`. While
-  the shortfall is above zero and an idle printer remains, the one to begin
-  is the idle printer with the least entity id greater than the team's
-  **print turn**, or, if there is none, the idle printer with the least
-  entity id; its `printing` becomes `print_ticks`, it emits the `"print"`
-  sound, the print turn becomes its id, and the shortfall falls by one. The
-  print turn is team state in the hash and starts as no printer, so the
-  first print goes to the team's least id.
+  printer may begin a print if it is ready and its health is above zero,
+  whether or not its `dying` handler has run yet. While the shortfall is
+  above zero and such a printer remains, the one to begin is the one with
+  the least entity id greater than the team's **print turn**, or, if there
+  is none, the one with the least entity id; its `printing` becomes
+  `print_ticks`, it emits the `"print"` sound, the print turn becomes its
+  id, and the shortfall falls by one. The print turn is team state in the
+  hash, an entity id, and starts as `0`, which no machine has — entity ids
+  begin at `1` — so the first print goes to the team's least id.
 - **Completing**, in step 3 of every later tick, with the action
   completions and in entity-id order among them: `printing` falls by one,
-  and at `0` the print completes. The bot appears on the first free tile
-  adjacent to the printer of `n`, `e`, `s`, `w`, on the printer's team, on
-  the `bot` deployment, named `bot` plus its id, in main flow, its first
-  slice next tick. If none is free the print is cancelled with nothing
-  made. Either way the printer is idle again, and may begin another print
-  in the same tick's print step. A print begun in tick `T` completes in
-  tick `T + print_ticks`.
-- **Losing a print.** A printer that goes `dying`, dies or is
-  deconstructed loses its print in progress, and nothing else follows:
-  there is no queue, so the next print step's shortfall already counts the
-  bot that was not made.
+  and at `0` the print completes. The bot appears on the first tile
+  adjacent to the printer of `n`, `e`, `s`, `w` that is on the map,
+  passable (`03`) and unoccupied, on the printer's team, on the `bot`
+  deployment, named `bot` plus its id, in main flow, its first slice next
+  tick. If none qualifies the print is cancelled with nothing made. Either
+  way the printer is ready again, and may begin another print in the same
+  tick's print step. A print begun in tick `T` completes in tick
+  `T + print_ticks`.
+- **Losing a print.** A printer whose health is at or below zero after
+  the damage step (`06`, step 4), or that dies or is deconstructed, loses
+  its print in progress: its `printing` becomes `0` there, and nothing else
+  follows. There is no queue, so the next print step's shortfall already
+  counts the bot that was not made.
 
 ## Health, damage and the interrupts
 
@@ -415,15 +425,16 @@ own making — a fault in `on_dying` — escalates as the language rules and
 deals nothing. A tile is never destroyed (`03`), so damage is the only
 cause of `death` today.
 
-The causes of damage are two. **A fault costs `fault_damage` health**,
+The causes of damage are three. **A fault costs `fault_damage` health**,
 charged by the `fault` prologue beside the record it writes, so a program
 that faults on every restart dies after `health / fault_damage` faults
 instead of looping forever. **An attack costs `attack_damage`** (Q25), landed
 in the tick's damage step, where every hit on one target this tick is summed
 before the rules below run. **A printer defends itself** (Q30): in the same
 step, every printer deals its model's `defence_damage` to every bot of
-another team on an adjacent tile, every tick it stands — the one thing in
-the design that acts without a program, beside printing (Printing, above), because a building does not decide.
+another team on an adjacent tile, every tick it stands — with printing
+(Printing, above), one of the two things in the design that act without a
+program, because a building does not decide.
 `defence_damage` is per model in data and zero for every model but the
 printer.
 Nothing else deals damage, and nothing repairs; each is a new question
@@ -436,7 +447,7 @@ is what the prologues and epilogues do beyond the language's rules.
 | Kind | Raised by | Prologue does to the body | The hook may | Epilogue does to the body |
 |---|---|---|---|---|
 | `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine; its load or store, and a printer's print, is lost; its tile is free; a site it was building stays; the team's cap updates if it was a printer |
-| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress and a printer's print; freezes health | call the senses, `log`, `wait`, `rename`, `set_color` (Q43) and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
+| `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress; freezes health (a printer's print was lost in the damage step) | call the senses, `log`, `wait`, `rename`, `set_color` (Q43) and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 
@@ -460,7 +471,8 @@ when it begins; its wait costs nothing, since the program is paused.
 
 ## What this doc leaves open
 
-- **A building that defends, and repair.** Q25 ruled bots attack and nothing
-  else; a turret model or a repair action is a new question number.
+- **A building that attacks, and repair.** Q25 ruled bots attack and
+  nothing else, and the printer's defence (Q30) is its only rule of the
+  kind; a turret model or a repair action is a new question number.
 - **Further models**: a building that extends senses, a second bot model, a
   second resource. Each is a new question number and a row here.
