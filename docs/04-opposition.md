@@ -86,10 +86,11 @@ peer cannot know at submission that the team will be out. `Resign` (Q10)
 puts a team out at once on its agreed tick.
 
 **A match ends** on the first tick at which at most one team is not out.
-That team **wins**; if none is — two last printers dying on the same tick —
-the match is a **draw**. The driver stops issuing ticks; the state hash of
-the ending tick is the match's final hash, and the log to that tick is the
-replay.
+That team **wins**; if none is — two teams' last printers removed, by
+`death` or deconstruction, on the same tick; a printer that is only `dying`
+still stands (`02`) — the match is a **draw**. The driver stops issuing
+ticks; the state hash of the ending tick is the match's final hash, and the
+log to that tick is the replay.
 
 There is no other way for a match to end: no tick limit, no score, no
 objective but the printer. A match with two passive teams runs until a

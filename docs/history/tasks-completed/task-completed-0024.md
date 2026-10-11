@@ -24,3 +24,9 @@ badge, bots in the neutral body color until T25, and a printer plan in
 the tools.
 
 Completed in `bf067b2`, with the renderer's clippy fix in `8a87d09`.
+Review fixes that changed T24's behaviour followed on the same branch:
+`69e3e9c` (a printer at zero health, or dying in its own slice, loses its
+print; a robot file for no deployment composes nothing), `db75bd7` (a
+build refuses a tile a bot is moving onto; tick 0's commands apply before
+tick 1's; a site's price is hashed; the golden scenario builds a printer)
+and `f48275a` (the stored sounds are hashed).

@@ -27,14 +27,16 @@ pub const LENS_GLASS_RADIUS: f32 = 0.08;
 pub const LENS_GLASS_LEN: f32 = 0.02;
 pub const LENS_GLASS_Z: f32 = LENS_BARREL_Z - LENS_BARREL_LEN / 2.0 - LENS_GLASS_LEN / 4.0;
 
-/// The atlas names `build.rs` bakes: the eight paint colors of
-/// `data/machines.toml`, which T25 draws a bot's `color` in (Q43), and
-/// `white`, the neutral body every bot wears until then and a building
-/// wears before its team's tint; a tenth, `ruined`, is the dead-grey swap.
 /// The neutral body (Q43): every bot wears it until T25 draws a bot's own
 /// `color`, since every bot runs one deployment (Q42).
 pub const NEUTRAL_BOT: &str = "white";
 
+/// The atlas names `build.rs` bakes and the renderer loads by name: the
+/// eight paint colors of `data/machines.toml`, which T25 draws a bot's
+/// `color` in (Q43), and `white`, the neutral body every bot wears until
+/// then and a building wears before its team's tint. `build.rs` also bakes
+/// `ruined`, the dead-grey swap, which is loaded by its own path and is not
+/// in this list.
 pub const ATLASES: [&str; 9] = [
     "green", "red", "blue", "yellow", "cyan", "magenta", "orange", "purple", "white",
 ];

@@ -162,9 +162,9 @@ loop:
    3 and 4 left it with no printer, by deconstruction or death (`04`) — has
    its machines removed, its plans cleared and its log closed, in team
    order.
-6. **Printing**: in team order, each team's ready printers begin prints by
-   turns until its bots and prints in progress reach its cap (Q42; `02`,
-   Printing).
+6. **Printing**: in team order, each team's printers that are ready and
+   above zero health begin prints by turns until its bots and prints in
+   progress reach its cap (Q42; `02`, Printing).
 7. **Regrowth**: every deposit grows (`03`).
 8. **The vision pass**: each team's visible tiles are computed and their
    snapshots refreshed (Q21).

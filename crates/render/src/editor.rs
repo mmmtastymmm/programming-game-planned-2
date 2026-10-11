@@ -82,17 +82,27 @@ pub fn is_fixed(path: &str) -> bool {
 const REMOVED_BUILTINS: [&str; 2] = ["print", "convert"];
 
 /// The first call in `text` to a builtin Q42 removed, with its line,
-/// unless the file defines a function of that name itself.
+/// unless the file binds that name itself: a `def`, an import of it, or
+/// an assignment to it.
 pub fn removed_call(text: &str) -> Option<(&'static str, u32)> {
+    use lang::lexer::Tok;
     let toks = lang::lexer::Lexer::new("", text).tokenize().ok()?;
+    let import_lines: Vec<u32> = toks
+        .iter()
+        .filter(|t| t.tok == Tok::Keyword("import"))
+        .map(|t| t.line)
+        .collect();
     let defined = |name: &str| {
+        let named = Tok::Name(name.to_string());
         toks.windows(2).any(|w| {
-            w[0].tok == lang::lexer::Tok::Keyword("def")
-                && w[1].tok == lang::lexer::Tok::Name(name.to_string())
-        })
+            (w[0].tok == Tok::Keyword("def") && w[1].tok == named)
+                || (w[0].tok == named && w[1].tok == Tok::Op("="))
+        }) || toks
+            .iter()
+            .any(|t| t.tok == named && import_lines.contains(&t.line))
     };
     toks.windows(2).find_map(|w| match (&w[0].tok, &w[1].tok) {
-        (lang::lexer::Tok::Name(n), lang::lexer::Tok::Op("(")) => REMOVED_BUILTINS
+        (Tok::Name(n), Tok::Op("(")) => REMOVED_BUILTINS
             .iter()
             .find(|r| **r == n.as_str() && !defined(r))
             .map(|r| (*r, w[0].line)),
@@ -1368,6 +1378,8 @@ mod tests {
         assert!(removed_warning(old).is_some_and(|w| w.contains("line 3")));
         assert_eq!(removed_call("x = 'print(1)'  # print(2)\n"), None);
         assert_eq!(removed_call("def print(x):\n    log(x)\nprint(1)\n"), None);
+        assert_eq!(removed_call("from util import print\nprint(1)\n"), None);
+        assert_eq!(removed_call("print = log\nprint(1)\n"), None);
         assert_eq!(removed_call("convert(7)\n"), Some(("convert", 1)));
     }
 

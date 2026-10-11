@@ -98,14 +98,17 @@ The two meet only through `Deploy`.
   player cannot add a file to either folder. Everything outside them is the
   player's: files and folders they add, rename, move and delete, shared by
   every robot. A file's name is `[a-z_][a-z0-9_]*.py` (`01`) and its stem
-  is unique across the tree, since folders are organisational only and the
-  language has no packages; a collision is a load error shown in the tree.
-  A file found in `robots/` for no deployment — `robots/1.py` from a tree
-  written before Q42 — composes nothing, is marked as an error in the tree
-  and its window, and the player may delete it; the match starts without
-  it. A file that calls a builtin Q42 removed — `print` or `convert` — is
-  marked the same way at that line, since it loads but faults every time
-  the call runs.
+  is unique among the files outside `robots/`, since folders are
+  organisational only and the language has no packages; a collision is a
+  load error shown in the tree. A robot file is its bundle's `main.py`,
+  never a module, so `lib/printer.py` beside `robots/printer.py` is no
+  collision. A file found in `robots/` for no deployment — `robots/1.py`
+  from a tree written before Q42 — composes nothing, is marked as an error
+  in the tree and its window, and the player may delete it; the match
+  starts without it. A file that calls a builtin Q42 removed — `print` or
+  `convert` — without defining, importing or assigning that name itself is
+  marked the same way at that line, since such a call loads but faults
+  every time it runs.
 - **Composition.** Deployment `d`'s bundle is `robots/d.py` as `main.py`,
   plus every interrupt file and every player file by its bare name. A hook
   binds from `robots/d.py` if it defines one, else from the interrupt file

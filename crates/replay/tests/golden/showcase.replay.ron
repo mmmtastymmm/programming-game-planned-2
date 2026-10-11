@@ -9,7 +9,7 @@
                 deployment: "printer",
                 bundle: (
                     files: [
-                        ("main.py", "# The fixture\'s player printer: printers print by themselves (Q42), so it\n# logs its print\'s countdown and the team\'s bots it can see, so a change in\n# the printing rule moves the transcript.\nwhile True:\n    log(\"printing\", me().printing, \"sees\", len(see()))\n    wait(5)\n"),
+                        ("main.py", "# The fixture\'s player printer: printers print by themselves (Q42), so it\n# logs its print\'s countdown and how many machines its team sees — own and\n# rival, bots and buildings — so a change in the printing rule moves the\n# transcript.\nwhile True:\n    log(\"printing\", me().printing, \"sees\", len(see()))\n    wait(5)\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
                     ],

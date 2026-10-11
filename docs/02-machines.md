@@ -12,7 +12,7 @@ calls the game's own.
 ## Decided
 
 Rulings this doc owns, moved here from the overview when it was written.
-Q22's is shared with `docs/03`, which will cite it. Where a ruling says
+Q22's is shared with `docs/03`, which cites it. Where a ruling says
 "role", this doc says **deployment**, the name Q24 settled on.
 
 - **A machine senses by vision and by sound, and everything sensed is shared
@@ -244,7 +244,7 @@ carries a team and a position like any building.
 | Model | Moves | Store | Made by | Does |
 |---|---|---|---|---|
 | `bot` | yes | none; a **load** up to its capacity | a printer, in `print_ticks`, under the team's cap | senses, moves, picks, drops, builds |
-| `printer` | no | capacity zero | the map, one on each starting tile at tick 0 (`03`); then a bot's `build`, at a price rising with the team's printers (Q42) | senses; prints by turns and defends itself, by rule; raises the cap by `bots_per_printer` |
+| `printer` | no | capacity zero | the map, one on each starting tile at tick 0 (`03`); then a bot's `build`, at a price rising with the team's printers and printer sites (Q42) | senses; prints by turns and defends itself, by rule; raises the cap by `bots_per_printer` |
 | `depot` | no | capacity per kind, large | a bot's `build` | senses, holds |
 | `site` | no | capacity equal to the price of what it becomes (Q42) | a bot's `build`, at once | holds; replaced by its building when full and built |
 
@@ -338,8 +338,9 @@ emitter.
 A machine acts by calling an **action builtin**. An action is a **waiting
 operation**: the builtin checks its preconditions, begins the action, and
 the machine then yields at the boundary after it until the action completes
-— `progress` counting down one per tick, so an action of `n` ticks begun in
-tick `T`'s slice completes in step 3 of tick `T + n - 1` (`06`) — after
+— `progress` counting down one per tick, so an action of `n ≥ 1` ticks
+begun in tick `T`'s slice completes in step 3 of tick `T + n - 1` (`06`),
+and one of `0` ticks, such as `build`, in step 3 of tick `T` itself — after
 which main flow continues
 with the builtin's return value. Interrupts are delivered at the boundaries
 inside the wait as at any other, and a `fault` or `redeploy` epilogue
