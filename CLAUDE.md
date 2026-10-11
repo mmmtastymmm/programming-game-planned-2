@@ -42,7 +42,11 @@ language crate when it lands:
    `BTreeMap`s, so iteration is deterministic by construction. If a renderer
    crate with an ECS lands, it may influence the sim exclusively through ordered
    `Command`s. ECS-side code feeding sim state any other way is the #1
-   architecture violation to flag in review — every time.
+   architecture violation to flag in review — every time. The one exception is
+   a debugging **fork** (Q45, `docs/06` Forks): a private copy of the sim the
+   debugger may drive and edit, which never reaches the match's world, log or
+   hash. The match's sim takes nothing but `Command`s, plus the read-only
+   breakpoint watches `docs/06` names.
 2. **No float types (`f32`/`f64`) in any state-affecting path.** Integer /
    fixed-point math only. Floats are fine in rendering and UI.
 3. **No `HashMap`/`HashSet` iteration in sim logic** — hash order is
@@ -51,7 +55,9 @@ language crate when it lands:
    from named, seeded RNG streams owned by the sim and advanced only by sim
    systems ([crates/sim/src/rng.rs](crates/sim/src/rng.rs)).
 5. **All external input enters as ordered `Command` values** — even in
-   single-player, which is lockstep with one peer.
+   single-player, which is lockstep with one peer. Breakpoint watches change
+   nothing and are no part of the hash (`docs/06` Forks); a fork is not the
+   match (rule 1).
 6. Any query a machine program can make must return results in a stable sorted
    order, with ties broken by entity id.
 7. Player programs are stored as **byte-exact plain text** (no whitespace

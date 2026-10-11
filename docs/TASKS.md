@@ -64,34 +64,38 @@ fixtures, regenerated with the reason in the PR. Finishing it fixes
 
 ## M8 — The debugger
 
-**T26 — Forks in `sim`: watches, stopping mid-tick, steps, saved states, editing**
+**T26 — Forks in `sim`: watches, stopping mid-tick, steps, saved states, edits**
 
-Q45, ruled in `06`'s Forks section. A fork built by cloning the sim or by
-re-running a log, agreeing with the match's hash; `sim.step` taking a
-team's watches — `(deployment, bundle version, file, line)` — and
-reporting the machines that enter a watched line, read-only and outside
-the hash; the language VM stopping at an operation boundary mid-slice and
-resuming, and reporting each frame's file, line, function and locals, the
-globals, budget, deficit and pending interrupts; the line, over, tick and
-continue steps with their stops for a returned frame, death, a restart,
-the step limit and the live tick; saving and restoring a state; setting a
-local or global from a literal, saving a state there and marking the fork
-diverged; what-if `Deploy`s entering the fork's log for its next tick; the
-PvP bound. Tests that an untouched fork reproduces the golden stream hash
-for hash, and that watching lines changes no hash.
+Q45, ruled in `06`'s Forks section. A fork from a saved state or a
+re-run, applying the match's (or replay's) log and then its own, faithful
+while its own log is empty; `sim.step` taking a team's watches — `(file,
+content hash, line, deployment or any, machine or any)` — and reporting
+the machines that begin a statement on a watched line, read-only and
+outside the hash; the language VM stopping at an operation boundary
+mid-slice and resuming, and reporting frames, every run module's globals,
+the record with action and progress, budget, deficit, pending interrupts
+and handler state; the line, over, tick and continue steps and every
+stop and its cause; saving and restoring a state at a tick boundary;
+edits from a literal or display of literals, checked against `01`'s
+Limits, entered in the fork's log at (tick, machine, operation count);
+what-if deploys in the fork's log; a new branch discarding later entries
+and states; the PvP bound and refusal. Tests that an untouched fork
+reproduces the golden stream hash for hash, that watching lines changes
+no hash, and that a re-run across an edit applies it.
 
 **T27 — The debugger in `render`, live and on replays**
 
-Q45, ruled in `07`'s Debugging section. Gutter breakpoints on a deployed
-version, scoped to a machine or a file, greyed while the file is ahead,
-kept with the tree; a hit opening a fork and, outside PvP, submitting one
-pause; further hits counted; the debugger window, its stop reasons and
-the fork banner; the map drawing the fork in the team's view; the step
-keys; variable editing; the checkpoint policy and rewind; opening a fork
-by hand and from a replay on the start screen; the saver's team recorded
-in a saved replay, outside its identity; `debug_checkpoint_ticks`,
-`debug_checkpoints_kept` and `debug_step_max_ticks` in
-`data/interface.toml`.
+Q45, ruled in `07`'s Debugging section. Gutter breakpoints on the shown
+text, carried through edits, watching that text's content hash, scoped to
+a machine or the file, greyed while nothing runs it, kept with the tree;
+saving the match's and each fork's state every `debug_checkpoint_ticks`,
+keeping `debug_checkpoints_kept`; a hit opening a fork and, outside PvP,
+submitting one pause; further hits counted; the debugger window, its stop
+causes and the fork banner; the map drawing the fork in the team's view;
+the step keys; variable editing outside PvP; opening a fork by hand and
+from a replay on the start screen, with a picker for the replay's file
+versions; the saver's team recorded in a saved replay, outside its
+identity; the three `debug_*` constants in `data/interface.toml`.
 
 **T28 — What-if**
 
@@ -99,3 +103,12 @@ Q45: deploying a file into the open fork, for its next tick, instead of
 the match; running the fork at a chosen speed; *take it* deploying the
 same text to the match; refused in PvP. Together with T26 and T27,
 finishing it fixes [P5](PROBLEMS.md).
+
+**T29 — A paused driver counts only peers' commands**
+
+Q45 rule 12, amending Q32, in `06`'s Decided entry and The driver. At
+speed `0`, `render`'s driver (and `net`'s `next_tick_with_a_command`, or
+a variant of it) runs to the next tick carrying a peer's command, not a
+scripted team's. No replay hash changes — the sim's ticks are the same —
+but the driver tests that pause with a card loaded change. Fixes
+[P6](PROBLEMS.md).

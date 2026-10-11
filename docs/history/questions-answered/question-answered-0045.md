@@ -1,6 +1,6 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q45 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run
+# Q45 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q32)
 
 ## Ruling
 
@@ -17,76 +17,84 @@ and what-if is off.
 
 ### The rules
 
-None changes the sim's behaviour or a hash: the live sim is only read.
+None changes the match's behaviour or a hash: the match's sim is only
+read. Rule 12 amends Q32 and changes how a driver paces ticks, not what
+a tick does.
 
-1. **A fork** is the world at a completed tick of a match or a replay,
-   with its command log to that tick: built by cloning the live sim or by
-   re-running `(map, command log)`, either way agreeing with the match's
-   state hash at that tick. It runs the tick loop exactly as the match
-   does, but it is never a peer and is not the match's sim: it sends
-   nothing, receives nothing, and no command or result of it reaches the
-   match, except the one pause in rule 4. It has entry points the match's
-   sim does not — stopping mid-tick, editing, restoring a saved state.
-2. **Breakpoints** are a line of a file in the player's tree, held by the
-   renderer, never a command, never in the log or the hash. A breakpoint
-   is on a line of the file's **deployed version**, for each deployment
-   the file reaches; while the file is ahead of what is deployed its
-   breakpoints are greyed. Each is scoped to the selected machine or to
-   every machine whose bundle holds the file. Only the player's own team's
-   machines can hit one.
-3. **The live sim reports a hit, and nothing else.** The driver passes the
-   team's watches — `(deployment, bundle version, file in the bundle,
-   line)`, since every robot file is its bundle's `main.py` — to
-   `sim.step`, which reports each machine of the team running that version
-   that **enters** a watched line: begins an operation on it from another
-   line or frame. It charges nothing and changes nothing, so a peer with
-   breakpoints hashes as one without.
-4. **A hit opens a fork** at the start of the hit's tick, run forward to
-   the hit. In single-player and PvE the driver also submits a
-   `SetSpeed(0)`, which pauses the match `delay` ticks later like any
-   command (Q12), unless the match is paused or a pause is pending. In PvP
-   the match runs on. **Further hits** while a fork is open leave it open;
-   they are counted, and the player may reopen the fork at any of them.
-5. **Stepping** on a fork advances the whole world in tick-loop order and
-   stops on the selected machine: **line** — until it enters another line
-   or frame; **over** — until it next enters a line in the frame it was
-   in, or in the frame below if that one returns or is abandoned, so a
-   call, or a waiting action such as `wait(60)` or `move`, is one step;
-   **tick** — to the end of the tick; **continue** — to the next watched
-   line it enters, never the one it stands on. Every step also stops when
-   the machine dies or its program restarts, after `debug_step_max_ticks`
-   ticks with no other stop, and, in PvP, at the live tick. Every
-   machine's metering is the match's, so a fork left alone reproduces the
-   match.
-6. **Rewind** steps back to any earlier stop by restoring the nearest saved
-   state at or before it and re-running. The sim saves and restores; the
-   renderer saves every `debug_checkpoint_ticks` of the live match and of
-   every fork, the last `debug_checkpoints_kept`, and the step limit is
-   `debug_step_max_ticks` — tuning constants in `data/interface.toml`.
-7. **Inspection** shows the selected machine's call stack, each frame with
-   its file, line, function and locals, its globals, its action in
-   progress, its tick budget and deficit, its pending interrupts and
-   whether it is in a handler, and its attribute record. Only the player's
-   own team's machines can be selected, and the map a fork draws is the
-   team's view of it, fog and memory as Q21 rules, never the whole world.
-8. **Editing a variable** on a paused fork sets a local or a global of the
-   selected machine to a value written as a language literal and checked
-   as the language would. The fork saves a state at the edit, so a rewind
-   never re-runs across it, and is marked **diverged** from then on.
-9. **What-if** deploys the editor's current text, as the same `Deploy`s a
-   real deploy would send, into a fork, agreed for the fork's next tick
-   and applied in its step 1, and runs it forward at any speed, with the
-   map drawing the fork under a banner; the fork is diverged. Taking the
-   change is an ordinary deploy to the match, `delay` ticks later from the
-   match's own tick, so the result can differ from the fork's.
-10. **In PvP no fork runs past the live match's latest completed tick**: a
-    step that would cross it waits, and what-if is unavailable. In
-    single-player, PvE and replays a fork runs ahead freely; a scripted
-    team's commands are known in advance (`04`), so a fork sees them.
-11. **A replay** records the team of the peer that saved it, outside its
-    identity, and is debugged as that team. A replay with no recorded
-    team — cards only, or saved before this ruling — can be watched but
-    not debugged.
+1. **A fork** is a private copy of the world from a saved state, or
+   `(map, command log)` re-run, at a completed tick of a match or a
+   replay, agreeing with its state hash there. It runs the tick loop
+   unchanged; it is never a peer and never the match's sim, and has entry
+   points the match's sim does not: stopping mid-tick, editing, restoring.
+2. **A fork's commands** are the match's (or the replay's) log for each
+   tick it runs, which it reads and never writes, then its own log — the
+   what-if deploys and edits. A fork with an empty own log is faithful and
+   reproduces the match hash for hash; one with entries is diverged.
+3. **Statements.** Every rule naming a line means a machine *beginning a
+   statement* on it — the boundary before the statement's first
+   operation; returning from a call into the middle of a statement begins
+   nothing.
+4. **Breakpoints** are on a line of the text a file window shows, carried
+   with their lines as the text is edited, and scoped to the selected
+   machine or to every machine of the team whose bundle holds the file.
+   Each watches the machines running exactly that text — the file's
+   content hash, with the deployment for a robot file — and is greyed
+   while nothing runs it. They are held by the renderer, never a command,
+   never in a log or the hash, and only the player's team's machines hit
+   them.
+5. **The match's sim reports hits and nothing else.** The driver passes the
+   team's watches to `sim.step` beside the tick's commands; `sim.step`
+   reports each watched machine that begins a statement on a watched line,
+   charging nothing and changing nothing, so a peer watching lines hashes
+   as one that is not.
+6. **A hit opens a fork** at it, from the latest saved state before the
+   hit's tick. In single-player and PvE the driver also submits a
+   `SetSpeed(0)`, landing `delay` ticks later (Q12), unless the match is
+   paused or a pause is pending; in PvP the match runs on. Further hits
+   while a fork is open leave it open, are counted, and can each reopen
+   it.
+7. **Steps**: **line** — to the selected machine's next statement in any
+   frame; **over** — to its next statement in its current frame or, that
+   frame gone, in the nearest frame still on its stack; **tick** — to the
+   end of the tick; **continue** — to a watched machine beginning a
+   statement on a watched line. Line, over and continue also stop at
+   `dying`, at death and at a restart; every step stops after
+   `debug_step_max_ticks` ticks, and in PvP at the live tick. Each stop
+   reports its cause. Line and over need a selected machine.
+8. **Back** returns to the previous stop, from the latest saved state
+   before it. The renderer saves the match's state, and each fork's, every
+   `debug_checkpoint_ticks`, keeping the last `debug_checkpoints_kept`.
+9. **Inspection** shows, from the fork at the stop: the selected machine's
+   frames with file, line, function and locals; the globals of every module
+   it has run; its record, action and progress; its tick budget, deficit
+   and pending interrupts; and whether it is in a handler, which kind, and
+   the hook budget spent. Only the team's machines can be selected, and a
+   fork's map is the team's view of it, fog and memory as Q21 rules.
+10. **Editing a variable** on a paused fork sets a local, or a global of any
+    module the machine has run, to a literal or a display of literals,
+    parsed as `01` parses it and checked against `01`'s Limits. The edit
+    enters the fork's log at its tick, machine and operation count, so a
+    re-run applies it where it was made. **What-if** puts the editor's
+    deploys into the fork's log for its next tick, after the match's own;
+    the file's breakpoints then hit in the fork, since the fork runs that
+    text. *Take it* is an ordinary deploy to the match. A new edit or
+    what-if at a point before entries already in the fork's log discards
+    them and the saved states after it.
+11. **In PvP a fork never passes the live match's latest completed tick
+    and never diverges**: edits and what-if are refused, since a
+    counterfactual world run to the present shows real hidden state
+    through the team's fog. In single-player, PvE and replays a fork runs
+    ahead freely, and sees a scripted team's commands in advance (`04`).
+12. **A paused driver counts only peers' commands** (amending Q32): at
+    speed `0` it runs to the next tick carrying a player's command, not a
+    scripted team's, whose whole script is in the log from the start —
+    otherwise a pause, a debugger's or a player's, would run on to the
+    script's next entry.
+13. **A replay** records the team of the peer that saved it, outside its
+    identity, and is debugged as that team; its file windows show the text
+    of a version the replay ran, picked from those its log deployed. A
+    replay with no recorded team — cards only, or saved before this ruling
+    — can be watched but not debugged.
 
 ### Consequences
 
@@ -97,25 +105,35 @@ None changes the sim's behaviour or a hash: the live sim is only read.
   which file and line an operation is on. Both exist conceptually (`01`,
   Metering); the fork needs them as an API.
 - **PvP keeps fog.** A fork holds the whole world, as every lockstep peer's
-  sim does, so the debugger shows only what the team's renderer would.
+  sim does, so the debugger shows only what the team's renderer would, and
+  a PvP fork never diverges, so it can show nothing the match will not.
+- **The framing holds for the match.** The renderer still never writes the
+  match's sim (`00`, CLAUDE.md rules 1 and 5); a fork is a copy, named as
+  the one exception in both.
 - **An in-language `breakpoint()`** is not part of this ruling; it would
   need a builtin with a cost row, and is a new question number if wanted.
 
 ## Outcome
 
-- **Docs:** [07-interface.md](../../07-interface.md) — the Decided entry,
-  the screen's debugger window, and the Debugging section.
-  [06-architecture.md](../../06-architecture.md) — the Decided entry and
-  the Forks section. [00-overview.md](../../00-overview.md) — the Decided
-  listing. [QUESTIONS.md](../../QUESTIONS.md) — the status block.
+- **Docs:** [07-interface.md](../../07-interface.md) — the preamble, the
+  Decided entry, the screen's debugger window, and the Debugging section.
+  [06-architecture.md](../../06-architecture.md) — the Q15 and Q32 Decided
+  entries and Q45's, the driver, and the Forks section.
+  [00-overview.md](../../00-overview.md) — fixed point 2 and the Decided
+  listing. [CLAUDE.md](../../../CLAUDE.md) — determinism rules 1 and 5.
+  [QUESTIONS.md](../../QUESTIONS.md) — the status block.
 - **Task:** [T26](../../TASKS.md) — the sim's fork, watches, stepping,
   saving and restoring a state, and variable edits.
 - **Task:** [T27](../../TASKS.md) — the renderer's debugger: breakpoints
   bound to versions, the window, the checkpoint policy and rewind, live
   and on replays, and the team a saved replay records.
 - **Task:** [T28](../../TASKS.md) — what-if.
+- **Task:** [T29](../../TASKS.md) — the paused driver counting only peers'
+  commands.
 - **Problem:** [P5](../../PROBLEMS.md) — the docs state Q45 as current
   until T26 to T28 land.
+- **Problem:** [P6](../../PROBLEMS.md) — the driver still counts a scripted
+  team's commands when paused, until T29.
 
 ## Worksheet
 
@@ -139,7 +157,9 @@ Cite the ruling above; open this half only to recover *why*.
 | variables | **Editable, the fork marked diverged** *(chosen)* | Fast hypothesis tests; the fork stops claiming to be the match. |
 | breakpoint versions | Follow edits by matching lines | Friendlier, and can land on the wrong statement. |
 | breakpoint versions | A plain line number | Any version hits line N, often unrelated code. |
-| breakpoint versions | **The deployed version; greyed while ahead** *(chosen)* | Stops only on the code that runs. |
+| breakpoint versions | **The deployed version; greyed while ahead** *(chosen)* | Stops only on the code that runs. Refined in review to the file's exact text by content hash, so a breakpoint survives deploys of other files, follows its line through edits, and hits a what-if fork running that text. |
+| PvP edits | Allowed, as elsewhere | A counterfactual run to the present shows real enemy state through fog. |
+| PvP edits | **Refused; a PvP fork never diverges** *(chosen in review)* | Edits stay in single-player, PvE and replays, beside what-if. |
 | further hits | The newest replaces the fork | What the player was inspecting is lost. |
 | further hits | **Keep the fork, count them** *(chosen)* | One pause, and no lost state. |
 | a replay's team | Any team, picked on opening | Every replay debuggable; the file needs nothing new. |
@@ -159,4 +179,11 @@ the first draft found watches keyed without the deployment, steps that
 could never stop, rewinds that lost edits and what-if deploys landing
 mid-tick; the user then chose breakpoints bound to deployed versions,
 further hits counted under an open fork, and replays debugged as the team
-that saved them.
+that saved them. Two more reviews found the fork with no commands past its
+opening tick, line entry counted twice across a call, edits lost or kept
+on abandoned timelines, breakpoints greyed by unrelated deploys and blind
+in what-if, a PvP edit that sees through fog, a pause that a script's
+later commands would run straight through, and the framing rules in `00`
+and CLAUDE.md left saying the debugger was forbidden; each is answered
+above, and the PvP refusal of edits extends the user's ruling against
+PvP lookahead to the case it was meant to cover.

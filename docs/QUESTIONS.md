@@ -37,11 +37,11 @@ outright, so neither has a Decided entry anywhere; Q43, a bot's program-set
 color and the player-colored team outline, amends Q35 and Q42; Q44, the
 `Shift`+drag rectangle and the withdrawing *clear*, amends Q37 and is
 `07`'s; Q45, debugging on a fork with what-if, was opened and answered in
-one commit and is `07`'s and `06`'s. The rulings of Q7, Q9, Q21, Q22, Q23,
-Q24, Q25, Q30, Q42 and Q43 are [02-machines](02-machines.md)'s Decided
-entries, `docs/03` cites Q21 and Q22 from there, the rulings of Q6, Q10,
-Q12, Q15, Q26 through Q28, Q32 and Q45 are
-[06-architecture](06-architecture.md)'s, Q4 and Q29 are
+one commit, amends Q32, and is `07`'s and `06`'s. The rulings of Q7, Q9,
+Q21, Q22, Q23, Q24, Q25, Q30, Q42 and Q43 are
+[02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
+Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and
+Q45 are [06-architecture](06-architecture.md)'s, Q4 and Q29 are
 [04-opposition](04-opposition.md)'s, Q42 is also
 [05-progression](05-progression.md)'s, and Q43 is also `07`'s. Nothing is
 undecided, and **Open** below is empty until the next question is opened.

@@ -20,7 +20,8 @@ reopened by this corpus:
    CLAUDE.md's determinism rules, and it is expensive to reverse — a sim built
    without it does not become deterministic later.
 2. **`sim` is renderer-free plain Rust.** Whatever renders the game reads sim
-   state and never writes it.
+   state and never writes it. A debugger may run a private copy of the sim
+   (Q45); the copy is not the match, and nothing it does reaches it.
 
 ```mermaid
 flowchart LR

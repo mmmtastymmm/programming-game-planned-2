@@ -5,7 +5,9 @@ editor the programs are written in, how a fault reaches the player, and how
 a machine on the map reads. This doc is normative for the renderer's
 choices that are not sim rules — everything here is on the far side of the
 one-way arrows [06-architecture](06-architecture.md) draws: the renderer
-reads the completed-tick snapshot and writes only commands (Q15). Nothing
+reads the completed-tick snapshot and writes only commands (Q15). The
+debugger alone also drives forks, private copies that never reach the
+match (Q45). Nothing
 here changes a hash; a peer with a different renderer sees the same match.
 
 ## Decided
@@ -71,9 +73,9 @@ here changes a hash; a peer with a different renderer sees the same match.
   player steps by line, by tick or over an action, rewinds, inspects the
   selected machine's execution and may edit its variables, and a
   **what-if** run deploys the editor's text into the copy to try it
-  before deploying it. A breakpoint is on a line of a deployed version. The
-  same tool opens on a live match or on a replay saved with its team; in
-  PvP a fork never passes the live tick and what-if is off. Debugging,
+  before deploying it. A breakpoint watches the exact text it was set on.
+  The same tool opens on a live match or on a replay saved with its team;
+  in PvP a fork never passes the live tick and is never edited. Debugging,
   below.
 
 ## The screen
@@ -240,58 +242,65 @@ awaited and the match continues, with a line in the log.
 A program is debugged on a **fork** (Q45): a private copy of the sim, as
 [06-architecture](06-architecture.md)'s Forks section defines it, which
 never feeds back into the match. Everything here is the renderer's; the
-live sim is only read.
+match's sim is only read.
 
 - **Breakpoints.** A click in a file window's gutter sets a breakpoint on
-  that line, scoped to the selected machine or, with no machine selected,
-  to every machine whose bundle holds the file. A breakpoint is on a line
-  of the **deployed version** of the file, for each deployment the file
-  reaches, and is sent to the sim as `06`'s watches; a machine still on
-  another version of its deployment (Q11) never hits it. While the file is
-  *ahead* its breakpoints are greyed and watch nothing, and on a deploy
-  they move to the new version at the same line numbers. Breakpoints are
-  kept with the tree, never sent to a peer, and only the player's own
-  team's machines hit them.
-- **A hit** opens a fork at the hit, and the map draws the fork under a
-  banner naming its tick and the machine; the debugger window opens on
-  that machine. In single-player and PvE the match is also paused, by a
-  `SetSpeed(0)` that lands `delay` ticks later (Q12), unless the match is
-  already paused or a pause is pending; in PvP it runs on, and the time
-  bar keeps the live tick.
+  that line of the text the window shows, scoped to the selected machine
+  or, with no machine selected, to every machine of the team whose bundle
+  holds the file. Editing the text carries breakpoints with their lines,
+  as it carries the cursor. A breakpoint watches the machines running
+  **exactly that text**: it becomes `06`'s watch on the file's content
+  hash, so it hits wherever the shown text runs — the match once the text
+  is deployed and a machine has taken it (Q11), a fork once what-if has
+  deployed it — and is greyed while nothing runs it. Breakpoints are kept
+  with the tree, never sent to a peer, and only the team's machines hit
+  them.
+- **Saved states.** The renderer saves the match's state every
+  `debug_checkpoint_ticks` and keeps the last `debug_checkpoints_kept`, and
+  a fork's on the same terms.
+- **A hit** opens a fork at it: from the latest saved state before the
+  hit's tick, run to the moment the hit's machine began the statement. The
+  map draws the fork under a banner naming its tick and the machine, and
+  the debugger window opens on that machine. In single-player and PvE the
+  match is also paused by a `SetSpeed(0)`, which lands `delay` ticks later
+  (Q12), unless the match is paused or a pause is pending; in PvP it runs
+  on, and the time bar keeps the live tick.
 - **Further hits** while a fork is open leave it as it is: the debugger
   window counts them, the latest first, and offers to reopen the fork at
   any of them. They submit no further pause.
-- **A fork can also be opened by hand** at the live match's latest tick,
-  or at any tick of a replay from the start screen.
+- **A fork can also be opened by hand** at the match's latest tick, or at
+  any tick of a replay from the start screen.
 - **Stepping**: *line*, *over*, *tick*, *continue* and *back*, as `06`
   defines each, with the keys the build chooses. The whole world advances;
-  the stop is the selected machine's, and the window says why a step
-  stopped — a line, the frame returning, the machine dying, the step
-  limit, or the live tick. Selecting another machine of the team changes
-  which machine the steps stop on.
+  *line* and *over* need a selected machine. The window says why a step
+  stopped: a statement, a watched line, `dying` delivered, death, a
+  restart, the end of the tick, the step limit, or the live tick.
 - **Inspection**: the selected machine's call stack, each frame with its
-  file, line, function and locals, the frame's line marked in its file's
-  window at the version the machine runs; its globals; its action in
-  progress, tick budget and deficit; its pending interrupts and whether it
-  is in a handler; its record.
-- **Editing a variable**: a local or global of the selected machine, typed
-  as a language literal on a paused fork. The fork is marked *diverged* in
-  its banner from then on.
+  file, line, function and locals, the frame's line marked in a window
+  showing the text the machine runs; the globals of each module it has
+  run; its record, action and progress; its tick budget and deficit; its
+  pending interrupts; and whether it is in a handler, which, and the hook
+  budget spent — all from the fork at the stop, not from a snapshot.
+- **Editing a variable**: a local or a global of the selected machine, on a
+  paused fork, typed as `06` allows. The fork is marked *diverged* in its
+  banner from then on.
 - **What-if**: a deploy button on a file window while a fork is open sends
   that file's deploys into the fork, not the match, for its next tick, and
-  *run* advances the fork at the chosen speed; the fork is *diverged*.
-  *Take it* deploys the same text to the match, `delay` ticks after the
-  match's own tick.
-- **PvP**: a fork stops at the live match's latest completed tick, and
-  waits there; what-if is not offered.
+  *run* advances the fork at the chosen speed; the fork is *diverged*, and
+  the file's breakpoints now hit in it. *Take it* deploys the same text to
+  the match, `delay` ticks after the match's own tick.
+- **PvP**: a fork stops at the live match's latest completed tick and
+  waits there, and never diverges: neither edits nor what-if are offered.
 - **Fog**: the map of a fork is the team's view of it, as the live map is
   (Q21), and only the team's machines can be selected or inspected.
 - **Replays**: a saved replay records the team of the peer that saved it,
   outside its identity, so peers that agree still write one file of the
   same name and the same `(map, command log)`. A replay opened from the
-  start screen is debugged as that team, its fog and its machines. A
-  replay with no recorded team — a match of cards only, or one saved
-  before Q45 — can be watched but not debugged.
+  start screen is debugged as that team. Its file windows show the text a
+  version of the replay ran, picked from the versions its log deployed,
+  and breakpoints set there watch that text. A replay with no recorded
+  team — a match of cards only, or one saved before Q45 — can be watched
+  but not debugged.
 - **Closing** the fork returns the map and the windows to the match.
 
 ## Costs
