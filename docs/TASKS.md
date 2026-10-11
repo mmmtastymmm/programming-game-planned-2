@@ -69,9 +69,8 @@ the golden fixtures, regenerated with the reason in the PR.
 
 Q43, ruled in `02` and `07`. The sim: a `color` attribute on bots, `None`
 when printed, kept across redeploy and fault, settable while `dying`, in
-sightings and the hash;
-the zero-tick `set_color(color)` action, refusing anything not in the
-paint list or `None`, with its row in `data/language/costs.toml`. The
+sightings and the hash; the zero-tick `set_color(color)` action, refusing
+anything not in the paint list or `None`, with its row in `data/language/costs.toml`. The
 renderer: a bot's body in its color or the neutral body color, buildings
 in the neutral color, an outline on every machine in its team's color
 replacing the ring, the player's own green by default and the others from
