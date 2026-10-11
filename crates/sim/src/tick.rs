@@ -907,6 +907,13 @@ fn write_record(h: &mut Fnv1a, r: &MachineRecord) {
     h.write_bytes(&r.health.raw().to_le_bytes());
     write_opt_str(h, r.busy);
     write_amounts(h, r.load.as_ref());
+    match &r.color {
+        None => h.write_u8(0),
+        Some(c) => {
+            h.write_u8(1);
+            write_opt_str(h, c.as_deref());
+        }
+    }
     write_amounts(h, r.store.as_ref());
     h.write_u64(r.progress);
     match r.printing {

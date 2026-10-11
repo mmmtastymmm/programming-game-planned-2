@@ -170,6 +170,9 @@ pub struct Machine {
     pub action: Option<Action>,
     /// A bot's carried resources, every kind present.
     pub load: BTreeMap<String, Num>,
+    /// A bot's color, set by `set_color` (Q43): a paint color, or `None`
+    /// as printed. Kept across a redeploy and a fault; `None` on a building.
+    pub color: Option<String>,
     /// A building's held resources, every kind present.
     pub store: BTreeMap<String, Num>,
     pub store_capacity: BTreeMap<String, Num>,
@@ -252,6 +255,9 @@ pub struct MachineRecord {
     pub health: Num,
     pub busy: Option<&'static str>,
     pub load: Option<BTreeMap<String, Num>>,
+    /// A bot's `color` (Q43): `Some` of its color or `None` on a bot,
+    /// absent on a building, as `load` is.
+    pub color: Option<Option<String>>,
     pub store: Option<BTreeMap<String, Num>>,
     pub progress: u64,
     /// A printer's `printing`; absent on every other model.
@@ -271,6 +277,7 @@ impl MachineRecord {
             health: m.health,
             busy: m.busy(),
             load: m.is_bot().then(|| m.load.clone()),
+            color: m.is_bot().then(|| m.color.clone()),
             store: m.is_building().then(|| m.store.clone()),
             progress: m.progress(),
             printing: (m.model == Model::Printer).then_some(m.printing),
@@ -587,6 +594,7 @@ impl World {
                 dying: false,
                 action: None,
                 load,
+                color: None,
                 store,
                 store_capacity,
                 becomes: None,

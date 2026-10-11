@@ -781,3 +781,116 @@ fn the_snapshot_carries_each_teams_own_plans_and_no_one_elses() {
     let theirs = &snap.teams.iter().find(|t| t.id == TeamId(1)).unwrap().plans;
     assert!(theirs.is_empty(), "plans are private");
 }
+
+/// Every log line team 0's bots write over `n` ticks, in order, the
+/// opening set applied on the first.
+fn bot_logs(s: &mut Sim, opening: Vec<Command>, n: u64) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cmds = opening;
+    for (i, c) in cmds.iter_mut().enumerate() {
+        c.seq = i as u32;
+    }
+    for t in 0..n {
+        s.step(if t == 0 { &cmds } else { &[] });
+        for m in s.world.machines.values() {
+            if m.team == TeamId(0) && m.model == Model::Bot {
+                out.extend(m.log.iter().map(|l| l.text.clone()));
+            }
+        }
+    }
+    out
+}
+
+/// Q43: a printed bot has no color, `set_color` sets it, a sighting carries
+/// it, and it survives a fault's restart and a redeploy.
+#[test]
+fn a_bot_sets_its_color_and_keeps_it_across_a_fault_and_a_redeploy() {
+    let mut s = sim();
+    let program = "log('start', me().color)\n\
+                   if me().color is None:\n    set_color('red')\n\
+                   log('seen', [m.color for m in see() if m.id == me().id][0])\n\
+                   wait(3)\n\
+                   x = 1 / 0\n";
+    let logs = bot_logs(&mut s, vec![deploy(0, "bot", program)], 40);
+    assert_eq!(
+        logs[..3],
+        ["start None", "seen red", "start red"],
+        "{logs:?}"
+    );
+    let mut redeploy = deploy(0, "bot", "log('after', me().color)\nwait(1000)\n");
+    redeploy.tick = s.world.tick + 1;
+    let logs = bot_logs(&mut s, vec![redeploy], 2);
+    assert!(logs.contains(&"after red".to_string()), "{logs:?}");
+    let bot = s
+        .world
+        .machines
+        .values()
+        .find(|m| m.model == Model::Bot && m.team == TeamId(0))
+        .unwrap();
+    assert_eq!(bot.color.as_deref(), Some("red"));
+}
+
+/// Q43: only a paint color or `None` is accepted, and only by a bot; a
+/// building has no `color` attribute.
+#[test]
+fn set_color_takes_a_paint_color_or_none_and_buildings_have_no_color() {
+    let mut s = sim();
+    let bot = "for c in ['pink', 3, 'Red', 'red']:\n    try:\n        set_color(c)\n        log('took', c)\n    except ValueError:\n        log('refused', c)\n\
+               set_color(None)\nlog('now', me().color)\nwait(1000)\n";
+    let printer = "try:\n    me().color\nexcept AttributeError:\n    log('no color')\n\
+                   try:\n    set_color('red')\nexcept ValueError:\n    log('refused')\nwait(1000)\n";
+    let mut cmds = vec![deploy(0, "bot", bot), deploy(0, "printer", printer)];
+    cmds[1].seq = 1;
+    s.step(&cmds);
+    let p = printer_of(&s, 0);
+    assert_eq!(
+        p.log.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
+        ["no color", "refused"]
+    );
+    let logs = bot_logs(&mut s, vec![], 40);
+    assert_eq!(
+        logs[..5],
+        [
+            "refused pink",
+            "refused 3",
+            "refused Red",
+            "took red",
+            "now None"
+        ],
+        "{logs:?}"
+    );
+}
+
+/// Q43: a `dying` bot's hook may still set its color.
+#[test]
+fn a_dying_bot_may_set_its_color() {
+    let mut s = sim();
+    // The hook waits so the machine outlives the tick: `death`, raised as
+    // the hook ends, removes it and its log with it.
+    let program = "def on_dying():\n    set_color('blue')\n    log('dying', me().color)\n    wait(5)\n\
+                   x = 1 / 0\n";
+    let logs = bot_logs(&mut s, vec![deploy(0, "bot", program)], 60);
+    assert!(logs.contains(&"dying blue".to_string()), "{logs:?}");
+}
+
+/// Q43: the color is world state, so two worlds alike but for one bot's
+/// color do not agree. The worlds run one program, so the bundle's version
+/// cannot be what tells them apart.
+#[test]
+fn a_bots_color_is_in_the_hash() {
+    let mut s = sim();
+    run(&mut s, vec![deploy(0, "bot", "wait(1000)\n")], 40);
+    let id = s
+        .world
+        .machines
+        .values()
+        .find(|m| m.model == Model::Bot && m.team == TeamId(0))
+        .unwrap()
+        .id;
+    let before = s.state_hash();
+    s.world.machines.get_mut(&id).unwrap().color = Some("red".into());
+    let red = s.state_hash();
+    assert_ne!(red, before, "None and red");
+    s.world.machines.get_mut(&id).unwrap().color = Some("blue".into());
+    assert_ne!(s.state_hash(), red, "red and blue");
+}
