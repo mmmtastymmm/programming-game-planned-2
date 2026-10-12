@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-11: 4 opened, 3 fixed — 1 open.**
+**Status 2026-10-12: 7 opened, 3 fixed — 4 open.**
 
 ## Open
 
@@ -51,3 +51,39 @@ conversion and never rechecked against deconstruction once Q42 made it the
 way to take a printer down. The user deferred retuning them to
 playtesting; this entry holds the arithmetic until then, and closes with
 the commit that changes the numbers or the rule.
+
+**P5 — The code lags Q55: no forks, breakpoints or what-if**
+
+Q55 ruled that a program is debugged on a fork, and `06`'s Forks section
+and `07`'s Debugging section and The match state it as current: a saved
+state of the match, watched lines passed to `sim.step`, forks that stop
+mid-tick, step, save and restore, editable variables, what-if, and
+replays opened from the start screen, recording their team. None of it
+exists yet: `sim.step` takes commands only, the language VM cannot stop
+mid-slice, the renderer has no breakpoints, debugger window or replay
+entry, and a replay records no team. The work is [T26](TASKS.md),
+[T27](TASKS.md) and [T28](TASKS.md); this entry closes with the commit
+that finishes whichever of them lands last.
+
+**P6 — A pause runs on to a scripted team's next command**
+
+Q55 amended Q32 so a paused driver runs only to the next tick carrying a
+player's command, a scripted team's not counting. `render`'s driver still
+takes the next tick carrying any command, through `net`'s
+`next_tick_with_a_command`, and the driver puts a scripted team's whole
+script into the log when it is built, a script being a command log written
+in advance (`04`). So a pause in PvE, a player's or a
+debugger's, runs on without the clock to the script's next entry. It is
+latent today only because the Fool's script has nothing after tick 0. The
+work is [T29](TASKS.md).
+
+**P7 — A `while` header is charged once per loop, not once per pass**
+
+`01`'s costs part charges a statement each time it executes, a `while`
+header once per pass, and `06`'s Forks has a `while` begin again on each
+pass for that reason. The compiler charges the header's `op.statement` once,
+before the loop's start (`crates/lang/src/compile.rs`, the `While` arm), so
+a loop of a hundred passes pays for its header once, and every program with
+a `while` loop runs cheaper than ruled — the starter's and the Fool's robots
+among them. Found in review of Q55, whose statement rule would otherwise be
+built on the lagging charge. The work is [T30](TASKS.md).

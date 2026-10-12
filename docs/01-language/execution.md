@@ -151,11 +151,14 @@ has to learn rather than avoid.
   wait. Inside a hook the same cost is debited in full from the hook budget as
   well, and at a boundary inside a hook the hook budget is checked before the
   tick budget, so exhaustion escalates before a yield could hide it.
-- **Yielding is invisible to the program.** No variable changes, no exception
-  is raised; the next tick continues. World state may have changed in between,
-  which is the point: a program that reads the world once and acts for a
-  hundred ticks acts on stale data, and that is the player's problem to solve
-  with a loop, not the sim's.
+- **Yielding is invisible to the program.** No variable changes, no
+  exception is raised; the next tick continues. (On a debugging fork a
+  player may set a variable while the machine is stopped — doorway
+  invariant 3 — but that is the debugger's act on a copy, not the program's
+  or the match's.) World state may have changed in between, which is the
+  point: a program that reads the world once and acts for a hundred ticks
+  acts on stale data, and that is the player's problem to solve with a
+  loop, not the sim's.
 
 ## The cost model
 
