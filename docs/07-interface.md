@@ -204,10 +204,11 @@ With none armed, a click selects and a drag pans. The renderer submits
 and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.
 
-A tile carrying the player's team's plan shows it as a translucent version
-of its effect — the color at half alpha, or over a tile already painted a
-nearly solid square of the new color inside a border of the old (Q49), the
-overlay's label, a ghost of the building; a clear plan hatches the slot —
+A tile carrying the player's team's plan shows it as a smaller,
+see-through version of its effect (Q50) — a square of the new color inset
+from the tile's edge, with any paint already there showing round it; the
+overlay's marker and label; a scaled-down translucent ghost of the
+building, a printer for a printer plan; a clear plan hatches the slot —
 and the armed tool shows the same ghost under the cursor, or over a
 `Shift`+drag's rectangle, on the tiles it can plan: paint and overlays go
 only on ground the team has seen (`03`, Q49), so a single mark elsewhere
