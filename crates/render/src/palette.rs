@@ -594,9 +594,9 @@ impl Palette {
         g
     }
 
-    /// A nearly solid, unlit copy of `live`: a paint plan over a tile
-    /// already painted another color, which a translucent ghost would mix
-    /// with into mud (Q37).
+    /// A nearly solid, unlit copy of `live`: a paint plan's smaller square
+    /// (Q50), which a translucent ghost over paint already there would mix
+    /// with into mud (Q49).
     pub fn solid(
         &mut self,
         materials: &mut Assets<StandardMaterial>,
