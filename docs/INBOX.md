@@ -35,4 +35,23 @@ still has to say why.
 
 ## Open
 
-*(nothing yet)*
+**I3 — A saved replay from before Q52 and Q53 probably no longer plays back the same**
+
+`data/starter/replays/first-993-ec57f7d121fdc338.ron` was saved by a match
+played before docstrings became free (Q52) and before the starter bot was
+rewritten onto `lib/` (Q53). It is gitignored, so only this checkout has it,
+and nothing in CI replays it. A replay that carries its bundles' bytes may
+still replay, since the bot's source is in the file, but the interpreter now
+charges that source less, so its state hash would likely differ from the one
+in its name. Not tried. Worth knowing whether a replay is expected to survive
+a language change at all, or is only promised to replay on the build that
+wrote it.
+
+**I4 — `NoIndirectDrawing` on the camera draws no 3D on this Mac**
+
+While chasing the paint-plan flicker (#83, #84), adding Bevy's
+`NoIndirectDrawing` to the `Camera3d` left the map black on macOS (Metal):
+the panels drew, nothing 3D did. No error was logged. Not investigated
+further, since the fix went another way (`crates/render/CLAUDE.md`). Matters
+only if someone reaches for that setting later, for instance to make
+see-through instance order deterministic.
