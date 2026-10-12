@@ -42,7 +42,7 @@ repeated here.
    `redeploy` swaps it, `dying` and `death` end it. The only resumption the
    language has is metering: main flow or a hook paused at an operation
    boundary when the tick's budget runs out continues from that boundary next
-   tick, in the same program, with the same state. A debugging fork (Q52,
+   tick, in the same program, with the same state. A debugging fork (Q53,
    `docs/06` Forks) may also stop a machine at any boundary, resume it there,
    and set a variable while it is stopped; that is a tool acting on a private
    copy of the world, never the program or the match, and the language's

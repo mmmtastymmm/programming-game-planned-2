@@ -26,7 +26,7 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-10-11.** Every question this file has issued, Q1 through Q52,
+**Status 2026-10-11.** Every question this file has issued, Q1 through Q53,
 is answered. Q33 through Q39 and Q41 were each opened and answered in one
 commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
@@ -44,13 +44,13 @@ and overlays only on ground the team has seen, is
 [03-world](03-world.md)'s, and its preview of a paint plan over paint
 amends Q37; Q50, every plan previewed as a smaller version of its effect,
 amends Q37 and Q49 and is `07`'s; Q51, a smaller overlay marker and no
-cursor ghost over the same plan, amends Q50 and Q37 and is `07`'s. Q52,
+cursor ghost over the same plan, amends Q50 and Q37 and is `07`'s. Q53,
 debugging on a fork with what-if, was opened and answered in one commit,
 amends Q15, Q32, Q36 and Q39, and is `07`'s and `06`'s. The rulings of Q7,
 Q9, Q21, Q22, Q23, Q24, Q25, Q30, Q42 and Q43 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and
-Q52 are [06-architecture](06-architecture.md)'s, Q4 and Q29 are
+Q53 are [06-architecture](06-architecture.md)'s, Q4 and Q29 are
 [04-opposition](04-opposition.md)'s, Q42 is also
 [05-progression](05-progression.md)'s, and Q43 is also `07`'s. Nothing is
 undecided, and **Open** below is empty until the next question is opened.

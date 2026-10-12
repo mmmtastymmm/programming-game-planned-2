@@ -43,7 +43,7 @@ language crate when it lands:
    crate with an ECS lands, it may influence the sim exclusively through ordered
    `Command`s. ECS-side code feeding sim state any other way is the #1
    architecture violation to flag in review — every time. The one exception is
-   a debugging **fork** (Q52, `docs/06` Forks): a private copy of the sim the
+   a debugging **fork** (Q53, `docs/06` Forks): a private copy of the sim the
    debugger may drive and edit, which never reaches the match's world, log or
    hash. The match's sim takes nothing but `Command`s, plus the read-only
    breakpoint watches `docs/06` names.

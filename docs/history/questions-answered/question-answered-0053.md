@@ -1,6 +1,6 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q52 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q15, Q32, Q36 and Q39)
+# Q53 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q15, Q32, Q36 and Q39)
 
 ## Ruling
 
@@ -152,9 +152,9 @@ window amends Q39's list.
 ## Outcome
 
 - **Docs:** [07-interface.md](../../07-interface.md) — the preamble, the
-  Q36, Q39 and Q52 Decided entries, the screen's debugger window, The match
+  Q36, Q39 and Q53 Decided entries, the screen's debugger window, The match
   and the Debugging section. [06-architecture.md](../../06-architecture.md)
-  — the Q15, Q32 and Q52 Decided entries, the Crates table, the driver, and
+  — the Q15, Q32 and Q53 Decided entries, the Crates table, the driver, and
   the Forks section. [01-language.md](../../01-language.md) — doorway
   invariant 3, and [execution](../../01-language/execution.md)'s Metering.
   [04-opposition.md](../../04-opposition.md) — a script never wakes a
@@ -170,7 +170,7 @@ window amends Q39's list.
 - **Task:** [T28](../../TASKS.md) — what-if.
 - **Task:** [T29](../../TASKS.md) — the paused driver waking only for a
   player's command.
-- **Problem:** [P5](../../PROBLEMS.md) — the docs state Q52 as current
+- **Problem:** [P5](../../PROBLEMS.md) — the docs state Q53 as current
   until T26 to T28 land.
 - **Problem:** [P6](../../PROBLEMS.md) — the driver still counts a scripted
   team's commands when paused, until T29.
@@ -231,7 +231,7 @@ negative numbers unwritable, *run* undefined, saved states from the match
 used across a fork's edits, no way to open a replay, a replay file two
 peers in one directory would overwrite, and `01`'s and `04`'s rules left
 contradicting the fork. The last two found the ruling's number taken twice
-by `main` while it was open (Q45, then Q50; it is Q52), hits counted at a
+by `main` while it was open (Q45, then Q50; it is Q53), hits counted at a
 boundary a machine merely yielded at, a `for` beginning twice, no position
 for a death in step 4, saved states evicted under an open fork or missing
 before the first, replays paced by their own logged `SetSpeed`s, a deploy

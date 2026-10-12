@@ -8,7 +8,7 @@ one-way arrows [06-architecture](06-architecture.md) draws: the renderer
 reads the completed-tick snapshot and writes only commands (Q15). The
 debugger alone also passes the match's sim breakpoint watches, reads its
 hit reports and saved states, and drives forks, private copies that never
-reach the match (Q52). Nothing here changes a hash; a peer with a
+reach the match (Q53). Nothing here changes a hash; a peer with a
 different renderer sees the same match.
 
 ## Decided
@@ -23,11 +23,11 @@ different renderer sees the same match.
   `on_dying.py`, both fixed, and the player's own files and folders,
   shared by every robot; a fixed panel down the left shows it and a click
   opens a file as a window; the top bar keeps the status alone, and on a
-  replay its seek (Q52). A hook
+  replay its seek (Q53). A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
-  screen as first ruled; Q41 moved the dock into the tree; Q52 added the
+  screen as first ruled; Q41 moved the dock into the tree; Q53 added the
   debugger's and the version windows).** One window per open file, one
   each for the inspector, the tools and the log, the debugger's while a
   fork is open, and a read-only **version window** per version of a
@@ -35,7 +35,7 @@ different renderer sees the same match.
   resized, collapsed and closed by the player; the tree panel opens each;
   the layout is remembered in `windows.toml` beside the programs.
 - **A start screen, an end screen, and the replay always saved (Q36, as
-  Q52 amended).** The map, the cards, the programs directory and play,
+  Q53 amended).** The map, the cards, the programs directory and play,
   host, join or open a replay are picked in the game; the end names the
   winner or the draw, the tick, the hash and the replay's path; the replay
   is written as `replays/<map>-<tick>-<hash>-<team>.ron` inside the
@@ -82,7 +82,7 @@ different renderer sees the same match.
   reads upright from the camera, so it redraws rather than spins; the
   chevron, the trim and the light around it keep the heading, the paint
   and the team readable from above.
-- **A program is debugged on a fork (Q52, amending Q15, Q36 and Q39).**
+- **A program is debugged on a fork (Q53, amending Q15, Q36 and Q39).**
   Line breakpoints are the editor's; a hit opens a private copy of the sim
   at that point, where the player steps by line, over a call, by tick, on
   to the next breakpoint or runs freely, steps back, inspects the selected
@@ -103,14 +103,14 @@ floats over it (Q39, Q41):
 
 | Window | Holds | Ruled in |
 |---|---|---|
-| **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end, and on a replay its seek; nothing else | Q6, Q12, `06`, Q41, Q52 |
-| **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools, the log, and the debugger while a fork is open | Q41, Q52 |
+| **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end, and on a replay its seek; nothing else | Q6, Q12, `06`, Q41, Q53 |
+| **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools, the log, and the debugger while a fork is open | Q41, Q53 |
 | **one per open file** | the file being edited, the versions it is deployed as, the deploy and export buttons; the faults naming this file | Q33, Q34, Q39, Q41 |
 | **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's color to change | Q34, Q43, Q45 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
-| **debugger** | while a fork is open: its tick, state and controls, why the last step stopped, the hit list, the selected machine's stack, locals, globals, action, budget and interrupts | Q52 |
-| **one per version window** | a version of a deployment's program a machine runs or a replay ran, read-only, apart from the tree; its breakpoints | Q52 |
+| **debugger** | while a fork is open: its tick, state and controls, why the last step stopped, the hit list, the selected machine's stack, locals, globals, action, budget and interrupts | Q53 |
+| **one per version window** | a version of a deployment's program a machine runs or a replay ran, read-only, apart from the tree; its breakpoints | Q53 |
 
 Every window drags, resizes, collapses and closes, and several files may
 be open at once. The layout is saved to `windows.toml` beside the programs
@@ -246,7 +246,7 @@ a read, in no hash.
 **Before the first tick** (Q36) the start screen lists the maps in
 `data/maps` and the cards in `data/opposition` (`04`), takes the programs
 directory (Q33), and offers *play* alone against the cards, *host* on an
-address, or *join* one (`06`), or *open a replay* from `replays/` (Q52).
+address, or *join* one (`06`), or *open a replay* from `replays/` (Q53).
 Starting reads the programs in and builds the driver as the command line
 does; every choice is also a flag, and a flag skips the screen, so a
 headless run and CI need none — `--play`, which chooses nothing, starts the
@@ -265,7 +265,7 @@ does not is drawn in the first team's view and can only be watched.
 **After the last** the end screen names the winner or the draw (`04`), the
 ending tick, the final hash and the replay's path; *again* returns to the
 start, *quit* leaves. **The replay is always saved** when a match ends or
-desyncs: `(map, command log)` and the saver's team (Q52), in
+desyncs: `(map, command log)` and the saver's team (Q53), in
 `crates/replay`'s RON, as `replays/<map>-<tick>-<hash>-<team>.ron` inside
 the programs directory, named by the tick and hash so two peers that agree
 write names that differ only in the team, and two peers sharing one
@@ -284,7 +284,7 @@ awaited and the match continues, with a line in the log.
 
 ## Debugging
 
-A program is debugged on a **fork** (Q52): a private copy of the sim, as
+A program is debugged on a **fork** (Q53): a private copy of the sim, as
 [06-architecture](06-architecture.md)'s Forks section defines it, which
 never feeds back into the match. Everything here is the renderer's; the
 match's sim is only read — its snapshot, its hit reports and its saved
@@ -377,7 +377,7 @@ states — and given breakpoint watches, which change nothing.
   is a replay: its match is over, and every rule above applies.
 - **Replays**: a replay that records its team (The match) is debugged as
   that team, its programs in version windows. A replay with no recorded
-  team — a match of cards only, or one saved before Q52 — can be watched
+  team — a match of cards only, or one saved before Q53 — can be watched
   but not debugged.
 - **Closing** the fork returns the map and the windows to the match.
 
@@ -385,7 +385,7 @@ states — and given breakpoint watches, which change nothing.
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
 `fault_mark_ticks`, `debug_checkpoint_ticks`, `debug_checkpoints_kept`,
-`debug_step_max_ticks` and `debug_hits_kept` (Q52) — the step limit passed
+`debug_step_max_ticks` and `debug_hits_kept` (Q53) — the step limit passed
 to a fork's steps as an argument, so the sim reads none of them — the
 neutral body color, the player's default team
 color and the list for the other teams. None is a sim value; the

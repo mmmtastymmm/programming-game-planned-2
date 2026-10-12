@@ -35,7 +35,7 @@ Two conventions carried over from the predecessor project:
 
 **T26 — Forks in `sim`: positions, watches, stopping mid-tick, steps, saved states, edits**
 
-Q52, ruled in `06`'s Forks section. `sim.save()`, the match's full state at
+Q53, ruled in `06`'s Forks section. `sim.save()`, the match's full state at
 a tick's end, and a fork built from one or from a re-run; positions and
 their order, the step-4 damage position included; statements beginning on
 their `op.statement` and the clauses that begin again; a fork recording the
@@ -61,7 +61,7 @@ a `Mark` but not a `SetSpeed`.
 
 **T27 — The debugger in `render`, and replays on the start screen**
 
-Q52, ruled in `07`'s Debugging section and The match. Gutter breakpoints on
+Q53, ruled in `07`'s Debugging section and The match. Gutter breakpoints on
 the shown text, moved to a line where a statement begins, carried through
 edits, watching that text's content hash, scoped to a machine or the file,
 greyed while nothing runs it, kept with the tree; version windows, read-
@@ -84,7 +84,7 @@ constants in `data/interface.toml`.
 
 **T28 — What-if**
 
-Q52: *try in the fork* on each file window, beside deploy in a match and
+Q53: *try in the fork* on each file window, beside deploy in a match and
 alone on a replay, sending the file's deploys into the open fork for its
 next tick; *take it* deploying the same text to the match; refused in a
 live PvP match.
@@ -93,7 +93,7 @@ live PvP match.
 
 **T29 — A paused driver wakes only for a player's command**
 
-Q52 rule 13, amending Q32, in `06`'s Decided entry and The driver. At speed
+Q53 rule 13, amending Q32, in `06`'s Decided entry and The driver. At speed
 `0`, `render`'s driver runs to the next tick carrying a player's command,
 through a `net` query that can tell one — `06`'s pseudocode names it
 `next_tick_with_a_player_command`. `net`'s log counts a scripted team among
