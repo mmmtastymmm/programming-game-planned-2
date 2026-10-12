@@ -32,9 +32,9 @@
             ),
         ),
         (
-            tick: 0,
+            tick: 2,
             sender: (0),
-            seq: 2,
+            seq: 0,
             kind: Mark(
                 at: (
                     x: -9,
@@ -45,9 +45,9 @@
             ),
         ),
         (
-            tick: 0,
+            tick: 2,
             sender: (0),
-            seq: 3,
+            seq: 1,
             kind: Mark(
                 at: (
                     x: -8,

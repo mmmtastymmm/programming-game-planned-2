@@ -348,6 +348,12 @@ impl Driver {
         let tick = self.next_open_tick();
         let c = Command::new(tick, self.player, 0, kind);
         self.sim.validate(&c)?;
+        // Paint and overlay only on ground the team has seen (Q49): the
+        // sim drops a mark that fails this on its tick, so refuse it here,
+        // where the player can be told why.
+        if let CommandKind::Mark { at, plan, .. } = &c.kind {
+            self.may_plan(*at, *plan)?;
+        }
         self.submitted.push(c.clone());
         self.log.push(c);
         Ok(tick)
@@ -626,6 +632,12 @@ impl Driver {
     }
 
     /// The last completed-tick snapshot.
+    /// Whether the player may place `plan` on `at` now (Q49): paint and
+    /// overlay only on ground the team has seen. A read; nothing is written.
+    pub fn may_plan(&self, at: sim::TilePos, plan: sim::PlanKind) -> Result<(), String> {
+        self.sim.world.may_plan(self.player, at, plan)
+    }
+
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshots.cur
     }

@@ -255,7 +255,11 @@ pub fn panels(
             })
             .unwrap_or_default();
         if let Tool::Mark(PlanKind::Overlay, Some(l)) = &state.tool {
-            labels.extend(state.preview().into_iter().map(|p| (p, l.clone())));
+            labels.extend(
+                view::plannable_preview(&state, &driver.0)
+                    .into_iter()
+                    .map(|p| (p, l.clone())),
+            );
         }
         let font = egui::FontId::proportional(14.0);
         for (p, label) in labels {

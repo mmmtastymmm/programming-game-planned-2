@@ -42,26 +42,38 @@ const LABEL: TilePos = TilePos { x: 0, y: -1 };
 fn opening() -> Vec<Command> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/starter");
     let tree = sim::script::read_tree(&root).unwrap();
-    let mut kinds: Vec<CommandKind> = tree
-        .into_iter()
-        .map(|(deployment, bundle)| CommandKind::Deploy { deployment, bundle })
-        .collect();
-    for (at, plan, value) in [
+    tree.into_iter()
+        .enumerate()
+        .map(|(i, (deployment, bundle))| {
+            Command::new(
+                0,
+                TeamId(0),
+                i as u32,
+                CommandKind::Deploy { deployment, bundle },
+            )
+        })
+        .collect()
+}
+
+/// The plans, agreed for `tick`: after the team's first sight, since paint
+/// and overlay go only on ground it has seen (Q49).
+fn plans(tick: u64) -> Vec<Command> {
+    [
         (DEPOT, PlanKind::Building, "depot"),
         (RED, PlanKind::Paint, "red"),
         (LABEL, PlanKind::Overlay, "a"),
-    ] {
-        kinds.push(CommandKind::Mark {
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, (at, plan, value))| {
+        let kind = CommandKind::Mark {
             at,
             plan,
             value: Some(value.into()),
-        });
-    }
-    kinds
-        .into_iter()
-        .enumerate()
-        .map(|(i, k)| Command::new(0, TeamId(0), i as u32, k))
-        .collect()
+        };
+        Command::new(tick, TeamId(0), i as u32, kind)
+    })
+    .collect()
 }
 
 #[test]
@@ -71,7 +83,17 @@ fn the_starter_bot_builds_then_paints_then_patrols_and_never_faults() {
     let mut done_at = None;
     let mut xs_after = Vec::new();
     for tick in 0..TICKS {
-        sim.step(&if tick == 0 { opening() } else { vec![] });
+        let commands = match tick {
+            0 => opening(),
+            2 => plans(sim.world.tick + 1),
+            _ => vec![],
+        };
+        let report = sim.step(&commands);
+        assert!(
+            report.dropped.is_empty(),
+            "tick {tick}: dropped {:?}",
+            report.dropped
+        );
         let snap = sim.snapshot();
         for m in &snap.machines {
             if m.record.team == TeamId(0) {

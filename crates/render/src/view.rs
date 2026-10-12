@@ -376,6 +376,7 @@ fn spawn_plans(
     top: f32,
     surface: f32,
     plans: &Plans,
+    painted: bool,
 ) -> Vec<Entity> {
     let mut out = Vec::new();
     let mut spawn = |mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, t: Transform| {
@@ -391,22 +392,28 @@ fn spawn_plans(
         );
     };
     if let Some(plan) = &plans.paint {
-        let mat = match plan {
+        let at = Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.01));
+        let (mat, t) = match plan {
+            // Over paint already there, the new color as a solid square
+            // inside a border of the old: a ghost would mix the two.
             Plan::Set(c) => {
                 let live = palette
                     .paint_mats
                     .get(c)
                     .cloned()
                     .unwrap_or_else(|| palette.paint_mats["white"].clone());
-                palette.ghost(materials, &live)
+                if painted {
+                    (
+                        palette.solid(materials, &live),
+                        at.with_scale(Vec3::new(0.6, 1.0, 0.6)),
+                    )
+                } else {
+                    (palette.ghost(materials, &live), at)
+                }
             }
-            Plan::Clear => palette.hatch_mat.clone(),
+            Plan::Clear => (palette.hatch_mat.clone(), at),
         };
-        spawn(
-            palette.mark_quad.clone(),
-            mat,
-            Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.01)),
-        );
+        spawn(palette.mark_quad.clone(), mat, t);
     }
     if let Some(plan) = &plans.overlay {
         let mat = match plan {
@@ -448,15 +455,27 @@ fn spawn_plans(
 /// The armed tool's ghost under the cursor, or over a `Shift`+drag's
 /// rectangle: what marking there would plan (Q37, Q44), rebuilt when the
 /// tool or the tiles change.
+/// The tiles the armed tool's ghost covers ([`ViewState::preview`]) that
+/// it can plan: a paint or overlay tool none that is rock, water or still
+/// unknown to the team (Q49).
+pub fn plannable_preview(state: &ViewState, driver: &Driver) -> Vec<TilePos> {
+    let mut tiles = state.preview();
+    if let Tool::Mark(plan, _) = &state.tool {
+        tiles.retain(|p| driver.may_plan(*p, *plan).is_ok());
+    }
+    tiles
+}
+
 pub fn cursor_ghost(
     mut commands: Commands,
+    driver: NonSend<DriverResource>,
     state: Res<ViewState>,
     frame: Res<Frame>,
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
 ) {
-    let want = (state.tool.clone(), state.preview());
+    let want = (state.tool.clone(), plannable_preview(&state, &driver.0));
     if ents.cursor == want {
         return;
     }
@@ -467,6 +486,7 @@ pub fn cursor_ghost(
         for p in &want.1 {
             let top = ents.top(*p);
             let surface = surface_at(&ents, *p);
+            let painted = ents.tiles.get(p).is_some_and(|t| t.look.paint.is_some());
             let spawned = spawn_plans(
                 &mut commands,
                 &frame,
@@ -476,6 +496,7 @@ pub fn cursor_ghost(
                 top,
                 surface,
                 &plans,
+                painted,
             );
             ents.cursor_entities.extend(spawned);
         }
@@ -570,7 +591,15 @@ fn spawn_tile(
     }
     if let Some(plans) = &look.plans {
         out.extend(spawn_plans(
-            commands, frame, palette, materials, p, top, surface, plans,
+            commands,
+            frame,
+            palette,
+            materials,
+            p,
+            top,
+            surface,
+            plans,
+            look.paint.is_some(),
         ));
     }
     out

@@ -360,6 +360,8 @@ pub struct Palette {
     pub dim: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     /// Plan ghosts: the live material's id to its translucent copy.
     pub ghosts: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
+    /// Nearly solid copies, for a paint plan over paint already there.
+    pub solids: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     pub lens_glass_mat: Handle<StandardMaterial>,
     /// An unlit segment of a bot's number (Q46).
     pub segment_off_mat: Handle<StandardMaterial>,
@@ -564,6 +566,7 @@ impl Palette {
             bar_fill_mat: plain(materials, Color::srgb(0.9, 0.2, 0.15), true),
             dim: HashMap::new(),
             ghosts: HashMap::new(),
+            solids: HashMap::new(),
         }
     }
 
@@ -588,6 +591,30 @@ impl Palette {
         m.unlit = true;
         let g = materials.add(m);
         self.ghosts.insert(live.id(), g.clone());
+        g
+    }
+
+    /// A nearly solid, unlit copy of `live`: a paint plan over a tile
+    /// already painted another color, which a translucent ghost would mix
+    /// with into mud (Q37).
+    pub fn solid(
+        &mut self,
+        materials: &mut Assets<StandardMaterial>,
+        live: &Handle<StandardMaterial>,
+    ) -> Handle<StandardMaterial> {
+        if let Some(g) = self.solids.get(&live.id()) {
+            return g.clone();
+        }
+        let Some(src) = materials.get(live) else {
+            return live.clone();
+        };
+        let mut m = src.clone();
+        let c = m.base_color.to_linear();
+        m.base_color = LinearRgba::new(c.red, c.green, c.blue, 0.92).into();
+        m.alpha_mode = AlphaMode::Blend;
+        m.unlit = true;
+        let g = materials.add(m);
+        self.solids.insert(live.id(), g.clone());
         g
     }
 
