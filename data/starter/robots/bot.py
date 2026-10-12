@@ -21,6 +21,7 @@ LEG_STEPS = 40
 
 
 def dist2(a, b):
+    """Here is a comment"""
     return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
 
 
