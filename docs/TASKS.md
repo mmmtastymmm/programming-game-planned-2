@@ -148,3 +148,40 @@ change hash, and the PR says why. A language fixture asserts that a loop of
 three passes charges its header three times. [T26](TASKS.md)'s statement
 rule anchors a `while`'s beginnings on this charge. Fixes
 [P7](PROBLEMS.md).
+
+## M10 — Power
+
+**T31 — Power in `sim`: the grid, powered machines, wires and the solar panel** `⚠HASH`
+
+Q56, ruled in `02`'s Power section, `03`'s tile and `06`'s tick. The data:
+`power_supply` and `power_draw` on every model, the bot's `wire_cost`,
+`wire_ticks` and `unwire_ticks`, and a `solar` model with its cost, build
+and deconstruct ticks, health and ranges. The tile's per-team `wires`, on
+`ground` only, sensed and remembered like paint; the wire plan as a fourth
+plan kind in `Mark` and `Unmark`, only on seen ground; the `wire` and
+`unwire` actions, taking `wire_cost` from the load on completion. Step 6
+as power and printing: each team's grid traced from its printers through
+its wires and buildings, sites excluded; supply from buildings on the grid
+above zero health; consumers powered oldest first while they fit; an
+unpowered machine's main flow and main-flow action held, a printer's print
+and a site's construction held, handlers always run; a print begun only
+with spare power for its bot. The attributes `powered` and `on_grid`; the
+builtins `power()` and `wires()` and every new builtin's `[game]` cost row;
+the `solar` deployment and the starter's `robots/solar.py`; the state hash
+over the tiles' wires. Tests: a grid cut by unwiring drops a panel's
+supply, the newest consumers stop first, a stopped bot's move resumes when
+power returns, a `dying` unpowered machine still reaches `death`, and a
+printer with no spare power begins no print. The golden fixtures change,
+and the PR says why. Fixes [P8](PROBLEMS.md) with [T32](TASKS.md).
+
+**T32 — Power in `render`: wires, the wire tool, dark lights, the panel**
+
+Q56, ruled in `07`'s Decided entry, Machines on the map, the inspector and
+Marks. Wires drawn as lines in their team's color joining wired neighbours
+and buildings, two teams side by side, the player's own off-grid wires
+dimmed; the strip's wire row and `W`, its plan's see-through line and its
+ghost only on seen ground; lights dark on an unpowered or off-grid machine;
+the solar panel's art, a low tilted plate with a lamp; the inspector's
+supply, demand and spare for the player's own team, and the selected
+machine's `powered` and `on_grid`. [P8](PROBLEMS.md) closes with whichever
+of T31 and T32 lands last.

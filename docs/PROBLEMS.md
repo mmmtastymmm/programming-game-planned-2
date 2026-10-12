@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-12: 7 opened, 3 fixed — 4 open.**
+**Status 2026-10-12: 8 opened, 3 fixed — 5 open.**
 
 ## Open
 
@@ -87,3 +87,14 @@ a loop of a hundred passes pays for its header once, and every program with
 a `while` loop runs cheaper than ruled — the starter's and the Fool's robots
 among them. Found in review of Q55, whose statement rule would otherwise be
 built on the lagging charge. The work is [T30](TASKS.md).
+
+**P8 — The code lags Q56: no power, wires or solar panels**
+
+Q56 ruled that power is a team's flow, supplied by printers and solar
+panels wired back to a printer and drawn by bots and some buildings, with
+the newest machines stopping when the team is short; `02`, `03`, `06` and
+`07` state it as current. None of it exists: the sim has no wires, no
+`solar` model, no power step and no `powered` attribute, printing ignores
+power, and the renderer draws none of it. The work is [T31](TASKS.md) and
+[T32](TASKS.md); this entry closes with the commit that finishes whichever
+lands last.
