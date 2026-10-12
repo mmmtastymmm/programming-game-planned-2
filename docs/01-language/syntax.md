@@ -40,6 +40,12 @@ player reads; everything above it exists so that the list is complete.
   not the exclusion list, is what a player has to read. This boundary is sound
   because a hot-swap clears all variables, which Q11 made so; a swap that ever
   resumed instead would reopen it.
+- **A docstring is free (Q52).** The first statement of a module, a `def`
+  or a `class` body, when it is a string literal and nothing else, is a
+  docstring: it compiles to nothing, so it costs nothing, is no boundary
+  and never runs. A string statement anywhere else is an ordinary
+  expression statement, charged as one. Documenting code should never cost
+  a machine its budget.
 
 ## The bundle
 
@@ -113,7 +119,7 @@ and using it is a parse error at load — never a runtime surprise.
 
 | Statement | Notes |
 |---|---|
-| expression statement | any expression, evaluated for its effect |
+| expression statement | any expression, evaluated for its effect — except a docstring, below |
 | assignment | `x = …`, multiple targets `a = b = …`, tuple/list unpacking with one `*name`, subscript and attribute targets |
 | augmented assignment | `+= -= *= /= //= %= **=` and `\|= &= ^=` on sets |
 | `if` / `elif` / `else` | |
@@ -293,6 +299,15 @@ cannot nest, a function value is always a module-level `def`, a method, or a
 
 Recursion is allowed up to the call-depth limit
 ([execution](execution.md#limits)); exceeding it is a `RecursionError`.
+
+**Docstrings** (Q52). When the first statement of a module, a `def` or a
+`class` body is a string literal on its own — `"..."`, `'...'`, a
+triple-quoted string, or adjacent literals that concatenate into one — it
+is the body's docstring and is dropped at load: it is never evaluated,
+charges nothing and is no boundary, so a body holding only a docstring runs
+as an empty one. An f-string is not a docstring, as in Python, and neither
+is a string statement in any other position; both are expression
+statements. There is no `__doc__` to read it back.
 
 ## Collections
 
@@ -477,7 +492,8 @@ difference not listed here is a defect in this doc.
 7. **`import` sees a closed module set**, and a circular import is a load error
    rather than a partially-initialised module.
 8. **No reflection.** No `getattr`, `eval`, `type`, `__dict__`, or
-   introspection; `isinstance` is the one type query.
+   introspection; `isinstance` is the one type query. A docstring is
+   dropped at load, so there is no `__doc__` either.
 9. **`is` compares against `None` only.**
 10. **Identifiers are ASCII**, `match` and `case` are hard keywords, and a
     tab in indentation is a parse error.

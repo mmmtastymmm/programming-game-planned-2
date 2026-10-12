@@ -725,3 +725,119 @@ fn the_bundle_hash_is_over_bytes_in_sorted_name_order() {
         "a bad file name loaded"
     );
 }
+
+// ------------------------------------------------------------ docstrings ---
+
+/// How far `n` gets in three ticks: progress per budget, so two programs
+/// that cost the same per pass get equally far.
+fn progress(src: &str) -> i128 {
+    let (costs, limits) = tables();
+    let mut m = Machine::new(&load(src), costs, limits);
+    let mut host = TestHost::default();
+    for _ in 0..3 {
+        assert_eq!(m.run_slice(&mut host), Slice::Yield);
+    }
+    m.global("n").unwrap().expect_integral().unwrap()
+}
+
+#[test]
+fn a_docstring_costs_nothing() {
+    let bare = "\
+class C:
+    def f(self, x):
+        return x + 1
+
+def g(x):
+    return x + 1
+
+n = 0
+c = C()
+while True:
+    n = g(c.f(n))
+";
+    let documented = "\
+\"\"\"A module docstring.\"\"\"
+
+class C:
+    \"A class docstring.\"
+
+    def f(self, x):
+        \"\"\"A method docstring,
+        over two lines.\"\"\"
+        return x + 1
+
+def g(x):
+    'One' ' docstring.'
+    return x + 1
+
+n = 0
+c = C()
+while True:
+    n = g(c.f(n))
+";
+    // The same string anywhere but first is an expression statement, and
+    // is charged as one.
+    let charged = "\
+class C:
+    def f(self, x):
+        x = x
+        \"Not a docstring.\"
+        return x + 1
+
+def g(x):
+    return x + 1
+
+n = 0
+c = C()
+while True:
+    n = g(c.f(n))
+";
+    let base = progress(bare);
+    assert!(base > 0);
+    assert_eq!(progress(documented), base, "a docstring was charged");
+    assert!(
+        progress(charged)
+            < progress(
+                "\
+class C:
+    def f(self, x):
+        x = x
+        return x + 1
+
+def g(x):
+    return x + 1
+
+n = 0
+c = C()
+while True:
+    n = g(c.f(n))
+"
+            ),
+        "a string statement after the first was free"
+    );
+}
+
+#[test]
+fn a_body_of_only_a_docstring_runs_as_empty() {
+    let (_, log) = run("\
+def f():
+    \"Nothing else.\"
+
+class C:
+    \"Nothing else either.\"
+
+log(f(), isinstance(C(), C))
+");
+    assert_eq!(log, ["None True"]);
+}
+
+#[test]
+fn an_f_string_first_is_not_a_docstring() {
+    let (_, log) = run("\
+def f():
+    f\"{log('ran')}\"
+
+f()
+");
+    assert_eq!(log, ["ran"]);
+}
