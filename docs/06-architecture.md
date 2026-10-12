@@ -53,16 +53,17 @@ Rulings this doc owns, moved here from the overview when it was written.
   match's sim only through the command log and reading it through
   completed-tick snapshots and the debugger's three read-only channels
   (Q15, as Q55 amended).** The three are: breakpoint watches the driver
-  passes into `sim.step`, its hit reports, and its full state saved
-  between ticks; none changes the world or the hash, and the debugger
-  drives forks of its own (Forks). A `render` crate depends on `sim` and
-  Bevy; `sim` depends on neither. The driver — wall clock, speed, peer
-  wait, next tick — is a Bevy system that owns the sim as a resource;
-  every other system but the debugger sees only the snapshot the sim
-  publishes after each tick, from which the renderer's own entities are
-  built. Interpolation is in floats and never read back. Input becomes
-  commands the renderer submits and forgets. Headless — `sim` plus a driver
-  with no Bevy — stays the build CI runs.
+  passes into `sim.step`, its hit reports, and its full state saved between
+  ticks; none changes the world or the hash, and the debugger and a
+  replay's playback drive forks of their own (Forks). A `render` crate
+  depends on `sim` and Bevy; `sim` depends on neither. The driver — wall
+  clock, speed, peer wait, next tick — is a Bevy system that owns the sim
+  as a resource; every other system but the debugger and a replay's
+  playback sees only the snapshot the sim publishes after each tick, from
+  which the renderer's own entities are built. Interpolation is in floats
+  and never read back. Input becomes commands the renderer submits and
+  forgets. Headless — `sim` plus a driver with no Bevy — stays the build CI
+  runs.
 - **A program is debugged on a fork, a private copy of the sim that never
   feeds back into the match (Q55).** The match's sim gives the debugger
   only Q15's three read-only channels above; stepping, rewinding, editing
@@ -114,9 +115,8 @@ contract:
 
 ```text
 loop:
-    if debugger.wants_state(tick):               # its policy, 07 (Q55): at
-        debugger.keep(tick, sim.save())          # once when asked, and every
-                                                 # N ticks; the full state
+    if debugger.asked_for_state():               # true once per ask (07,
+        debugger.keep(tick, sim.save())          # Saved states; Q55)
     first = 0 if tick == 0 else tick + 1         # tick 0 is never stepped:
                                                  # its set applies with tick 1
     if speed == 0:
@@ -138,6 +138,8 @@ loop:
     snapshot = sim.snapshot()                    # published, never shared
     hash = sim.hash()                            # sent to peers, checked
     tick += 1                                    # the tick just completed
+    if debugger.wants_state(tick):               # a multiple of N (07)
+        debugger.keep(tick, sim.save())          # the full state, for forks
 ```
 
 - **`sim.step` is the only entry point that changes the world**, and it
@@ -171,8 +173,11 @@ loop:
   (`07`). It saves states as `07`'s Saved states rules; they are its own,
   so a seek to a tick restores the latest saved at or before it and runs
   on, unless the playback already stands between that state and the tick,
-  when it simply runs on. The headless driver in `replay` still runs a
-  replay through this loop, to its hash stream.
+  when it simply runs on. A seek runs without watches, so it reports no
+  hits on the way; the playback takes them again once it stands at the tick
+  asked for. This bullet is the one statement of a seek. The headless
+  driver in `replay` still runs a replay through this loop to its hash
+  stream, with no debugger, so it saves nothing.
 
 ## The tick
 
@@ -414,27 +419,28 @@ replay's playback drive one, and `replay` builds one from a replay file.
   *over* need a selected machine; the others do not. *Line*, *over*,
   *continue* and *run* also stop when the selected machine is delivered
   `dying`, when its program restarts (a fault, a redeploy, or main flow
-  running off its end), and when its `death` runs — inside its slice, at
-  that position, or in step 4, at `(tick, damage, machine)`. Every step but
-  *run* stops after a number of ticks with no other stop, a limit the
-  caller passes (`07`'s `debug_step_max_ticks`); every step stops in a live
-  PvP match at the live tick, and on any fork when its world's match ends
-  (`04`), after which it takes no step forward. Each stop is reported with
-  its cause and position.
-- **Saved states and back.** A fork can save its state at the end of a
-  tick and be restored to one. *Back* returns to the previous stop: the
-  fork restores the latest usable saved state before it and runs forward,
-  taking its recorded commands and every entry of its own log after the
-  state, to that position. A saved state is usable by a fork if the fork
-  saved it, or if the match saved it before the fork's first entry and the
-  fork was faithful up to it.
-  With none usable, the fork re-runs from the map: the match's log for
-  every tick before the first it ran, which were final when it ran them,
-  then the commands it recorded (Its commands) and its own log — never the
-  match's later commands for its ticks, which may have made it stale. It
-  is slow, and the caller keeps states so it is rarely needed (`07`).
-  Edits sit in the fork's log at their positions, so a re-run applies them
-  where they were made.
+  running off its end), when its `death` runs — inside its slice, at that
+  position, or in step 4, at `(tick, damage, machine)` — and when its team
+  is out and step 5 removes it, at `(tick, end)`, the machine named though
+  gone. Every step but *run* stops after a number of ticks with no other
+  stop, a limit the caller passes (`07`'s `debug_step_max_ticks`); every
+  step stops in a live PvP match at the live tick, and on any fork when its
+  world's match ends (`04`), after which it takes no step forward. Each
+  stop is reported with its cause and position.
+- **Saved states and back.** A fork can save its state at the end of a tick
+  and be restored to one. *Back* returns to the previous stop: the fork
+  restores the latest usable saved state before it and runs forward, taking
+  its recorded commands and every entry of its own log after the state, to
+  that position. A fork's first stop has none, so there *back* is not
+  offered. A saved state is usable by a fork if the fork saved it, or if
+  the match saved it before the fork's first entry and the fork was
+  faithful up to it. With none usable, the fork re-runs from the map: the
+  match's log for every tick before the first it ran, which were complete
+  and final when it opened, then the commands it recorded (Its commands)
+  and its own log — never the match's later commands for its ticks, which
+  may have made it stale. It is slow, and the caller keeps states so it is
+  rarely needed (`07`). Edits sit in the fork's log at their positions, so
+  a re-run applies them where they were made.
 - **Editing.** On a fork paused at a slice position or a tick's end, a
   local of one frame — named by its depth from the bottom of the stack,
   main flow's frame `0` — or a global of any module the machine has run,
@@ -450,10 +456,12 @@ replay's playback drive one, and `replay` builds one from a replay file.
   removed; any other machine at any other stop may be edited, a machine at
   `dying` included.
 - **What-if**, on a fork paused at a slice position or a tick's end, puts
-  `Deploy`s in the fork's log, agreed for the fork's next tick and applied
-  in its step 1 after the match's own commands for that tick, so a later
-  deploy in the match's log to the same deployment replaces the tried
-  bundle, as it would in the match.
+  `Deploy`s in the fork's log, each checked first as the match's validation
+  at submission checks one (The command log) — a bundle that fails to load
+  is refused, naming the error, and nothing enters the log — agreed for the
+  fork's next tick and applied in its step 1 after the match's own commands
+  for that tick, so a later deploy in the match's log to the same
+  deployment replaces the tried bundle, as it would in the match.
 - **A new branch.** Making an edit or a what-if deploy at a position before
   an entry already in the fork's log discards those later entries and
   every saved state after the position: the fork's log is one timeline.
@@ -496,6 +504,5 @@ code, gated above. Its test is that it builds with `sim` unchanged.
 
 - **Map generation** from a seed, as a deterministic function in `sim`
   (`03`); a question when wanted.
-- **Persistence** — saving a match to resume it — which is a saved state
-  (Forks) plus the log to that tick, not a snapshot, which holds no
-  execution state; a question when wanted.
+- **Persistence** — saving a match to resume it — a question when
+  wanted.

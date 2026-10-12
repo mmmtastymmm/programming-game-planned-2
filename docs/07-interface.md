@@ -6,10 +6,10 @@ a machine on the map reads. This doc is normative for the renderer's
 choices that are not sim rules — everything here is on the far side of the
 one-way arrows [06-architecture](06-architecture.md) draws: the renderer
 reads the completed-tick snapshot and writes only commands (Q15). The
-debugger alone also passes the match's sim breakpoint watches, reads its
-hit reports and saved states, and drives forks, private copies that never
-reach the match (Q55). Nothing here changes a hash; a peer with a
-different renderer sees the same match.
+debugger alone also passes the match's sim breakpoint watches and reads its
+hit reports and saved states; it and a replay's playback drive forks,
+private copies that never reach the match (Q55). Nothing here changes a
+hash; a peer with a different renderer sees the same match.
 
 ## Decided
 
@@ -18,7 +18,8 @@ different renderer sees the same match.
   start and exported on request, never watched — and composes each
   deployment's bundle from it; a file is edited in a window over the map
   and deployed as one `Deploy` per deployment its bundle reaches.
-- **The programs are one tree, shown as a file tree (Q41).** `robots/`
+- **The programs are one tree, shown as a file tree (Q41, as Q55
+  amended).** `robots/`
   with a file per deployment, `interrupts/` with `on_fault.py` and
   `on_dying.py`, both fixed, and the player's own files and folders,
   shared by every robot; a fixed panel down the left shows it and a click
@@ -97,8 +98,8 @@ different renderer sees the same match.
   reads upright from the camera, so it redraws rather than spins; the
   chevron, the trim and the light around it keep the heading, the paint
   and the team readable from above.
-- **A program is debugged on a fork (Q55, amending Q15, Q36, Q39 and
-  Q41).** Line breakpoints are the editor's; a hit opens a private copy of
+- **A program is debugged on a fork (Q55, amending Q15, Q32, Q36, Q39
+  and Q41).** Line breakpoints are the editor's; a hit opens a private copy of
   the sim at that point, where the player steps by line, over a call, by
   tick, on to the next breakpoint or runs freely, steps back, inspects the
   selected machine's execution and may edit its variables, and a
@@ -271,13 +272,11 @@ defaults at once, and `--replay <path>` opens a replay.
 
 **A replay** plays back in the match's screen with no peer, and sends no
 command: the mark tools, resign and deploy are not offered. It plays on a
-fork, its **playback** (`06`, The driver), whose pace and pause are the
-viewer's, and its time bar also seeks: the `SetSpeed` commands in its log
-set nothing, a paused replay stays paused, and a seek restores the
-playback's latest saved state at or before the tick asked for and runs on
-to it. A replay that records its team is drawn in that team's view and
-can be debugged (Debugging), the playback standing for the match; one
-that does not is drawn in the first team's view and can only be watched.
+fork, its **playback**, whose pace and pause are the viewer's and whose
+time bar also seeks, as `06`'s The driver rules. A replay that records its
+team is drawn in that team's view and can be debugged (Debugging), the
+playback standing for the match; one that does not is drawn in the first
+team's view and can only be watched.
 
 **After the last** the end screen names the winner or the draw (`04`), the
 ending tick, the final hash and the replay's path; *again* returns to the
@@ -310,17 +309,19 @@ states — and given breakpoint watches, which change nothing.
 - **Breakpoints.** A click in a window's gutter sets a breakpoint on that
   line of the text the window shows, scoped to the selected machine if it
   is the team's and runs exactly that text, and otherwise to every machine
-  of the team; on a line where no statement begins (`06`) it moves
-  to the next one. It becomes `06`'s watch on that text's content hash, so
-  it hits wherever that exact text runs, and is greyed while nothing runs
-  it. In a **file window** the text is the tree's, which the player edits:
-  editing carries breakpoints with their lines, as it carries the cursor,
-  and they hit once the edited text runs — in the match once deployed and
-  taken (Q11), in a fork once what-if has sent it. In a **version window**
-  the text is a version a machine runs, read-only, so breakpoints there hit
-  the code already running even while the tree's file is ahead of it.
-  Breakpoints are kept with the tree, never sent to a peer, and only the
-  team's machines hit them.
+  of the team; on a line where no statement begins (`06`) it moves to the
+  next one. It becomes `06`'s watch on that text's content hash, so it hits
+  wherever that exact text runs, and is greyed while nothing runs it. In a
+  **file window** the text is the tree's, which the player edits: editing
+  carries breakpoints with their lines, as it carries the cursor, and they
+  hit once the edited text runs — in the match once deployed and taken
+  (Q11), in a fork once what-if has sent it. In a **version window** the
+  text is a version a machine runs, read-only, so breakpoints there hit the
+  code already running even while the tree's file is ahead of it. A file
+  window's breakpoints are kept with the tree, and a version window's for
+  as long as its match or replay is open, since the text they sit on is
+  that match's; none is sent to a peer, and only the team's machines hit
+  them.
 - **Version windows.** A version is one file's text, by its content hash
   (`06`). A file window offers each version of its file that a machine of
   the team runs, the inspector, for a selected machine of the team, the
@@ -329,18 +330,22 @@ states — and given breakpoint watches, which change nothing.
   deployed. Only the team's own code is shown, never another team's, though
   every team's bundles are in the log; on a replay, the versions are those
   the team's own deploys carried.
-- **Saved states.** While a breakpoint is set or a fork is open, the
-  driver saves the match's state at once — at the latest completed tick,
-  so a hit or a fork opened by hand always has one to start from — and at
-  every later tick that is a multiple of `debug_checkpoint_ticks`, keeping
-  the last `debug_checkpoints_kept`; a fork saves its own on the same
-  terms. A replay's playback (`06`, The driver) saves its own on the same
-  terms whether or not a breakpoint is set, for seeking and for forks:
-  before tick 1, which it keeps beside the count, at every multiple, and at
-  once when a fork is opened by hand. A saved state a fork was opened
-  from, or that a listed hit needs, is kept for as long as that fork or
-  that hit is, beyond the count. With no usable state a fork re-runs from
-  the start (`06`). This bullet is the one statement of these terms.
+- **Saved states.** While a breakpoint is set or a fork is open, the driver
+  saves the match's state at once — at the latest completed tick, so a hit
+  or a fork opened by hand always has one to start from — and at every
+  later tick that is a multiple of `debug_checkpoint_ticks`, keeping the
+  last `debug_checkpoints_kept`; a fork saves its own on the same terms. A
+  replay's playback (`06`, The driver) saves its own whether or not a
+  breakpoint is set, for seeking and for forks: before tick 1, which it
+  keeps beside the count, at every multiple of its interval — at first
+  `debug_checkpoint_ticks` — and at once when a fork is opened by hand. It
+  keeps them spread over the replay rather than the last few: once it holds
+  `debug_checkpoints_kept`, it drops every other one and doubles its
+  interval, so a seek anywhere re-runs at most one interval. A saved state
+  a fork was opened from, or that a listed hit needs, is kept for as long
+  as that fork or that hit is, beyond the count. With no usable state a
+  fork re-runs from the start (`06`). This bullet is the one statement of
+  these terms.
 - **A hit** opens a fork at the earliest position among the tick's hits
   (`06` orders them): from the latest saved state before the hit's tick,
   run to that position; the tick's other hits are listed as further hits.
@@ -358,8 +363,10 @@ states — and given breakpoint watches, which change nothing.
 - **Further hits** while a fork is open leave it as it is: the debugger
   window lists them by position, the latest first, keeping the last
   `debug_hits_kept`, each with the count `06` reports of the beginnings it
-  stands for, and reopens the fork at any listed one. They submit no
-  further pause.
+  stands for, and reopens the fork at any listed one. Reopening replaces
+  the open fork, its log and its own saved states, asking first if it is
+  diverged; there is one fork at a time. Further hits submit no further
+  pause.
 - **A fork can also be opened by hand** at the match's latest completed
   tick, or at the tick a replay's playback stands at, which a seek moves to
   any: from a state saved there as it opens, standing at that tick's end,
@@ -381,8 +388,9 @@ states — and given breakpoint watches, which change nothing.
   speed the debugger window sets, with a pause. The whole world advances;
   *line* and *over* need a selected machine. The window says why the fork
   stopped: opened, a statement, a watched line and whose, `dying`
-  delivered, death, a restart, the end of the tick, *run* paused at it,
-  the step limit, the live tick, or the match ending.
+  delivered, death, its team out, a restart, the end of the tick, *run*
+  paused at it, the step limit, the live tick, or the match ending. *Back*
+  is not offered at a fork's first stop.
 - **Inspection**: the selected machine's call stack, each frame with its
   file, line, function and locals, the frame's line marked in a version
   window of the text the machine runs; the globals of each module it has
@@ -397,15 +405,16 @@ states — and given breakpoint watches, which change nothing.
   fork is marked *diverged* in its banner from then on.
 - **What-if**: while a fork is open, paused at any stop but one in step 4,
   each file window offers *try in the fork*, which sends that file's
-  deploys into the fork, not the match, for its next tick; the fork is
-  *diverged*, and the file's breakpoints now hit in it. Beside it in a
-  match is the deploy button, and *take it*, which deploys to the match
-  the bundles that file's last *try* sent into the fork, `delay` ticks
-  after the match's own tick. It is offered only while the tree still
-  holds every file of those bundles as it was tried, so it deploys exactly
-  what was tried and never reverts a file edited or deployed since; after
-  any such edit, *try* again. On a replay
-  there is no match: file windows offer *try in the fork* alone.
+  deploys into the fork, not the match, for its next tick — a bundle that
+  fails to load is refused there as a deploy is, with the error shown, and
+  nothing is sent; the fork is *diverged*, and the file's breakpoints now
+  hit in it. Beside it in a match is the deploy button, and *take it*,
+  which deploys to the match the bundles that file's last *try* sent into
+  the fork, `delay` ticks after the match's own tick. It is offered only
+  while the tree still holds every file of those bundles as it was tried,
+  so it deploys exactly what was tried and never reverts a file edited or
+  deployed since; after any such edit, *try* again. On a replay there is no
+  match: file windows offer *try in the fork* alone.
 - **PvP**: in a live PvP match a fork stops at the match's latest completed
   tick and waits there, and never diverges: neither edits nor what-if are
   offered, and deploy acts on the match as always. A replay of a PvP match

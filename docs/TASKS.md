@@ -51,20 +51,22 @@ VM stopping at any boundary mid-slice and resuming, and reporting frames,
 every run module's globals, the record with action and progress, budget,
 deficit, pending interrupts and handler state; the line, over, tick,
 continue and run steps, *tick* reporting watched beginnings as `sim.step`
-does and stopping at none, *run* paused at a tick's end, the step limit as
-an argument, and every stop with its cause and position, the match's end
-among them; saving and restoring a fork's state, which saved states a fork
-may use, and the re-run fallback, taking the match's log only before the
-fork's first tick and its own record after; edits at slice positions or a
-tick's end, never of a machine at its own death, each entry naming its
-machine and a frame by depth, with live values counted as an assignment
-would; what-if deploys in the fork's log; a fork's snapshot at any
-position, the team's own machines as they stand and everything else as at
-the last completed tick's end; a new branch discarding later entries and
-states; the PvP bound and refusal. `06`'s forks-and-watches gate: a golden
-replay watched on every line gives its stream unchanged, and a fork stopped
-and resumed at every boundary, one restored from each saved state, and a
-replay's playback each reproduce it — with mutations in
+does and stopping at none, *run* paused at a tick's end, a stop at the
+tick's end for a machine step 5 removes with its team, *back* not offered
+at a first stop, the step limit as an argument, and every stop with its
+cause and position, the match's end among them; saving and restoring a
+fork's state, which saved states a fork may use, and the re-run fallback,
+taking the match's log only before the fork's first tick and its own record
+after; edits at slice positions or a tick's end, never of a machine at its
+own death, each entry naming its machine and a frame by depth, with live
+values counted as an assignment would; what-if deploys in the fork's log; a
+fork's snapshot at any position, the team's own machines as they stand and
+everything else as at the last completed tick's end; a new branch
+discarding later entries and states; what-if deploys validated as a
+submission is; the PvP bound and refusal. `06`'s forks-and-watches gate: a
+golden replay watched on every line gives its stream unchanged, and a fork
+stopped and resumed at every boundary, one restored from each saved state,
+and a replay's playback each reproduce it — with mutations in
 `scripts/lib/rust-gates.mjs` that make a watch charge budget and a resumed
 slice re-charge its deficit, each of which the gate must catch. Tests that
 a re-run across an edit applies it to its machine, that a yield before a
@@ -78,27 +80,30 @@ Q55, ruled in `07`'s Debugging section and The match. Gutter breakpoints on
 the shown text, moved to a line where a statement begins, carried through
 edits, watching that text's content hash, scoped to a selected machine of
 the team that runs that text or else to the team, greyed while nothing runs
-it, kept with the tree; version windows, read- only, one per version of a
+it, kept with the tree; version windows, read-only, one per version of a
 file a machine runs or a replay ran, opened from a file window, the
 inspector or the stack, and never another team's code; the driver saving
-the match's state at once, between ticks, when debugging starts and at
+the match's state once per ask, between ticks, when debugging starts and at
 every multiple of `debug_checkpoint_ticks`, keeping
 `debug_checkpoints_kept` and every state an open fork or listed hit needs;
 a hit opening a fork at the tick's earliest hit and, in a live
 single-player or PvE match, submitting a pause unless the speed once every
 `SetSpeed` in flight lands is already `0`, a replay's playback pausing
 instead; a fork opened by hand at the latest tick or a replay's; further
-hits listed, the last `debug_hits_kept`; the debugger window, its stop
-causes and the fork banner with its state flags; the map drawing the fork
-in the team's view, the mark tools resting and *show the match* restoring
-them; the step keys, *run*'s speed and its pause; variable editing outside
-PvP, never in step 4 and never of a machine at its own death. Replays:
-*open a replay* on the start screen and `--replay <path>`, played on a fork
-as `06` rules — sending no command, stepped a tick at a time at the
-viewer's pace and paused by the viewer, reporting hits, saving its own
-states from before tick 1, seeking by restoring one or by running on from
-where it stands, and standing for the match when the debugger forks from
-it; the saver's team in the file and its name
+hits listed, the last `debug_hits_kept`, reopening one replacing the open
+fork after asking if it is diverged; a version window's breakpoints kept
+while its match or replay is open; the debugger window, its stop causes and
+the fork banner with its state flags; the map drawing the fork in the
+team's view, the mark tools resting and *show the match* restoring them;
+the step keys, *run*'s speed and its pause; variable editing outside PvP,
+never in step 4 and never of a machine at its own death. Replays: *open a
+replay* on the start screen and `--replay <path>`, played on a fork as `06`
+rules — sending no command, stepped a tick at a time at the viewer's pace
+and paused by the viewer, reporting hits, saving its own states from before
+tick 1 and keeping them spread over the replay, halving them and doubling
+the interval when full, seeking by restoring one or by running on from
+where it stands, without watches, and standing for the match when the
+debugger forks from it; the saver's team in the file and its name
 `<map>-<tick>-<hash>-<team>.ron`, outside the replay's identity; version
 windows for the team's own deployed versions. The `debug_*` constants in
 `data/interface.toml`.
@@ -107,9 +112,10 @@ windows for the team's own deployed versions. The `debug_*` constants in
 
 Q55: *try in the fork* on each file window, beside deploy in a match and
 alone on a replay, sending the file's deploys into the open fork for its
-next tick, at any stop but one in step 4; *take it* deploying to the
-match the bundles the last try sent, offered only while the tree still
-holds every file of them as tried; refused in a live PvP match.
+next tick, at any stop but one in step 4, a bundle that fails to load
+refused with its error; *take it* deploying to the match the bundles the
+last try sent, offered only while the tree still holds every file of them
+as tried; refused in a live PvP match.
 
 [P5](PROBLEMS.md) closes with whichever of T26, T27 and T28 lands last.
 
