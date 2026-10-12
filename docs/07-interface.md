@@ -7,7 +7,7 @@ choices that are not sim rules — everything here is on the far side of the
 one-way arrows [06-architecture](06-architecture.md) draws: the renderer
 reads the completed-tick snapshot and writes only commands (Q15). The
 debugger alone also drives forks, private copies that never reach the
-match (Q50). Nothing
+match (Q52). Nothing
 here changes a hash; a peer with a different renderer sees the same match.
 
 ## Decided
@@ -31,7 +31,7 @@ here changes a hash; a peer with a different renderer sees the same match.
   opens each; the layout is remembered in `windows.toml` beside the
   programs.
 - **A start screen, an end screen, and the replay always saved (Q36, as
-  Q50 amended).** The map, the cards, the programs directory and play,
+  Q52 amended).** The map, the cards, the programs directory and play,
   host, join or open a replay are picked in the game; the end names the
   winner or the draw, the tick, the hash and the replay's path; the replay
   is written as `replays/<map>-<tick>-<hash>-<team>.ron` inside the
@@ -77,7 +77,7 @@ here changes a hash; a peer with a different renderer sees the same match.
   reads upright from the camera, so it redraws rather than spins; the
   chevron, the trim and the light around it keep the heading, the paint
   and the team readable from above.
-- **A program is debugged on a fork (Q50, amending Q15 and Q36).** Line
+- **A program is debugged on a fork (Q52, amending Q15 and Q36).** Line
   breakpoints are the editor's; a hit opens a private copy of the sim at
   that point, where the player steps by line, over a call, by tick, or on
   to the next breakpoint, steps back, inspects the selected machine's
@@ -102,7 +102,7 @@ floats over it (Q39, Q41):
 | **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's color to change | Q34, Q43, Q45 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
-| **debugger** | while a fork is open: its tick and controls, the selected machine's stack, locals, globals, action, budget and interrupts | Q50 |
+| **debugger** | while a fork is open: its tick and controls, the selected machine's stack, locals, globals, action, budget and interrupts | Q52 |
 
 Every window drags, resizes, collapses and closes, and several files may
 be open at once. The layout is saved to `windows.toml` beside the programs
@@ -236,7 +236,7 @@ for it: a read, in no hash.
 **Before the first tick** (Q36) the start screen lists the maps in
 `data/maps` and the cards in `data/opposition` (`04`), takes the programs
 directory (Q33), and offers *play* alone against the cards, *host* on an
-address, or *join* one (`06`), or *open a replay* from `replays/` (Q50).
+address, or *join* one (`06`), or *open a replay* from `replays/` (Q52).
 Starting reads the programs in and builds the driver as the command line
 does; every choice is also a flag, and a flag skips the screen, so a
 headless run and CI need none — `--play`, which chooses nothing, starts the
@@ -251,7 +251,7 @@ that does not is drawn in the first team's view and can only be watched.
 **After the last** the end screen names the winner or the draw (`04`), the
 ending tick, the final hash and the replay's path; *again* returns to the
 start, *quit* leaves. **The replay is always saved** when a match ends or
-desyncs: `(map, command log)` and the saver's team (Q50), in
+desyncs: `(map, command log)` and the saver's team (Q52), in
 `crates/replay`'s RON, as `replays/<map>-<tick>-<hash>-<team>.ron` inside
 the programs directory, named by the tick and hash so two peers that agree
 write names that differ only in the team, and two peers sharing one
@@ -270,7 +270,7 @@ awaited and the match continues, with a line in the log.
 
 ## Debugging
 
-A program is debugged on a **fork** (Q50): a private copy of the sim, as
+A program is debugged on a **fork** (Q52): a private copy of the sim, as
 [06-architecture](06-architecture.md)'s Forks section defines it, which
 never feeds back into the match. Everything here is the renderer's; the
 match's sim is only read, through its snapshot and the saved states.
@@ -338,14 +338,14 @@ match's sim is only read, through its snapshot and the saved states.
   that team. Its file windows show the text of a version the replay ran,
   picked from the versions its log deployed, and breakpoints set there
   watch that text. A replay with no recorded team — a match of cards only,
-  or one saved before Q50 — can be watched but not debugged.
+  or one saved before Q52 — can be watched but not debugged.
 - **Closing** the fork returns the map and the windows to the match.
 
 ## Costs
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
 `fault_mark_ticks`, `debug_checkpoint_ticks`, `debug_checkpoints_kept` and
-`debug_step_max_ticks` (Q50), the neutral body color, the player's default team
+`debug_step_max_ticks` (Q52), the neutral body color, the player's default team
 color and the list for the other teams. None is a sim value; the
 player's own choices live in `colors.toml` beside the programs.
 

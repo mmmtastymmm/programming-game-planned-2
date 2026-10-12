@@ -21,7 +21,7 @@ reopened by this corpus:
    without it does not become deterministic later.
 2. **`sim` is renderer-free plain Rust.** Whatever renders the game reads sim
    state and never writes it. A debugger may run a private copy of the sim
-   (Q50); the copy is not the match, and nothing it does reaches it.
+   (Q52); the copy is not the match, and nothing it does reaches it.
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ pass.
   they are not repeated here; Q31 and Q40, which Q42 withdrew, have none.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
-  Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q50
+  Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q52
   (forks, the sim's half of debugging) are its Decided entries, and they
   are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
@@ -96,7 +96,7 @@ pass.
   stall and the desync), Q39 (windows, amending Q33), Q41 (the program
   tree, amending Q33 and Q39), Q44 (the rectangle mark and the
   withdrawing clear, amending Q37), Q45, Q47 and Q48 (a team shown by
-  lights and trim), Q46 (a bot's id on its top) and Q50 (the debugger and
+  lights and trim), Q46 (a bot's id on its top) and Q52 (the debugger and
   what-if) are its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and

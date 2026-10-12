@@ -52,9 +52,9 @@ way to take a printer down. The user deferred retuning them to
 playtesting; this entry holds the arithmetic until then, and closes with
 the commit that changes the numbers or the rule.
 
-**P5 — The code lags Q50: no forks, breakpoints or what-if**
+**P5 — The code lags Q52: no forks, breakpoints or what-if**
 
-Q50 ruled that a program is debugged on a fork, and `06`'s Forks section
+Q52 ruled that a program is debugged on a fork, and `06`'s Forks section
 and `07`'s Debugging section and The match state it as current: a saved
 state of the match, watched lines passed to `sim.step`, forks that stop
 mid-tick, step, save and restore, editable variables, what-if, and
@@ -67,7 +67,7 @@ that finishes whichever of them lands last.
 
 **P6 — A pause runs on to a scripted team's next command**
 
-Q50 amended Q32 so a paused driver runs only to the next tick carrying a
+Q52 amended Q32 so a paused driver runs only to the next tick carrying a
 player's command, a scripted team's not counting. `render`'s driver still
 takes the next tick carrying any command, through `net`'s
 `next_tick_with_a_command`, and a scripted team's whole script enters the

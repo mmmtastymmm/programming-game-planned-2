@@ -1,6 +1,6 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q50 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q15, Q32 and Q36)
+# Q52 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q15, Q32 and Q36)
 
 ## Ruling
 
@@ -126,9 +126,9 @@ and replay file.
 ## Outcome
 
 - **Docs:** [07-interface.md](../../07-interface.md) — the preamble, the
-  Q36 and Q50 Decided entries, the screen's debugger window, The match and
+  Q36 and Q52 Decided entries, the screen's debugger window, The match and
   the Debugging section. [06-architecture.md](../../06-architecture.md) —
-  the Q15, Q32 and Q50 Decided entries, the Crates table, the driver, and
+  the Q15, Q32 and Q52 Decided entries, the Crates table, the driver, and
   the Forks section. [01-language.md](../../01-language.md) — doorway
   invariant 3, and [execution](../../01-language/execution.md)'s Metering.
   [04-opposition.md](../../04-opposition.md) — a script never wakes a
@@ -143,7 +143,7 @@ and replay file.
 - **Task:** [T28](../../TASKS.md) — what-if.
 - **Task:** [T29](../../TASKS.md) — the paused driver counting only peers'
   commands.
-- **Problem:** [P5](../../PROBLEMS.md) — the docs state Q50 as current
+- **Problem:** [P5](../../PROBLEMS.md) — the docs state Q52 as current
   until T26 to T28 land.
 - **Problem:** [P6](../../PROBLEMS.md) — the driver still counts a scripted
   team's commands when paused, until T29.
