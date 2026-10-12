@@ -367,6 +367,9 @@ pub fn sync_tiles(
 /// as that slot hatched (Q37). The overlay's label is painted over the map
 /// by the UI. `surface` is the tile's upper face ([`surface_of`]); the
 /// paint plan sits just above any applied paint there.
+/// How much smaller than the real thing a plan's preview is (Q50).
+const PLAN_SCALE: f32 = 0.6;
+
 fn spawn_plans(
     commands: &mut Commands,
     frame: &Frame,
@@ -376,7 +379,6 @@ fn spawn_plans(
     top: f32,
     surface: f32,
     plans: &Plans,
-    painted: bool,
 ) -> Vec<Entity> {
     let mut out = Vec::new();
     let mut spawn = |mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, t: Transform| {
@@ -394,22 +396,19 @@ fn spawn_plans(
     if let Some(plan) = &plans.paint {
         let at = Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.01));
         let (mat, t) = match plan {
-            // Over paint already there, the new color as a solid square
-            // inside a border of the old: a ghost would mix the two.
+            // A smaller version of the paint it plans (Q50): the new color
+            // in a square inset from the tile's edge, so any paint already
+            // there shows round it rather than mixing with it.
             Plan::Set(c) => {
                 let live = palette
                     .paint_mats
                     .get(c)
                     .cloned()
                     .unwrap_or_else(|| palette.paint_mats["white"].clone());
-                if painted {
-                    (
-                        palette.solid(materials, &live),
-                        at.with_scale(Vec3::new(0.6, 1.0, 0.6)),
-                    )
-                } else {
-                    (palette.ghost(materials, &live), at)
-                }
+                (
+                    palette.solid(materials, &live),
+                    at.with_scale(Vec3::new(PLAN_SCALE, 1.0, PLAN_SCALE)),
+                )
             }
             Plan::Clear => (palette.hatch_mat.clone(), at),
         };
@@ -423,11 +422,19 @@ fn spawn_plans(
             }
             Plan::Clear => palette.hatch_mat.clone(),
         };
+        // A smaller version of the marker it plans (Q50); a plan to clear
+        // hatches the marker full size.
+        let scale = if matches!(plan, Plan::Set(_)) {
+            PLAN_SCALE
+        } else {
+            1.0
+        };
         spawn(
             palette.overlay_cube.clone(),
             mat,
             Transform::from_translation(frame.tile_xyz(p, top + 0.16))
-                .with_rotation(Quat::from_rotation_y(0.6)),
+                .with_rotation(Quat::from_rotation_y(0.6))
+                .with_scale(Vec3::splat(scale)),
         );
     }
     if let Some(plan) = &plans.building {
@@ -435,18 +442,22 @@ fn spawn_plans(
             Plan::Set(m) => Model::from_name(m).unwrap_or(Model::Depot),
             Plan::Clear => Model::Depot,
         };
+        // A smaller, translucent version of the building it plans (Q50),
+        // standing on the tile.
         let (mesh, live) = match model {
             Model::Site => (palette.site_cube.clone(), palette.site_mat.clone()),
+            Model::Printer => (palette.printer_box.clone(), palette.printer_mat.clone()),
             _ => (palette.crate_box.clone(), palette.crate_mat.clone()),
         };
-        let mat = match plan {
-            Plan::Set(_) => palette.ghost(materials, &live),
-            Plan::Clear => palette.hatch_mat.clone(),
+        let (mat, scale) = match plan {
+            Plan::Set(_) => (palette.ghost(materials, &live), PLAN_SCALE),
+            Plan::Clear => (palette.hatch_mat.clone(), 1.0),
         };
         spawn(
             mesh,
             mat,
-            Transform::from_translation(frame.tile_xyz(p, top + body_lift(model))),
+            Transform::from_translation(frame.tile_xyz(p, top + body_lift(model) * scale))
+                .with_scale(Vec3::splat(scale)),
         );
     }
     out
@@ -460,9 +471,26 @@ fn spawn_plans(
 /// unknown to the team (Q49).
 pub fn plannable_preview(state: &ViewState, driver: &Driver) -> Vec<TilePos> {
     let mut tiles = state.preview();
-    if let Tool::Mark(plan, _) = &state.tool {
-        tiles.retain(|p| driver.may_plan(*p, *plan).is_ok());
-    }
+    let (Tool::Mark(plan, _), Some(ghost)) = (&state.tool, crate::marks::ghost_of(&state.tool))
+    else {
+        return tiles;
+    };
+    let snap = driver.snapshot();
+    let held: HashMap<TilePos, &Plans> = snap
+        .teams
+        .iter()
+        .find(|t| t.id == driver.player)
+        .map(|t| t.plans.iter().map(|(p, x)| (*p, x)).collect())
+        .unwrap_or_default();
+    let wanted = crate::marks::slot(&ghost, *plan);
+    tiles.retain(|p| {
+        // A tile already carrying exactly this plan shows it: a second,
+        // identical ghost on top would fight it and blink.
+        let already = held
+            .get(p)
+            .is_some_and(|h| crate::marks::slot(h, *plan) == wanted);
+        !already && driver.may_plan(*p, *plan).is_ok()
+    });
     tiles
 }
 
@@ -486,7 +514,6 @@ pub fn cursor_ghost(
         for p in &want.1 {
             let top = ents.top(*p);
             let surface = surface_at(&ents, *p);
-            let painted = ents.tiles.get(p).is_some_and(|t| t.look.paint.is_some());
             let spawned = spawn_plans(
                 &mut commands,
                 &frame,
@@ -496,7 +523,6 @@ pub fn cursor_ghost(
                 top,
                 surface,
                 &plans,
-                painted,
             );
             ents.cursor_entities.extend(spawned);
         }
@@ -591,15 +617,7 @@ fn spawn_tile(
     }
     if let Some(plans) = &look.plans {
         out.extend(spawn_plans(
-            commands,
-            frame,
-            palette,
-            materials,
-            p,
-            top,
-            surface,
-            plans,
-            look.paint.is_some(),
+            commands, frame, palette, materials, p, top, surface, plans,
         ));
     }
     out
