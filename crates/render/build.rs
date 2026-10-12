@@ -69,6 +69,21 @@ const MASTER: [&str; 3] = ["#39d98a", "#2aa86b", "#c8ffe6"];
 const LIGHT: &str = "#ff00ff";
 const LIGHT_BASE: &str = "#1c2129";
 
+/// The authored marks of trim in the team's color (Q48): a band and its
+/// darker stripe, drawn as `LIGHT_BASE` like a light but baked into the
+/// mask grey, so the team glow paints them at that share of a light's
+/// brightness — solid color, not another lamp.
+const TRIMS: [(&str, &str); 2] = [("#00ffff", "#b3b3b3"), ("#00aaaa", "#737373")];
+
+/// `svg` with every light and trim mark drawn as `light` and `trim`.
+fn marks(svg: &str, light: &str, trim: impl Fn(&str) -> String) -> String {
+    let mut s = svg.replace(LIGHT, light);
+    for (mark, level) in TRIMS {
+        s = s.replace(mark, &trim(level));
+    }
+    s
+}
+
 /// (atlas name, [accent, accent-dark, highlight]) — `palette::TEAM_PALETTES`
 /// names these in the same order; "ruined" is the dead-grey swap.
 const TEAMS: &[(&str, [&str; 3])] = &[
@@ -96,12 +111,13 @@ fn render(svg: &str, px: u32) -> tiny_skia::Pixmap {
     pixmap
 }
 
-/// An art's light mask: drawn with its lights white and then black, the
-/// difference kept, so antialiased edges stay soft — white where a light
-/// glows, black elsewhere (Q45).
+/// An art's light mask: drawn with its lights white and its trim grey and
+/// then all of them black, the difference kept, so antialiased edges stay
+/// soft — white where a light glows, grey where trim is painted, black
+/// elsewhere (Q45, Q48).
 fn light_mask(svg: &str, px: u32) -> tiny_skia::Pixmap {
-    let on = render(&svg.replace(LIGHT, "#ffffff"), px);
-    let off = render(&svg.replace(LIGHT, "#000000"), px);
+    let on = render(&marks(svg, "#ffffff", |level| level.to_string()), px);
+    let off = render(&marks(svg, "#000000", |_| "#000000".to_string()), px);
     let mut mask = tiny_skia::Pixmap::new(px, px).expect("mask alloc");
     for ((dst, a), b) in mask
         .pixels_mut()
@@ -136,10 +152,10 @@ fn main() {
 
     for name in PLAIN {
         let svg = read(name);
-        render(&svg.replace(LIGHT, LIGHT_BASE), SIZE)
+        render(&marks(&svg, LIGHT_BASE, |_| LIGHT_BASE.to_string()), SIZE)
             .save_png(out.join(format!("{name}.png")))
             .expect("save png");
-        if svg.contains(LIGHT) {
+        if svg.contains(LIGHT) || TRIMS.iter().any(|(mark, _)| svg.contains(mark)) {
             light_mask(&svg, SIZE)
                 .save_png(out.join(format!("{name}_lights.png")))
                 .expect("save light mask png");
@@ -246,7 +262,9 @@ fn main() {
         for (team, colors) in TEAMS {
             let mut atlas = tiny_skia::Pixmap::new(SIZE * 3, SIZE * 2).expect("atlas alloc");
             for (face, col, row) in FACES {
-                let mut svg = read(&format!("{svg_prefix}_{face}")).replace(LIGHT, LIGHT_BASE);
+                let mut svg = marks(&read(&format!("{svg_prefix}_{face}")), LIGHT_BASE, |_| {
+                    LIGHT_BASE.to_string()
+                });
                 for (master, team_color) in MASTER.iter().zip(colors) {
                     svg = svg.replace(master, team_color);
                 }

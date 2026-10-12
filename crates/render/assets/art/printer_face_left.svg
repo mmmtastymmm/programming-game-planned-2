@@ -2,14 +2,14 @@
   <!-- printer side: heat fins, team stripe. Image-left = front. -->
   <rect width="64" height="64" fill="#2c3542"/>
   <rect width="64" height="8" fill="#4a5668"/>
-  <rect y="8" width="64" height="6" fill="#39d98a"/>
-  <rect y="14" width="64" height="2" fill="#2aa86b"/>
+  <rect y="8" width="64" height="8" fill="#00ffff"/>
+  <rect y="16" width="64" height="2" fill="#00aaaa"/>
   <g fill="#1c232c">
     <rect x="17" y="26" width="6" height="30" rx="2"/>
     <rect x="28" y="26" width="6" height="30" rx="2"/>
     <rect x="39" y="26" width="6" height="30" rx="2"/>
     <rect x="50" y="26" width="6" height="30" rx="2"/>
   </g>
-  <rect x="4" y="30" width="6" height="12" rx="2" fill="#ff00ff"/>
+  <rect x="2" y="27" width="10" height="18" rx="3" fill="#ff00ff"/>
   <rect x="1" y="1" width="62" height="62" fill="none" stroke="#0e1116" stroke-width="2"/>
 </svg>
