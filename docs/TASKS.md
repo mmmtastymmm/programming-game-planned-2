@@ -31,20 +31,4 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M7 — Bot colors and team outlines
-
-**T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
-
-Q43, ruled in `02` and `07`, amended by Q45, Q46 and Q47. The sim: a
-`color` attribute on bots, `None` when printed, kept across redeploy and
-fault, settable while `dying`, in sightings and the hash; the zero-tick
-`set_color(color)` action, refusing anything not in the paint list or
-`None`, with its row in `data/language/costs.toml`. The renderer: a bot's
-body in its color or the neutral body color with its lights glowing in its
-team's color, printers and depots in the neutral color with their lights
-glowing in it and sites outlined in it, replacing the ring (Q45), its
-entity id in seven segments on its top face lit in the team's color (Q46),
-the player's own green by default and the others from a list in
-`data/interface.toml`, changed from the inspector and saved in
-`colors.toml` beside the programs. The golden fixtures, regenerated with
-the reason in the PR. Finishing it fixes [P2](PROBLEMS.md).
+No task is open. The next one starts a new milestone.
