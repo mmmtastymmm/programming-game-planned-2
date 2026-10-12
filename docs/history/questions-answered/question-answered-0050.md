@@ -1,6 +1,6 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q45 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q32)
+# Q50 — How does a player debug a program: breakpoints, a forked sim to step and rewind, and a what-if run (amending Q32)
 
 ## Ruling
 
@@ -118,7 +118,7 @@ a tick does.
 - **Docs:** [07-interface.md](../../07-interface.md) — the preamble, the
   Decided entry, the screen's debugger window, and the Debugging section.
   [06-architecture.md](../../06-architecture.md) — the Q15 and Q32 Decided
-  entries and Q45's, the driver, and the Forks section.
+  entries and Q50's, the driver, and the Forks section.
   [00-overview.md](../../00-overview.md) — fixed point 2 and the Decided
   listing. [CLAUDE.md](../../../CLAUDE.md) — determinism rules 1 and 5.
   [QUESTIONS.md](../../QUESTIONS.md) — the status block.
@@ -130,7 +130,7 @@ a tick does.
 - **Task:** [T28](../../TASKS.md) — what-if.
 - **Task:** [T29](../../TASKS.md) — the paused driver counting only peers'
   commands.
-- **Problem:** [P5](../../PROBLEMS.md) — the docs state Q45 as current
+- **Problem:** [P5](../../PROBLEMS.md) — the docs state Q50 as current
   until T26 to T28 land.
 - **Problem:** [P6](../../PROBLEMS.md) — the driver still counts a scripted
   team's commands when paused, until T29.

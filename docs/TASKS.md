@@ -66,7 +66,7 @@ fixtures, regenerated with the reason in the PR. Finishing it fixes
 
 **T26 — Forks in `sim`: watches, stopping mid-tick, steps, saved states, edits**
 
-Q45, ruled in `06`'s Forks section. A fork from a saved state or a
+Q50, ruled in `06`'s Forks section. A fork from a saved state or a
 re-run, applying the match's (or replay's) log and then its own, faithful
 while its own log is empty; `sim.step` taking a team's watches — `(file,
 content hash, line, deployment or any, machine or any)` — and reporting
@@ -85,7 +85,7 @@ no hash, and that a re-run across an edit applies it.
 
 **T27 — The debugger in `render`, live and on replays**
 
-Q45, ruled in `07`'s Debugging section. Gutter breakpoints on the shown
+Q50, ruled in `07`'s Debugging section. Gutter breakpoints on the shown
 text, carried through edits, watching that text's content hash, scoped to
 a machine or the file, greyed while nothing runs it, kept with the tree;
 saving the match's and each fork's state every `debug_checkpoint_ticks`,
@@ -99,14 +99,14 @@ identity; the three `debug_*` constants in `data/interface.toml`.
 
 **T28 — What-if**
 
-Q45: deploying a file into the open fork, for its next tick, instead of
+Q50: deploying a file into the open fork, for its next tick, instead of
 the match; running the fork at a chosen speed; *take it* deploying the
 same text to the match; refused in PvP. Together with T26 and T27,
 finishing it fixes [P5](PROBLEMS.md).
 
 **T29 — A paused driver counts only peers' commands**
 
-Q45 rule 12, amending Q32, in `06`'s Decided entry and The driver. At
+Q50 rule 12, amending Q32, in `06`'s Decided entry and The driver. At
 speed `0`, `render`'s driver (and `net`'s `next_tick_with_a_command`, or
 a variant of it) runs to the next tick carrying a peer's command, not a
 scripted team's. No replay hash changes — the sim's ticks are the same —

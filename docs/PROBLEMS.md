@@ -76,9 +76,9 @@ preview. The work is [T20](TASKS.md), open since before Q42; this entry
 records the gap the registers require beside it, and closes with the
 commit that finishes T20.
 
-**P5 — The code lags Q45: no forks, breakpoints or what-if**
+**P5 — The code lags Q50: no forks, breakpoints or what-if**
 
-Q45 ruled that a program is debugged on a fork, and `06`'s Forks section
+Q50 ruled that a program is debugged on a fork, and `06`'s Forks section
 and `07`'s Debugging section state it as current: watched lines passed to
 `sim.step`, forks that stop mid-tick, step, save and restore, editable
 variables, what-if, and a saved replay that records its team. None of it
@@ -90,7 +90,7 @@ last of them.
 
 **P6 — A pause runs on to a scripted team's next command**
 
-Q45 amended Q32 so a paused driver runs only to the next tick carrying a
+Q50 amended Q32 so a paused driver runs only to the next tick carrying a
 peer's command. `render`'s driver still takes the next tick carrying any
 command, through `net`'s `next_tick_with_a_command`, and a scripted
 team's whole script enters the log when the driver is built (`04`). So a

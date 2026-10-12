@@ -7,7 +7,7 @@ choices that are not sim rules — everything here is on the far side of the
 one-way arrows [06-architecture](06-architecture.md) draws: the renderer
 reads the completed-tick snapshot and writes only commands (Q15). The
 debugger alone also drives forks, private copies that never reach the
-match (Q45). Nothing
+match (Q50). Nothing
 here changes a hash; a peer with a different renderer sees the same match.
 
 ## Decided
@@ -68,7 +68,7 @@ here changes a hash; a peer with a different renderer sees the same match.
   change any team's outline color, their own included, from the
   inspector; the choice is saved in `colors.toml` beside the programs and
   never reaches a peer. No bot wears a number.
-- **A program is debugged on a fork (Q45).** Line breakpoints are the
+- **A program is debugged on a fork (Q50).** Line breakpoints are the
   editor's; a hit opens a private copy of the sim at that point, where the
   player steps by line, by tick or over an action, rewinds, inspects the
   selected machine's execution and may edit its variables, and a
@@ -91,7 +91,7 @@ floats over it (Q39, Q41):
 | **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's outline color to change | Q34, Q43 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
-| **debugger** | while a fork is open: its tick and controls, the selected machine's stack, locals, globals, action, budget and interrupts | Q45 |
+| **debugger** | while a fork is open: its tick and controls, the selected machine's stack, locals, globals, action, budget and interrupts | Q50 |
 
 Every window drags, resizes, collapses and closes, and several files may
 be open at once. The layout is saved to `windows.toml` beside the programs
@@ -239,7 +239,7 @@ awaited and the match continues, with a line in the log.
 
 ## Debugging
 
-A program is debugged on a **fork** (Q45): a private copy of the sim, as
+A program is debugged on a **fork** (Q50): a private copy of the sim, as
 [06-architecture](06-architecture.md)'s Forks section defines it, which
 never feeds back into the match. Everything here is the renderer's; the
 match's sim is only read.
@@ -299,7 +299,7 @@ match's sim is only read.
   start screen is debugged as that team. Its file windows show the text a
   version of the replay ran, picked from the versions its log deployed,
   and breakpoints set there watch that text. A replay with no recorded
-  team — a match of cards only, or one saved before Q45 — can be watched
+  team — a match of cards only, or one saved before Q50 — can be watched
   but not debugged.
 - **Closing** the fork returns the map and the windows to the match.
 
@@ -307,7 +307,7 @@ match's sim is only read.
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
 `fault_mark_ticks`, `debug_checkpoint_ticks`, `debug_checkpoints_kept` and
-`debug_step_max_ticks` (Q45), the neutral body color, the player's default outline
+`debug_step_max_ticks` (Q50), the neutral body color, the player's default outline
 color and the outline list for the other teams. None is a sim value; the
 player's own outline choices live in `colors.toml` beside the programs.
 
