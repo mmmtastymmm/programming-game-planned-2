@@ -80,7 +80,9 @@ impl Layout {
 /// rest start open.
 pub fn default_placement(name: &str, index: usize, screen: egui::Rect, open: bool) -> Placement {
     let (w, h, open) = match name {
-        "inspector" => (320.0, 520.0, true),
+        // The inspector keeps the size it is given and scrolls past it (it
+        // no longer shrinks to its content), so this is its real height.
+        "inspector" => (320.0, 260.0, true),
         "tools" => (320.0, 230.0, true),
         "log" => (900.0, 200.0, true),
         _ => (520.0, 620.0, open),

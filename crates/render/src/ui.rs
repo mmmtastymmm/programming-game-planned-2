@@ -352,156 +352,164 @@ fn inspector(
     let d = &driver.0;
     let player = d.player;
     let snap = d.snapshot();
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        if let Some(id) = state.selected {
-            match view::machine(snap, id) {
-                Some(m) => {
-                    let r = &m.record;
-                    ui.colored_label(
-                        colors.color32(interface, player, r.team),
-                        format!(
-                            "{} — {} #{} of team {}",
-                            r.name,
-                            r.model.name(),
-                            r.id.0,
-                            r.team.0
-                        ),
-                    );
-                    ui.label(format!("at ({}, {})", r.pos.x, r.pos.y));
-                    ui.label(format!("health {}", r.health.to_decimal()));
-                    match r.busy {
-                        Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
-                        None => ui.label("idle"),
-                    };
-                    // Printing is not an action (Q42): a printer's own line.
-                    match r.printing {
-                        Some(0) => {
-                            ui.label("not printing");
-                        }
-                        Some(t) => {
-                            ui.label(format!("printing ({t})"));
-                        }
-                        None => {}
-                    }
-                    let running = r.deployment.as_ref().and_then(|dep| {
-                        snap.teams
-                            .iter()
-                            .find(|t| t.id == r.team)
-                            .and_then(|t| t.deployments.get(dep).copied().flatten())
-                    });
-                    if let Some(dep) = &r.deployment {
-                        match running {
-                            Some(v) => ui.label(format!("runs {dep} ({v:016x})")),
-                            None => ui.label(format!("runs {dep}")),
-                        };
-                    }
-                    if let Some(l) = &r.load {
-                        ui.label(format!("load: {}", amounts(l)));
-                    }
-                    if let Some(s) = &r.store {
-                        ui.label(format!("store: {}", amounts(s)));
-                    }
-                    if let Some(f) = &m.fault {
-                        let version = match running {
-                            Some(v) if v == f.version => "the running version".to_string(),
-                            _ => format!("version {:016x}, since redeployed", f.version),
-                        };
+    // The inspector keeps the size it was given and scrolls: sized to its
+    // content, it grew over the cursor whenever a hovered tile added a
+    // line, which unhovered the tile and shrank it again, so the hover
+    // flickered on any tile just under the window.
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            if let Some(id) = state.selected {
+                match view::machine(snap, id) {
+                    Some(m) => {
+                        let r = &m.record;
                         ui.colored_label(
-                            egui::Color32::LIGHT_RED,
+                            colors.color32(interface, player, r.team),
                             format!(
-                                "fault: {}\n  at {}:{} tick {}\n  {version}",
-                                view::fault_what(f),
-                                f.file.as_deref().unwrap_or("?"),
-                                f.line,
-                                f.tick
+                                "{} — {} #{} of team {}",
+                                r.name,
+                                r.model.name(),
+                                r.id.0,
+                                r.team.0
                             ),
                         );
+                        ui.label(format!("at ({}, {})", r.pos.x, r.pos.y));
+                        ui.label(format!("health {}", r.health.to_decimal()));
+                        match r.busy {
+                            Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
+                            None => ui.label("idle"),
+                        };
+                        // Printing is not an action (Q42): a printer's own line.
+                        match r.printing {
+                            Some(0) => {
+                                ui.label("not printing");
+                            }
+                            Some(t) => {
+                                ui.label(format!("printing ({t})"));
+                            }
+                            None => {}
+                        }
+                        let running = r.deployment.as_ref().and_then(|dep| {
+                            snap.teams
+                                .iter()
+                                .find(|t| t.id == r.team)
+                                .and_then(|t| t.deployments.get(dep).copied().flatten())
+                        });
+                        if let Some(dep) = &r.deployment {
+                            match running {
+                                Some(v) => ui.label(format!("runs {dep} ({v:016x})")),
+                                None => ui.label(format!("runs {dep}")),
+                            };
+                        }
+                        if let Some(l) = &r.load {
+                            ui.label(format!("load: {}", amounts(l)));
+                        }
+                        if let Some(s) = &r.store {
+                            ui.label(format!("store: {}", amounts(s)));
+                        }
+                        if let Some(f) = &m.fault {
+                            let version = match running {
+                                Some(v) if v == f.version => "the running version".to_string(),
+                                _ => format!("version {:016x}, since redeployed", f.version),
+                            };
+                            ui.colored_label(
+                                egui::Color32::LIGHT_RED,
+                                format!(
+                                    "fault: {}\n  at {}:{} tick {}\n  {version}",
+                                    view::fault_what(f),
+                                    f.file.as_deref().unwrap_or("?"),
+                                    f.line,
+                                    f.tick
+                                ),
+                            );
+                        }
+                        if !m.log.is_empty() {
+                            ui.separator();
+                            for l in m.log.iter().rev().take(6) {
+                                ui.small(format!("[{}] {}", l.level, l.text));
+                            }
+                        }
                     }
-                    if !m.log.is_empty() {
-                        ui.separator();
-                        for l in m.log.iter().rev().take(6) {
-                            ui.small(format!("[{}] {}", l.level, l.text));
+                    None => {
+                        ui.label("gone");
+                    }
+                }
+                ui.separator();
+            }
+            match state.hover {
+                Some(p) => {
+                    ui.label(format!("tile ({}, {})", p.x, p.y));
+                    match view::tile(snap, player, p) {
+                        Some(mem) if mem.state != TileState::Unknown => {
+                            let seen = match mem.state {
+                                TileState::Visible => "in sight".to_string(),
+                                _ => format!("remembered from tick {}", mem.seen_at),
+                            };
+                            ui.small(format!("{} — {seen}", mem.terrain.name()));
+                            if let Some(dep) = &mem.deposit {
+                                ui.small(format!("deposit: {}", amounts(dep)));
+                            }
+                            if let Some(paint) = &mem.paint {
+                                ui.small(format!("paint: {paint}"));
+                            }
+                            if let Some(o) = &mem.overlay {
+                                ui.small(format!("overlay: {o}"));
+                            }
+                            if let Some(b) = &mem.building {
+                                ui.small(format!("{} of team {}", b.name, b.team.0));
+                            }
+                            let plans = snap
+                                .teams
+                                .iter()
+                                .find(|t| t.id == player)
+                                .and_then(|t| t.plans.iter().find(|(at, _)| *at == p));
+                            if let Some((_, plans)) = plans {
+                                ui.small(format!("your plan: {}", marks::describe(plans)));
+                            }
+                        }
+                        _ => {
+                            ui.small("unknown");
                         }
                     }
                 }
                 None => {
-                    ui.label("gone");
+                    ui.small("hover a tile");
                 }
             }
             ui.separator();
-        }
-        match state.hover {
-            Some(p) => {
-                ui.label(format!("tile ({}, {})", p.x, p.y));
-                match view::tile(snap, player, p) {
-                    Some(mem) if mem.state != TileState::Unknown => {
-                        let seen = match mem.state {
-                            TileState::Visible => "in sight".to_string(),
-                            _ => format!("remembered from tick {}", mem.seen_at),
-                        };
-                        ui.small(format!("{} — {seen}", mem.terrain.name()));
-                        if let Some(dep) = &mem.deposit {
-                            ui.small(format!("deposit: {}", amounts(dep)));
-                        }
-                        if let Some(paint) = &mem.paint {
-                            ui.small(format!("paint: {paint}"));
-                        }
-                        if let Some(o) = &mem.overlay {
-                            ui.small(format!("overlay: {o}"));
-                        }
-                        if let Some(b) = &mem.building {
-                            ui.small(format!("{} of team {}", b.name, b.team.0));
-                        }
-                        let plans = snap
-                            .teams
-                            .iter()
-                            .find(|t| t.id == player)
-                            .and_then(|t| t.plans.iter().find(|(at, _)| *at == p));
-                        if let Some((_, plans)) = plans {
-                            ui.small(format!("your plan: {}", marks::describe(plans)));
-                        }
+            ui.heading("Teams");
+            for t in &snap.teams {
+                let mine = if t.id == player { " (you)" } else { "" };
+                let out = if t.out { " — out" } else { "" };
+                // Each team's outline color, the player's to change (Q43).
+                ui.horizontal(|ui| {
+                    let mut rgb = colors.rgb(interface, player, t.id);
+                    if egui::color_picker::color_edit_button_srgb(ui, &mut rgb).changed()
+                        && let Err(e) = colors.set(t.id, rgb)
+                    {
+                        state.status = format!("outline colors not saved: {e}");
                     }
-                    _ => {
-                        ui.small("unknown");
+                    ui.colored_label(
+                        colors.color32(interface, player, t.id),
+                        format!(
+                            "team {}{mine}: {} bots / cap {}{out}",
+                            t.id.0, t.bots, t.cap
+                        ),
+                    );
+                });
+                for (name, v) in &t.deployments {
+                    if let Some(v) = v {
+                        ui.small(format!("  {name}: {v:016x}"));
                     }
                 }
             }
-            None => {
-                ui.small("hover a tile");
-            }
-        }
-        ui.separator();
-        ui.heading("Teams");
-        for t in &snap.teams {
-            let mine = if t.id == player { " (you)" } else { "" };
-            let out = if t.out { " — out" } else { "" };
-            // Each team's outline color, the player's to change (Q43).
-            ui.horizontal(|ui| {
-                let mut rgb = colors.rgb(interface, player, t.id);
-                if egui::color_picker::color_edit_button_srgb(ui, &mut rgb).changed()
-                    && let Err(e) = colors.set(t.id, rgb)
-                {
-                    state.status = format!("outline colors not saved: {e}");
-                }
-                ui.colored_label(
-                    colors.color32(interface, player, t.id),
-                    format!(
-                        "team {}{mine}: {} bots / cap {}{out}",
-                        t.id.0, t.bots, t.cap
-                    ),
-                );
-            });
-            for (name, v) in &t.deployments {
-                if let Some(v) = v {
-                    ui.small(format!("  {name}: {v:016x}"));
-                }
-            }
-        }
-    });
+        });
 }
 
 fn log(ui: &mut egui::Ui, state: &ViewState) {
+    // Like the inspector, the log keeps its size as lines arrive.
     egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
         .stick_to_bottom(true)
         .show(ui, |ui| {
             for line in state
