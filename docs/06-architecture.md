@@ -42,16 +42,18 @@ Rulings this doc owns, moved here from the overview when it was written.
   the sender stamp is its hook.
 - **A paused driver still reaches a command, and a hook's wait spends its
   budget (Q32, as Q50 amended).** At speed `0` the driver runs, without the
-  clock, exactly the ticks up to the next one that carries a peer's command
-  — a scripted team's commands, written in advance (`04`), do not count, or
-  a pause would run to the script's next entry — so a `SetSpeed` above zero
+  clock, exactly the ticks up to the next one that carries a player's
+  command — a scripted team is a sender in the log but not a player, and
+  its commands, written in advance (`04`), do not count, or a pause would
+  run to the script's next entry — so a `SetSpeed` above zero
   lands and resumes; `delay` and `stall_report_ticks` live in
   `data/net.toml`. The hook half is
   [01-language](01-language/execution.md)'s.
 - **Bevy renders, in its own crate, in the sim's process, reading only
-  completed-tick snapshots and writing only to the command log (Q15), as
-  far as the match's sim goes; the debugger drives forks of its own (Q50,
-  Forks).** A
+  completed-tick snapshots and writing only to the command log (Q15, as
+  Q50 amended).** The one further read of the match's sim is the
+  driver's saving its full state between ticks for the debugger, and the
+  debugger drives forks of its own (Forks). A
   `render` crate depends on `sim` and Bevy; `sim` depends on neither. The
   driver — wall clock, speed, peer wait, next tick — is a Bevy system that
   owns the sim as a resource; every other system sees only the snapshot the
@@ -63,8 +65,8 @@ Rulings this doc owns, moved here from the overview when it was written.
   feeds back into the match (Q50).** The live sim only reports breakpoint
   hits, read-only; stepping, rewinding, editing a variable and what-if all
   act on a fork. In PvP a fork never passes the live tick and never
-  diverges. A paused driver counts only peers' commands, not a scripted
-  team's (Q50, amending Q32). Forks, below; the player's side is
+  diverges. A paused driver wakes only for a player's command, not a
+  scripted team's (Q50, amending Q32). Forks, below; the player's side is
   [07-interface](07-interface.md)'s.
 
 ## Crates
@@ -86,8 +88,8 @@ flowchart LR
 | `lang` | nothing | the interpreter [01-language](01-language.md) specifies: the loader, the evaluator, the interrupt machinery, `num` | none |
 | `sim` | `lang` | the world: tiles, machines, the tick loop, the state hash, the snapshot; the game builtins `02` names, which it registers with `lang` | none |
 | `net` | `sim`'s command types only | the command log as a data structure and its exchange between peers: stamping, the per-tick sets, the stall | none in anything it sends |
-| `render` | `sim`, `net`, `replay`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
-| `replay` | `sim`, `net` | the headless driver: runs a `(map, command log)` to a hash stream; the replay's file format, which `render` writes when a match ends (Q36); the golden fixtures; the determinism suite; the cross-architecture check | none |
+| `render` | `sim`, `net`, `replay`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view, the debugger driving forks (Q50) — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
+| `replay` | `sim`, `net` | the headless driver: runs a `(map, command log)` to a hash stream; the replay's file format, the saver's team in it (Q50), which `render` writes when a match ends (Q36); building a fork from a replay; the golden fixtures; the determinism suite; the cross-architecture check | none |
 
 **The arrow that does not exist** is any edge into `sim` or `lang` from
 `render`. The compiler enforces it: `sim` has no `render` dependency, and a
@@ -112,7 +114,7 @@ loop:
     first = 0 if tick == 0 else tick + 1         # tick 0 is never stepped:
                                                  # its set applies with tick 1
     if speed == 0:
-        T = net.next_tick_with_a_command(tick)   # lowest T > tick with a peer's command;
+        T = net.next_tick_with_a_command(tick)   # lowest T > tick with a player's command;
                                                  # a scripted team's do not count (Q50)
         if T is None: wait for a command; continue
         if not net.have_all_sets(first ..= T): stall; continue
@@ -125,6 +127,8 @@ loop:
                                                  # are the debugger's (Forks)
     snapshot = sim.snapshot()                    # published, never shared
     hash = sim.hash()                            # sent to peers, checked
+    if debugging and tick % debug_checkpoint_ticks == 0:
+        debugger.keep(sim.save())                # the full state, for forks (Q50)
     tick += 1
 ```
 
@@ -136,7 +140,7 @@ loop:
 - **Speed lives in the driver**, set by the `SetSpeed` command when
   `sim.step` reports it applied. The sim carries no rate (Q6). **A paused
   driver still reaches a command** (Q32): at speed `0` it runs, without the
-  clock, exactly the ticks up to the next one that carries a peer's
+  clock, exactly the ticks up to the next one that carries a player's
   command, a scripted team's not counting (Q50) — which is how a
   `SetSpeed` above zero lands on its agreed tick and resumes.
 - **The stall** (Q12) is the driver refusing to call `sim.step` until every
@@ -284,84 +288,106 @@ on either peer — which is the whole reason the log is complete.
 
 ## Forks
 
-A **fork** (Q50) is a private copy of the world, for debugging. It starts
-from a saved state of a match or a replay — or from `(map, command log)`
-re-run — at a completed tick, and its state hash there equals the match's.
-It runs the tick loop of The tick unchanged. It is never a peer and never
-the match's sim: it sends nothing to any peer, and nothing it does reaches
-the match's world, log or hash. The rule that `sim.step` is the only entry
-point that changes the world, and the review rule on mutable references
-(Crates), are the match's sim's; a fork has the further entry points
-below, and only `sim` and the debugger in `render` and `replay` hold one.
+A **fork** (Q50) is a private copy of the world, for debugging. It is the
+match's sim's code run on a copy: it starts from a **saved state** — the
+match's full world, execution state included, at a completed tick, which
+the driver saves for the debugger — or from `(map, command log)` re-run,
+and its state hash there equals the match's. It runs the tick loop of The
+tick unchanged. It is never a peer and never the match's sim: it sends
+nothing to any peer, and nothing it does reaches the match's world, log or
+hash. The rule that `sim.step` is the only entry point that changes the
+world, and the review rule on mutable references (Crates), are the match's
+sim's; a fork has the further entry points below. `sim` holds a fork's
+code, `render`'s debugger drives one, and `replay` builds one from a
+replay file.
 
-- **Its commands.** For each tick it runs, a fork applies the commands the
-  match's log (or the replay's) holds for that tick, in the order of The
-  tick, and then its own: the what-if `Deploy`s and the edits below,
-  which make up the **fork's log**. It reads the match's log and never
-  writes it. A fork whose own log is empty is **faithful**: it reproduces
-  the match hash for hash. One whose own log is not is **diverged**.
+- **Positions.** A point in a tick is a **position**: `(tick, machine,
+  the number of boundaries that machine's slice has passed this tick)` —
+  every boundary `01` names counts, the slice's opening one, those inside
+  a wait and a restart's included — or `(tick, end)`, after step 9. A
+  fork stops only at positions, every hit names one, and every entry in a
+  fork's log is made at one.
 - **Statements.** A machine **begins a statement** at the boundary before
-  that statement's first operation (`01`, Metering); a statement's line is
-  its first line. Returning from a call into the middle of a statement
-  begins nothing. Every rule below that names a line means this.
+  the statement's first operation (`01`, Metering), on the statement's
+  first line. A compound statement's clauses also begin there: an `if` or
+  `elif` each time its condition is evaluated, a `while` each time its
+  condition is, a `for` each time it takes the next element, an `except`
+  each time it is tested, a `case` each time its pattern is. Nothing else
+  begins: not a line holding only `else:`, `try:` or `finally:`, not a
+  continuation line of a multi-line statement, and not the return from a
+  call into the middle of a statement. A line on which nothing can begin
+  takes no breakpoint; one set there moves to the next line that can.
+- **Its commands.** For each tick it runs, a fork takes the commands the
+  match's log (or the replay's) holds for it at that moment and records
+  them, so a re-run of that tick applies the same ones. They apply in step
+  1 by The tick's order, followed by the fork's own what-if `Deploy`s
+  agreed for that tick; the fork's own edits apply at their positions.
+  The what-if deploys and the edits are the **fork's log**. A fork is
+  **faithful** while its log is empty and every tick it ran took the
+  match's complete set for that tick. It is **ahead** at a tick past the
+  match's latest completed one, where the match's sets are not final; it
+  becomes **stale** from a tick at which the match's log later gains a
+  command it did not take. A fork with entries in its own log is
+  **diverged**. The debugger shows which.
 - **Watches.** A watch is `(file in the bundle, the file's content hash,
-  line, deployment or any, machine or any)` for one team: the content hash
-  of the one file, so a watch outlives deploys of other files, and the
-  deployment because every robot file is its bundle's `main.py`. The
+  line, deployment or any, machine or any)` for one team: the content
+  hash of the one file, so a watch outlives deploys of other files, and
+  the deployment because every robot file is its bundle's `main.py`. The
   driver passes the team's watches to `sim.step` beside the tick's
-  commands; they are not commands and no part of the state hash, and
-  `sim.step` only reports, beside its usual report, each machine of the
-  team matching a watch that begins a statement on a watched line. It
-  charges nothing and changes nothing, so a peer watching lines hashes as
-  one that is not. A fork takes watches the same way.
-- **Stopping.** A fork can stop at an operation boundary inside any
-  machine's slice and resume from there; stopped mid-tick it has no state
-  hash until the tick completes. For a machine it reports, computed from
-  the fork's world at that point: each frame's file, line, function and
-  locals; the globals of every module the machine has run; its attribute
-  record, action in progress and `progress` included; its tick budget,
-  deficit and pending interrupts; whether it is in main flow or a handler,
-  which kind, and the hook budget spent.
-- **Steps.** *Line*, *over* and *continue* stop on one selected machine;
-  *tick* needs none, and *continue* with none stops on any machine
-  matching a watch. Every other machine runs in tick-loop order
-  meanwhile. **Line** — until the selected machine next begins a
-  statement, in any frame. **Over** — until it next begins a statement in
-  its current frame or, once that frame has returned or been abandoned,
-  in the nearest frame still on its stack. **Tick** — to the end of the
-  tick. **Continue** — until a watched machine begins a statement on a
-  watched line. *Line*, *over* and *continue* also stop when the selected
-  machine is delivered `dying`, when its `death` runs, and when its
-  program restarts (a fault, a redeploy, or main flow running off its
-  end); every step stops after `debug_step_max_ticks` ticks with no other
-  stop, and in PvP at the live tick. Each stop is reported with its cause.
-- **Saved states and back.** A fork can save its state at a tick boundary
-  and be restored to one. *Back* returns to the previous stop: the fork
-  restores the latest saved state before it and runs forward, applying
-  the match's log and its own, to that stop. Because edits are in the
-  fork's log, a re-run applies them where they were made, and no saved
-  state needs to sit at an edit.
+  commands; they are not commands and no part of the state hash.
+  `sim.step` reports, beside its usual report, every time a machine
+  matching a watch begins a statement on a watched line, with its
+  position. It charges nothing and changes nothing, so a peer watching
+  lines hashes as one that is not. A fork takes watches the same way.
+- **Stopping.** A fork can stop at a position and resume from it; stopped
+  mid-tick it has no state hash until the tick completes. For a machine it
+  reports, computed from the fork's world at that position: each frame's
+  file, line, function and locals; the globals of every module the machine
+  has run; its attribute record, action in progress and `progress`
+  included; its tick budget, deficit and pending interrupts; and whether
+  it is in main flow or a handler, which kind, and the hook budget spent.
+- **Steps.** Every other machine runs in tick-loop order meanwhile.
+  **Line** — until the selected machine next begins a statement, in any
+  frame. **Over** — until it next begins a statement in its current frame
+  or, once that frame has returned or been abandoned, in the nearest frame
+  still on its stack; a call, and a waiting action such as `wait(60)`, is
+  one step. **Tick** — to the end of the tick. **Continue** — until any
+  machine matching a watch begins a statement on a watched line, the
+  selected machine or another; a stop on another machine selects it.
+  *Line* and *over* need a selected machine; *tick* and *continue* do not.
+  *Line*, *over* and *continue* also stop when the selected machine is
+  delivered `dying`, when its `death` runs, and when its program restarts
+  (a fault, a redeploy, or main flow running off its end). Every step
+  stops after `debug_step_max_ticks` ticks with no other stop, and in PvP
+  at the live tick. Each stop is reported with its cause and position.
+- **Saved states and back.** A fork can save its state at the end of a
+  tick and be restored to one. *Back* returns to the previous stop: the
+  fork restores the latest usable saved state before it and runs forward,
+  taking its recorded commands and its own log, to that position. A saved
+  state is usable by a fork if the fork saved it, or if the match saved it
+  at a tick before the fork's first entry and the fork was faithful there.
+  Edits sit in the fork's log at their positions, so a re-run applies them
+  where they were made.
 - **Editing.** On a paused fork, a local, or a global of any module the
   machine has run, may be set to a value written as a literal or a display
-  of literals — a `num`, `str`, `bool` or `None`, or a tuple, list, dict or
-  set of such values, nested — parsed as `01` parses it and checked
-  against `01`'s Limits; a value over a limit is refused, naming the limit.
-  The edit enters the fork's log at `(tick, machine, the count of
-  operations that machine has begun this tick)`, the point a re-run
-  applies it.
+  of literals — a `num` (with an optional leading `-`), `str`, `bool` or
+  `None`, or a tuple, list, dict or set of such values, nested — parsed as
+  `01` parses it and checked against `01`'s Limits; a value over a limit
+  is refused, naming the limit. The edit enters the fork's log at the
+  position the fork is stopped at.
 - **What-if** puts `Deploy`s in the fork's log, agreed for the fork's next
   tick and applied in its step 1 after the match's own commands for that
   tick, so a later deploy in the match's log to the same deployment
   replaces the tried bundle, as it would in the match.
-- **A new branch.** Making an edit or a what-if deploy at a point earlier
-  than an entry already in the fork's log discards those later entries,
-  and every saved state after the point: the fork's log is one timeline.
+- **A new branch.** Making an edit or a what-if deploy at a position before
+  an entry already in the fork's log discards those later entries and
+  every saved state after the position: the fork's log is one timeline.
 - **The present.** In PvP a fork's tick never passes the live match's
   latest completed tick, and a fork is never diverged: what-if and edits
   are refused, since a counterfactual world run to the present would show
   real hidden state through the team's fog. In single-player, PvE and
-  replays a fork runs ahead freely, with a scripted team's commands, which
-  are known in advance (`04`).
+  replays a fork may run ahead, with a scripted team's commands, which are
+  known in advance (`04`).
 
 ## Testing
 

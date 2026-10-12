@@ -33,51 +33,62 @@ Two conventions carried over from the predecessor project:
 
 ## M8 — The debugger
 
-**T26 — Forks in `sim`: watches, stopping mid-tick, steps, saved states, edits**
+**T26 — Forks in `sim`: positions, watches, stopping mid-tick, steps, saved states, edits**
 
-Q50, ruled in `06`'s Forks section. A fork from a saved state or a
-re-run, applying the match's (or replay's) log and then its own, faithful
-while its own log is empty; `sim.step` taking a team's watches — `(file,
-content hash, line, deployment or any, machine or any)` — and reporting
-the machines that begin a statement on a watched line, read-only and
-outside the hash; the language VM stopping at an operation boundary
-mid-slice and resuming, and reporting frames, every run module's globals,
-the record with action and progress, budget, deficit, pending interrupts
-and handler state; the line, over, tick and continue steps and every
-stop and its cause; saving and restoring a state at a tick boundary;
-edits from a literal or display of literals, checked against `01`'s
-Limits, entered in the fork's log at (tick, machine, operation count);
+Q50, ruled in `06`'s Forks section. `sim.save()`, the match's full state
+between ticks, and a fork built from one or from a re-run; positions;
+which statements and clauses begin, for hits and steps; a fork recording
+the match's commands it took per tick, applying them and then its own log,
+and knowing whether it is faithful, ahead, stale or diverged; `sim.step`
+taking a team's watches — `(file, content hash, line, deployment or any,
+machine or any)` — and reporting every hit with its position, read-only
+and outside the hash; the language VM stopping at any boundary mid-slice
+and resuming, and reporting frames, every run module's globals, the record
+with action and progress, budget, deficit, pending interrupts and handler
+state; the line, over, tick and continue steps and every stop with its
+cause and position; saving and restoring a fork's state, and which saved
+states a fork may use; edits from a literal or display of literals, a
+`num` with an optional `-`, checked against `01`'s Limits, at positions;
 what-if deploys in the fork's log; a new branch discarding later entries
 and states; the PvP bound and refusal. Tests that an untouched fork
 reproduces the golden stream hash for hash, that watching lines changes
-no hash, and that a re-run across an edit applies it.
+no hash, that a re-run across an edit applies it, and that a fork run
+ahead goes stale when the match's log gains a command.
 
-**T27 — The debugger in `render`, live and on replays**
+**T27 — The debugger in `render`, and replays on the start screen**
 
-Q50, ruled in `07`'s Debugging section. Gutter breakpoints on the shown
-text, carried through edits, watching that text's content hash, scoped to
-a machine or the file, greyed while nothing runs it, kept with the tree;
-saving the match's and each fork's state every `debug_checkpoint_ticks`,
-keeping `debug_checkpoints_kept`; a hit opening a fork and, outside PvP,
-submitting one pause; further hits counted; the debugger window, its stop
-causes and the fork banner; the map drawing the fork in the team's view;
-the step keys; variable editing outside PvP; opening a fork by hand and
-from a replay on the start screen, with a picker for the replay's file
-versions; the saver's team recorded in a saved replay, outside its
-identity; the three `debug_*` constants in `data/interface.toml`.
+Q50, ruled in `07`'s Debugging section and The match. Gutter breakpoints on
+the shown text, moved to a line where a statement begins, carried through
+edits, watching that text's content hash, scoped to a machine or the file,
+greyed while nothing runs it, kept with the tree; the driver saving the
+match's state every `debug_checkpoint_ticks` while the debugger is in use,
+keeping `debug_checkpoints_kept`; a hit opening a fork at the tick's first
+hit and, outside PvP, submitting one pause; further hits listed by
+position; the debugger window, its stop causes and the fork banner with
+faithful, ahead, stale or diverged; the map drawing the fork in the team's
+view, the match's own controls still acting on the match; the step keys;
+variable editing outside PvP; opening a fork by hand. Replays: *open a
+replay* on the start screen and `--replay <path>`, playback with speed,
+pause and seeking, the saver's team recorded in the file and in its name
+`<map>-<tick>-<hash>-<team>.ron`, a picker for the versions its log
+deployed. The three `debug_*` constants in `data/interface.toml`.
 
 **T28 — What-if**
 
 Q50: deploying a file into the open fork, for its next tick, instead of
-the match; running the fork at a chosen speed; *take it* deploying the
-same text to the match; refused in PvP. Together with T26 and T27,
-finishing it fixes [P5](PROBLEMS.md).
+the match; *run*, continue drawn at a chosen speed with a pause; *take it*
+deploying the same text to the match, absent on a replay; refused in PvP.
 
-**T29 — A paused driver counts only peers' commands**
+[P5](PROBLEMS.md) closes with whichever of T26, T27 and T28 lands last.
 
-Q50 rule 12, amending Q32, in `06`'s Decided entry and The driver. At
-speed `0`, `render`'s driver (and `net`'s `next_tick_with_a_command`, or
-a variant of it) runs to the next tick carrying a peer's command, not a
-scripted team's. No replay hash changes — the sim's ticks are the same —
-but the driver tests that pause with a card loaded change. Fixes
-[P6](PROBLEMS.md).
+**T29 — A paused driver wakes only for a player's command**
+
+Q50 rule 13, amending Q32, in `06`'s Decided entry and The driver. At
+speed `0`, `render`'s driver runs to the next tick carrying a player's
+command. `net`'s log counts a scripted team among its senders (the
+driver's `local_peers` holds the player and every scripted team), so the
+fix tells a player from a scripted team rather than filtering by sender.
+No replay hash changes — the sim's ticks are the same. The existing paused
+test, with the Fool loaded, is unaffected, since the Fool's script has
+nothing after tick 0; a new test loads a script with an entry after the
+pause and asserts the driver stops short of it. Fixes [P6](PROBLEMS.md).

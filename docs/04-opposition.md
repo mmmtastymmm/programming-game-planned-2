@@ -55,7 +55,8 @@ ordinary marks, and its machines obey every rule.
 - **A script is deterministic by construction**: it is a fixed list of
   `(tick, command)` pairs, applied by the driver as if a peer had sent them,
   with the same delay (Q12) as a player's. A scripted team never stalls the
-  match, since its sets are always in hand.
+  match, since its sets are always in hand, and never wakes a paused
+  driver, since it is not a player (Q50, amending Q32; `06`).
 - **A script's tiles are relative to its team's first starting tile**,
   resolved at load, so one script fits any map; nothing else in a script
   depends on the map.

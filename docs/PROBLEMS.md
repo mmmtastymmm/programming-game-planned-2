@@ -55,21 +55,23 @@ the commit that changes the numbers or the rule.
 **P5 — The code lags Q50: no forks, breakpoints or what-if**
 
 Q50 ruled that a program is debugged on a fork, and `06`'s Forks section
-and `07`'s Debugging section state it as current: watched lines passed to
-`sim.step`, forks that stop mid-tick, step, save and restore, editable
-variables, what-if, and a saved replay that records its team. None of it
+and `07`'s Debugging section and The match state it as current: a saved
+state of the match, watched lines passed to `sim.step`, forks that stop
+mid-tick, step, save and restore, editable variables, what-if, and
+replays opened from the start screen, recording their team. None of it
 exists yet: `sim.step` takes commands only, the language VM cannot stop
-mid-slice, the renderer has no breakpoints or debugger window, and a
-replay records no team. The work is [T26](TASKS.md), [T27](TASKS.md) and
-[T28](TASKS.md); this entry closes with the commit that finishes the
-last of them.
+mid-slice, the renderer has no breakpoints, debugger window or replay
+entry, and a replay records no team. The work is [T26](TASKS.md),
+[T27](TASKS.md) and [T28](TASKS.md); this entry closes with the commit
+that finishes whichever of them lands last.
 
 **P6 — A pause runs on to a scripted team's next command**
 
 Q50 amended Q32 so a paused driver runs only to the next tick carrying a
-peer's command. `render`'s driver still takes the next tick carrying any
-command, through `net`'s `next_tick_with_a_command`, and a scripted
-team's whole script enters the log when the driver is built (`04`). So a
-pause in PvE, a player's or a debugger's, runs on without the clock to
-the script's next entry. It is latent today only because the Fool's
-script has nothing after tick 0. The work is [T29](TASKS.md).
+player's command, a scripted team's not counting. `render`'s driver still
+takes the next tick carrying any command, through `net`'s
+`next_tick_with_a_command`, and a scripted team's whole script enters the
+log when the driver is built (`04`). So a pause in PvE, a player's or a
+debugger's, runs on without the clock to the script's next entry. It is
+latent today only because the Fool's script has nothing after tick 0. The
+work is [T29](TASKS.md).
