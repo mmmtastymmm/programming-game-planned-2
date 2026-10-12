@@ -67,6 +67,7 @@ The evaluator charges these as it walks the program.
 | a `match` arm tested | `op.pattern` per pattern node tried |
 | an interrupt's prologue or epilogue | nothing — system code |
 | a docstring ([syntax](syntax.md#functions), Q52) | nothing — it is dropped at load |
+| an annotation ([syntax](syntax.md#annotations), Q56) | nothing — never evaluated; a bare annotation is no statement, and an annotated assignment is charged as its assignment |
 
 ## Builtins
 

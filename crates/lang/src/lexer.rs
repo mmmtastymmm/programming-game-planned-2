@@ -17,9 +17,9 @@ pub const KEYWORDS: &[&str] = &[
 
 /// Multi-character operators, longest first so the lexer matches greedily.
 const OPS: &[&str] = &[
-    "**=", "//=", "**", "//", "<=", ">=", "==", "!=", "+=", "-=", "*=", "/=", "%=", "|=", "&=",
-    "^=", "+", "-", "*", "/", "%", "<", ">", "=", "(", ")", "[", "]", "{", "}", ",", ":", ".", ";",
-    "|", "&", "^",
+    "**=", "//=", "...", "**", "//", "->", "<=", ">=", "==", "!=", "+=", "-=", "*=", "/=", "%=",
+    "|=", "&=", "^=", "+", "-", "*", "/", "%", "<", ">", "=", "(", ")", "[", "]", "{", "}", ",",
+    ":", ".", ";", "|", "&", "^",
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -400,8 +400,9 @@ impl<'a> Lexer<'a> {
     fn operator(&mut self) -> Result<(), LoadError> {
         // Not in the language (`syntax.md`, "Not in the language"): the
         // walrus, `@`, `~`, shifts. Each is one token in Python and none is
-        // ours, so they are refused as a unit rather than split.
-        for banned in ["<<", ">>", ":=", "->", "@", "~"] {
+        // ours, so they are refused as a unit rather than split. `->` and
+        // `...` are tokens since Q56, for annotations only.
+        for banned in ["<<", ">>", ":=", "@", "~"] {
             let slice: String = self.src
                 [self.pos..self.src.len().min(self.pos.wrapping_add(banned.len()))]
                 .iter()

@@ -358,7 +358,8 @@ replay's playback drive one, and `replay` builds one from a replay file.
   it, a `for` again each time it binds an element after the first, an
   `except` each time it is tested, and a `case` each time its pattern is. A
   line holding only `else:` or `finally:`, and a continuation line, begin
-  nothing, and nor does a docstring, which compiles to nothing (Q52). The
+  nothing, and nor does a docstring or a bare annotation, which compile
+  to nothing (Q52, Q56). The
   hit's position is the boundary just before the starting operation, in the
   slice that runs it. Reaching that boundary and yielding there, sitting at
   it in deficit, or being delivered an interrupt there begins nothing, and

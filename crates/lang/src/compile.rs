@@ -356,6 +356,11 @@ impl<'a> Ctx<'a> {
 
     fn compile_body(&mut self, stmts: &[Stmt]) -> C<()> {
         for s in stmts {
+            // A bare annotation, `x: num`, compiles to nothing: no
+            // statement, no charge, no boundary (Q56).
+            if matches!(s.kind, StmtKind::AnnAssign { value: None, .. }) {
+                continue;
+            }
             self.stmt(s)?;
         }
         Ok(())
@@ -368,6 +373,14 @@ impl<'a> Ctx<'a> {
             StmtKind::Expr(e) => {
                 self.expr(e)?;
                 self.emit(Instr::Pop);
+            }
+            // Its annotation is never evaluated (Q56): with a value it is
+            // the plain assignment; [`Ctx::compile_body`] skips one without.
+            StmtKind::AnnAssign { target, value, .. } => {
+                if let Some(value) = value {
+                    self.expr(value)?;
+                    self.store_target(target)?;
+                }
             }
             StmtKind::Assign { targets, value } => {
                 self.expr(value)?;
@@ -478,7 +491,9 @@ impl<'a> Ctx<'a> {
             StmtKind::Break => self.compile_break()?,
             StmtKind::Continue => self.compile_continue()?,
             StmtKind::Pass => {}
-            StmtKind::Def { name, params, body } => {
+            StmtKind::Def {
+                name, params, body, ..
+            } => {
                 self.compile_function(name, params, body)?;
                 self.store_name(name)?;
             }
@@ -1294,9 +1309,6 @@ pub fn imported_modules(stmts: &[Stmt]) -> BTreeSet<String> {
     out
 }
 
-/// Every name assigned anywhere in a body: assignment targets, `for`
-/// targets, `def` names, `except … as` names. Comprehension targets are not
-/// included, since they are private to the comprehension.
 /// A module, `def` or `class` body without its docstring: a first
 /// statement that is a plain string literal compiles to nothing, so it costs
 /// nothing and is no boundary (`syntax.md`, Functions).
@@ -1317,6 +1329,10 @@ fn without_docstring(stmts: &[Stmt]) -> &[Stmt] {
     }
 }
 
+/// Every name assigned anywhere in a body: assignment targets, `for`
+/// targets, `def` names, `except … as` names, and annotated names with or
+/// without a value, which Python makes local too (Q56). Comprehension
+/// targets are not included, since they are private to the comprehension.
 fn assigned_names(stmts: &[Stmt]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     fn walk(stmts: &[Stmt], out: &mut BTreeSet<String>) {
@@ -1327,7 +1343,9 @@ fn assigned_names(stmts: &[Stmt]) -> BTreeSet<String> {
                         out.extend(target_names(t));
                     }
                 }
-                StmtKind::AugAssign { target, .. } => out.extend(target_names(target)),
+                StmtKind::AugAssign { target, .. } | StmtKind::AnnAssign { target, .. } => {
+                    out.extend(target_names(target))
+                }
                 StmtKind::For {
                     target,
                     body,

@@ -46,6 +46,12 @@ player reads; everything above it exists so that the list is complete.
   and never runs. A string statement anywhere else is an ordinary
   expression statement, charged as one. Documenting code should never cost
   a machine its budget.
+- **Type annotations exist and do nothing (Q56, amending Q13).** A
+  parameter, a return and a variable may carry Python's annotation, from
+  a closed vocabulary of type expressions, [below](#annotations). An
+  annotation is never evaluated, never checked when a bundle loads, and
+  costs nothing: it is for the reader and the editor. A bare annotation
+  compiles to nothing, and an annotated assignment is the assignment.
 
 ## The bundle
 
@@ -105,10 +111,10 @@ same bundle once a redeploy has reached it; until then, the one it had.
 - **Operators and delimiters.** `+ - * / // % **`, `| & ^ -` on sets,
   `< > <= >= == !=`, `=` and the augmented forms `+= -= *= /= //= %= **=` and
   `|= &= ^=`,
-  and `( ) [ ] { } , : . ;`. The matrix operator `@`, the walrus `:=`, the
-  annotation arrow `->` and the bitwise operators `~ << >>` do not exist, and
-  `| & ^` act on sets only (Q19). `|` also separates alternatives in a `match`
-  pattern.
+  and `( ) [ ] { } , : . ;`, with `->` and `...` in annotations only
+  (Q56). The matrix operator `@`, the walrus `:=` and the bitwise operators
+  `~ << >>` do not exist, and `| & ^` act on sets only (Q19). `|` also
+  separates alternatives in a `match` pattern and in an annotation's union.
 
 ## The boundary
 
@@ -121,6 +127,7 @@ and using it is a parse error at load — never a runtime surprise.
 |---|---|
 | expression statement | any expression, evaluated for its effect — except a docstring, below |
 | assignment | `x = …`, multiple targets `a = b = …`, tuple/list unpacking with one `*name`, subscript and attribute targets |
+| annotated assignment | `target: T = value`, a single name, attribute or subscript target; assigns as `target = value` does, the annotation never evaluated. Without `= value`, a bare annotation compiles to nothing, but a name annotated in a `def` body is still local throughout it, as in Python ([annotations](#annotations), Q56) |
 | augmented assignment | `+= -= *= /= //= %= **=` and `\|= &= ^=` on sets |
 | `if` / `elif` / `else` | |
 | `while` / `else` | `else` runs when the loop ends without `break` |
@@ -128,14 +135,13 @@ and using it is a parse error at load — never a runtime surprise.
 | `break`, `continue`, `pass` | |
 | `def` | at a module's top level or directly in a `class` body only — inside any compound statement it is a parse error; positional and keyword parameters, defaults, `*args`, `**kwargs`; defaults are evaluated once at definition |
 | `return` | |
-| `class` | at a module's top level only; single base or none; body holds `def`s, assignments, `pass` and expression statements |
+| `class` | at a module's top level only; single base or none; body holds `def`s, assignments (annotated or not), `pass` and expression statements |
 | `match` / `case` | patterns below; guards `if …` |
 | `import`, `from … import …` | closed module set, below |
 | `try` / `except` / `else` / `finally`, `raise` | exceptions, below |
 
 Not statements: `del`, `assert`, `with`, `async`, `await`, `yield`, `global`,
-`nonlocal`, decorators, and type
-annotations in any position. Remove from a collection with its methods.
+`nonlocal` and decorators. Remove from a collection with its methods.
 
 ### Expressions
 
@@ -308,6 +314,51 @@ charges nothing and is no boundary, so a body holding only a docstring runs
 as an empty one. An f-string is not a docstring, as in Python, and neither
 is a string statement in any other position; both are expression
 statements. There is no `__doc__` to read it back.
+
+## Annotations
+
+Python's type annotations, in its three places (Q56):
+
+```python
+def nearest(points: list[tuple[num, num]], limit: num = 10) -> tuple[num, num] | None:
+    best: tuple[num, num] | None = None
+    seen: int
+    ...
+```
+
+- **Where.** A `def`'s parameters, `*args` and `**kwargs` included, as
+  `name: T` before any default; its return, as `-> T` before the `:`; and
+  a variable, as `target: T` or `target: T = value`, with one name,
+  attribute or subscript as the target. A `lambda`'s parameters take none,
+  as in Python.
+- **What they do: nothing.** An annotation is never evaluated, so naming
+  something that does not exist never raises, and it charges nothing
+  ([costs](costs.md)). A bare annotation, `x: num`, compiles to no
+  operation at all, but it still makes a name local to the `def` it is
+  in, exactly as in Python, so `x: num` and then reading `x` before
+  assigning it is an `UnboundLocalError`. An annotated assignment charges
+  what the assignment does. Nothing checks a value against its
+  annotation, at load or when it runs: annotations are for the reader and
+  for the editor (`07`).
+- **The type expressions.** An annotation is one of these, and anything
+  else is a parse error:
+
+  | Form | Means |
+  |---|---|
+  | `num`, `str`, `bool` | the language's types |
+  | `int` | an integral `num`. `int` is a function, not a type (divergence 24), so this is its meaning in an annotation only |
+  | `None` | `None` |
+  | `list[T]`, `set[T]`, `dict[K, V]` | a collection of these elements; bare `list`, `set`, `dict` leave them open |
+  | `tuple[A, B, …]`, `tuple[T, ...]` | a tuple of these elements in order, or of any length all `T`; `...` exists only here |
+  | `A \| B` | either; `T \| None` is the optional `T` |
+  | a class, or `module.Class` | an instance of the player's own class |
+  | `Machine`, `Tile`, `Sound` | the game's records: a machine's attributes (`me()`, a sighting, a tile's `building`), a tile's, a sound's (`02`) |
+  | `'T'`, a string | the type expression written inside it, as Python allows |
+
+  The names are read as written, not looked up: an annotation naming a
+  type nobody defined loads and runs, and the editor underlines it. There
+  is no `typing` module, so `Optional`, `List`, `Any` and the rest are
+  names like any other; write `T | None` and `list[T]`.
 
 ## Collections
 
@@ -535,3 +586,10 @@ difference not listed here is a defect in this doc.
     so the body may mutate the collection; Python raises or misbehaves.
 27. **`def` and `class` live only at a module's top level or directly in a
     class body**; inside any compound statement they are a parse error.
+28. **Annotations are never evaluated** and there is no `__annotations__`,
+    where Python 3.12 evaluates a function's annotations when the `def`
+    runs and a module's or class's as each statement runs. So an
+    annotation naming nothing never raises, a bare annotated attribute or
+    subscript target is not evaluated either, and an annotation is limited
+    to the type expressions [above](#annotations), where Python accepts
+    any expression. There is no `typing` module.
