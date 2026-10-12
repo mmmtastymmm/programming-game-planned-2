@@ -1,0 +1,379 @@
+# What the editor shows when the pointer rests on a builtin (Q57): its
+# signature, in the annotation style of docs/01's Annotations, and a short
+# description. The rules themselves live in docs/01 (the language's
+# builtins), docs/02 (the game's) and data/language/costs.toml (what each
+# costs); this file only explains them. A test keeps it in step: every
+# builtin has an entry and every entry is a builtin.
+#
+# Not world state and not hashed: this is text for the reader.
+
+# ------------------------------------------------------------- senses ---
+
+[game.see]
+signature = "see() -> list[Machine]"
+doc = """
+Every machine your team sees right now, each once, nearest first (then by
+id). Your own machines are always included.
+
+Costs one unit per machine returned."""
+
+[game.hear]
+signature = "hear() -> list[Sound]"
+doc = """
+Every sound your team heard during the previous tick, nearest first. A
+sound has `cause`, `pos`, `loudness` and `tick`, and never names who made
+it."""
+
+[game.tile]
+signature = "tile(x: int, y: int) -> Tile | None"
+doc = """
+The tile at (x, y) as your team knows it: `state` ("visible" or
+"remembered"), `terrain`, `deposit`, `building`, `paint`, `overlay`,
+`plans` and `seen_at`. None for a tile your team has never seen."""
+
+[game.tiles]
+signature = "tiles(x0: int, y0: int, x1: int, y1: int) -> list[Tile]"
+doc = """
+Every tile in the rectangle that your team has seen, sorted by row then
+column. The rectangle is clipped to the map, so a huge one is safe.
+
+Costs one unit per tile returned."""
+
+[game.me]
+signature = "me() -> Machine"
+doc = """
+This machine's own record: `id`, `name`, `model`, `team`, `pos`, `health`,
+`busy`, `progress`, and `load` and `color` for a bot."""
+
+[game.plans]
+signature = "plans(kind: str) -> list[tuple[int, int, str | None]]"
+doc = """
+Your team's pending plans of one kind: "paint", "overlay" or "building",
+as (x, y, value) tuples sorted by row then column. The value is a color,
+a label or a model, or None for a plan to clear."""
+
+[game.painted]
+signature = "painted(color: str) -> list[tuple[int, int]]"
+doc = """
+Every tile your team sees or remembers painted `color`, as (x, y) tuples.
+Paint belongs to the tile, not to a team."""
+
+[game.overlaid]
+signature = "overlaid(label: str) -> list[tuple[int, int]]"
+doc = """
+Every tile your team sees or remembers carrying the overlay `label`, as
+(x, y) tuples."""
+
+# ------------------------------------------------------------ actions ---
+# An action waits: the machine yields until it completes. One that cannot
+# start raises ValueError and does nothing.
+
+[game.move]
+signature = "move(dir: str) -> None"
+doc = """
+Step one tile: dir is "n", "e", "s" or "w". The tile must be ground and
+free. Takes `move_ticks`.
+
+Raises ValueError if the way is blocked."""
+
+[game.move_to]
+signature = "move_to(x: int, y: int) -> None"
+doc = """
+Take ONE step toward (x, y): to the free neighbouring tile closest to it.
+There is no pathfinding, so a bot can walk into a dead end; loop to
+arrive, or use go_to from lib/nav.py.
+
+Raises ValueError if no step is possible or the bot is already there."""
+
+[game.pick]
+signature = "pick(kind: str) -> None"
+doc = """
+Take `kind` ("ore") from the nearest adjacent deposit or depot, as much
+as `pick_rate`, what is there and your free capacity allow.
+
+Raises ValueError if that comes to nothing."""
+
+[game.drop]
+signature = "drop(kind: str) -> None"
+doc = """
+Put what you carry of `kind` into the adjacent building or site with the
+most room for it. A printer never takes a drop.
+
+Raises ValueError if nothing adjacent has room."""
+
+[game.build]
+signature = "build(model: str, x: int, y: int) -> None"
+doc = """
+Place a site for `model` ("depot", "printer") on the adjacent tile
+(x, y), which must be ground with no deposit or building. The site is
+finished by dropping its price in ore into it. A building plan on the
+tile is the usual target, and is used up.
+
+Raises ValueError if the tile cannot take it."""
+
+[game.build_nearest]
+signature = "build_nearest(model: str) -> None"
+doc = """
+As build, on the nearest free buildable tile within `build_reach`.
+
+Raises ValueError if there is none."""
+
+[game.paint]
+signature = "paint(x: int, y: int) -> None"
+doc = """
+Carry out your team's paint plan on the adjacent tile (x, y). Paint
+already there is removed first, as part of the same action.
+
+Raises ValueError if the tile has no paint plan with a color."""
+
+[game.unpaint]
+signature = "unpaint(x: int, y: int) -> None"
+doc = """
+Remove the paint from the adjacent tile (x, y). Any team's bot may.
+
+Raises ValueError if the tile is not painted."""
+
+[game.overlay]
+signature = "overlay(x: int, y: int) -> None"
+doc = """
+Carry out your team's overlay plan on the adjacent tile (x, y).
+
+Raises ValueError if the tile has no overlay plan with a label."""
+
+[game.unoverlay]
+signature = "unoverlay(x: int, y: int) -> None"
+doc = """
+Remove the overlay from the adjacent tile (x, y).
+
+Raises ValueError if the tile has none."""
+
+[game.deconstruct]
+signature = "deconstruct(x: int, y: int) -> None"
+doc = """
+Take down the building or site on the adjacent tile (x, y). Its store
+and any print in progress are lost. Any team's bot may.
+
+Raises ValueError if there is nothing there."""
+
+[game.attack]
+signature = "attack(id: int) -> None"
+doc = """
+Hit the machine with this id: one your team can see, within
+`attack_range` and in line of sight. On completion, if it is still in
+range and sight, it loses `attack_damage` health.
+
+Raises ValueError if it cannot be attacked now."""
+
+[game.wait]
+signature = "wait(ticks: int) -> None"
+doc = """
+Do nothing for `ticks` ticks (at least 1). The cheapest way to idle."""
+
+[game.log]
+signature = "log(*values, level: str = \"info\") -> None"
+doc = """
+Write the values, as str and joined by spaces, to this machine's log in
+the game. level is "debug", "info", "warn" or "error". Costs no game
+time and is not part of the world."""
+
+[game.rename]
+signature = "rename(name: str) -> None"
+doc = """
+Change this machine's name, shown in the game.
+
+Raises ValueError if the name is longer than `name_max`."""
+
+[game.set_color]
+signature = "set_color(color: str | None) -> None"
+doc = """
+Paint this bot in a color from the paint list, or None for its plain
+body. A way to show what a bot is doing.
+
+Raises ValueError for any other value."""
+
+# -------------------------------------------------- language builtins ---
+
+[builtin.len]
+signature = "len(x) -> int"
+doc = """
+The length of a str, list, tuple, dict or set, or of an instance with
+`__len__`."""
+
+[builtin.range]
+signature = "range(stop: int) -> list[int]  /  range(start: int, stop: int, step: int = 1) -> list[int]"
+doc = """
+The numbers from start up to (not including) stop, as a LIST, built at
+once: range(3) == [0, 1, 2]."""
+
+[builtin.min]
+signature = "min(iterable, key=None)  /  min(a, b, ...)"
+doc = """
+The smallest item. On a tie, the first one wins. key, if given, is a
+function whose result is compared instead."""
+
+[builtin.max]
+signature = "max(iterable, key=None)  /  max(a, b, ...)"
+doc = """
+The largest item. On a tie, the first one wins. key, if given, is a
+function whose result is compared instead."""
+
+[builtin.sum]
+signature = "sum(iterable, start: num = 0) -> num"
+doc = """
+The total of a collection of numbers, plus start."""
+
+[builtin.abs]
+signature = "abs(x: num) -> num"
+doc = """
+x without its sign."""
+
+[builtin.sorted]
+signature = "sorted(iterable, key=None, reverse: bool = False) -> list"
+doc = """
+A new sorted list. The sort is stable: equal items keep their order.
+Items that cannot be compared raise TypeError."""
+
+[builtin.enumerate]
+signature = "enumerate(iterable, start: int = 0) -> list[tuple[int, ...]]"
+doc = """
+Each item paired with its index, as a list of (index, item) tuples."""
+
+[builtin.zip]
+signature = "zip(*iterables) -> list[tuple]"
+doc = """
+The items of several collections side by side, as a list of tuples,
+stopping at the shortest."""
+
+[builtin.any]
+signature = "any(iterable) -> bool"
+doc = """
+True if any item is true."""
+
+[builtin.all]
+signature = "all(iterable) -> bool"
+doc = """
+True if every item is true (and for an empty collection)."""
+
+[builtin.int]
+signature = "int(x) -> int"
+doc = """
+x as a whole number: a num rounded toward zero, or a str of digits. There
+is one number type, num; int is a function that makes integral nums, and
+in an annotation it means an integral num."""
+
+[builtin.num]
+signature = "num(x) -> num"
+doc = """
+x as a number: a num, or a str such as "1.5". Every number is a num, a
+decimal with a fixed number of places."""
+
+[builtin.str]
+signature = "str(x) -> str"
+doc = """
+x as text."""
+
+[builtin.bool]
+signature = "bool(x) -> bool"
+doc = """
+Whether x is true: False for 0, "", None and empty collections."""
+
+[builtin.list]
+signature = "list(iterable = ()) -> list"
+doc = """
+A new list holding the items of iterable."""
+
+[builtin.dict]
+signature = "dict(mapping_or_pairs = ()) -> dict"
+doc = """
+A new dict. Its keys, values and items come back in insertion order."""
+
+[builtin.set]
+signature = "set(iterable = ()) -> set"
+doc = """
+A new set. Unlike Python's, a set keeps insertion order, and so does
+everything made from it."""
+
+[builtin.tuple]
+signature = "tuple"
+doc = """
+The tuple type, for isinstance and annotations. It cannot be called:
+write a tuple literal, (a, b)."""
+
+[builtin.isinstance]
+signature = "isinstance(x, T) -> bool"
+doc = """
+Whether x is a T: num, str, bool, list, tuple, dict, set, or one of your
+classes. isinstance(x, int) is a TypeError, since int is a function."""
+
+[builtin.round]
+signature = "round(x: num, n: int = 0) -> num"
+doc = """
+x rounded to n places (0 to 12), a half to the even neighbour, as in
+Python. The one operation that rounds to nearest: all other arithmetic
+rounds down."""
+
+# --------------------------------------------------------- exceptions ---
+
+[exception.Exception]
+signature = "class Exception"
+doc = """
+The base of every exception. `except Exception` catches them all, but a
+fault you catch is one your program no longer sees."""
+
+[exception.ValueError]
+signature = "class ValueError(Exception)"
+doc = """
+A value of the right type that cannot be used. Every game action raises it
+when it cannot start."""
+
+[exception.TypeError]
+signature = "class TypeError(Exception)"
+doc = """
+An operation on a value of the wrong type, such as "a" + 1."""
+
+[exception.IndexError]
+signature = "class IndexError(Exception)"
+doc = """
+A list, tuple or str index out of range."""
+
+[exception.KeyError]
+signature = "class KeyError(Exception)"
+doc = """
+A dict key that is not there. dict.get(k, default) avoids it."""
+
+[exception.AttributeError]
+signature = "class AttributeError(Exception)"
+doc = """
+A field or method that does not exist, such as me().postion."""
+
+[exception.NameError]
+signature = "class NameError(Exception)"
+doc = """
+A name that is defined nowhere."""
+
+[exception.UnboundLocalError]
+signature = "class UnboundLocalError(NameError)"
+doc = """
+A function's local variable read before it is assigned. A function cannot
+rebind a global, so `count += 1` in a function makes `count` local."""
+
+[exception.ZeroDivisionError]
+signature = "class ZeroDivisionError(Exception)"
+doc = """
+Division or modulo by zero."""
+
+[exception.OverflowError]
+signature = "class OverflowError(Exception)"
+doc = """
+A number too large for a num."""
+
+[exception.RecursionError]
+signature = "class RecursionError(Exception)"
+doc = """
+Calls nested deeper than the call-depth limit."""
+
+[exception.LimitError]
+signature = "class LimitError(Exception)"
+doc = """
+A limit of the machine reached: a collection grown too large, a walk
+nested too deep, or too many values alive at once."""

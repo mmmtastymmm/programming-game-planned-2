@@ -112,6 +112,11 @@ hash; a peer with a different renderer sees the same match.
   on a replay saved with its team, which itself plays on a fork. In a live
   PvP match a fork never passes the live tick and is never diverged — no
   edits, no what-if. Debugging, below.
+- **Resting on a name shows what it is (Q57).** In a file window, the
+  pointer resting on a function, a class, a method, a module or a builtin
+  shows its signature as written, its docstring and where it is defined;
+  a name that resolves to nothing shows nothing. Programs and the editor,
+  below.
 
 ## The screen
 
@@ -183,6 +188,24 @@ The two meet only through `Deploy`.
 - **A bundle that fails to load** (`01`) is refused at submission, as every
   command is (`06`), and the error is shown at the file and line in its
   window and marked in the tree; nothing enters the log.
+- **Hovers** (Q57). The pointer resting on a name in a file window shows
+  a box: the signature as its source writes it, annotations included
+  (`01`, Q56), highlighted as code; the docstring, cleaned as Python's
+  `inspect.cleandoc` cleans one; and where the name is defined, a file
+  and line or the kind of builtin. A name resolves as the language
+  resolves it, from what the tree holds now: a `def` or `class` of the
+  file, an imported name followed to the file that defines it, a module's
+  own name (its docstring), `module.name`, `self.method` inside a class
+  and `Class.method`, through single inheritance, and only then a game or
+  language builtin or an exception class, whose text is in
+  [data/language/docs.toml](../data/language/docs.toml) — every builtin
+  has an entry there, checked against the language and the cost table. A
+  name the file assigns at its top level hides the builtin it shares a
+  name with. An attribute of anything but a plain name — `me().pos` — and
+  a name that resolves to nothing show no box: a guess is worse than
+  silence. A file that stops parsing while it is typed keeps its last
+  outline, so its hovers go on working. Hovers read only the tree, never
+  the match, and change nothing a peer sees.
 - Highlighting, completion and the editor's keys are the build's choices
   and not rules; they change nothing a peer sees.
 
