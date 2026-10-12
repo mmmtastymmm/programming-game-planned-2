@@ -22,6 +22,18 @@ here changes a hash; a peer with a different renderer sees the same match.
   opens a file as a window; the top bar keeps the status alone. A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
+- **The starter tree carries a library (Q53).** `data/starter`, the
+  default programs directory, holds `lib/` beside the fixed folders:
+  ordinary player files, written in the game's language with a docstring
+  on every function — `geo` (positions, directions, distances), `sense`
+  (tiles, machines and ore the team knows of), `act` (actions that return
+  `True` or `False` instead of raising), `nav` (`go_to` and `approach`,
+  which search for a route when `move_to` is boxed in or pacing), `share`
+  (splitting a list of jobs between bots by rank) and `jobs` (the starter
+  bot's build, paint and patrol steps). `robots/bot.py` imports `jobs`
+  and is the loop alone. The player may read, edit, replace or delete any
+  of it; none of it is a game module (`02`), and nothing in the sim knows
+  it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
   screen as first ruled; Q41 moved the dock into the tree).** One window
   per open file, one each for the inspector, the tools and the log,
