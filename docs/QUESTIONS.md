@@ -45,10 +45,12 @@ and overlays only on ground the team has seen, is
 amends Q37; Q50, every plan previewed as a smaller version of its effect,
 amends Q37 and Q49 and is `07`'s; Q51, a smaller overlay marker and no
 cursor ghost over the same plan, amends Q50 and Q37 and is `07`'s; Q52,
-free docstrings, is [01-language](01-language.md)'s syntax part. Q55,
-debugging on a fork with what-if, was opened and answered in one commit,
-amends Q15, Q32, Q36, Q39 and Q41, and is `07`'s and `06`'s. The rulings
-of Q7, Q9, Q21, Q22, Q23, Q24, Q25, Q30, Q42 and Q43 are
+free docstrings, is [01-language](01-language.md)'s syntax part; Q53,
+the starter library, is `07`'s; Q54, a paint plan's square drawn opaque,
+amends Q50 and is `07`'s. Q55, debugging on a fork with what-if, was
+opened and answered in one commit, amends Q15, Q32, Q36, Q39 and Q41, and
+is `07`'s and `06`'s. The rulings of Q7, Q9, Q21, Q22, Q23, Q24, Q25, Q30,
+Q42 and Q43 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and
 Q55 are [06-architecture](06-architecture.md)'s, Q4 and Q29 are

@@ -360,7 +360,7 @@ pub struct Palette {
     pub dim: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     /// Plan ghosts: the live material's id to its translucent copy.
     pub ghosts: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
-    /// Nearly solid copies, for a paint plan over paint already there.
+    /// Solid copies, for a paint plan's square.
     pub solids: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>,
     pub lens_glass_mat: Handle<StandardMaterial>,
     /// An unlit segment of a bot's number (Q46).
@@ -594,7 +594,7 @@ impl Palette {
         g
     }
 
-    /// A nearly solid, unlit copy of `live`: a paint plan's smaller square
+    /// A solid, unlit copy of `live`: a paint plan's smaller square
     /// (Q50), which a translucent ghost over paint already there would mix
     /// with into mud (Q49).
     pub fn solid(
@@ -609,9 +609,13 @@ impl Palette {
             return live.clone();
         };
         let mut m = src.clone();
+        // Opaque, not nearly so: the paint under it is translucent, and two
+        // translucent layers this close drew in either order from frame to
+        // frame over a large painted area, so whole rows flickered. Opaque,
+        // the square writes depth and the paint cannot draw over it.
         let c = m.base_color.to_linear();
-        m.base_color = LinearRgba::new(c.red, c.green, c.blue, 0.92).into();
-        m.alpha_mode = AlphaMode::Blend;
+        m.base_color = LinearRgba::new(c.red, c.green, c.blue, 1.0).into();
+        m.alpha_mode = AlphaMode::Opaque;
         m.unlit = true;
         let g = materials.add(m);
         self.solids.insert(live.id(), g.clone());

@@ -26,6 +26,18 @@ different renderer sees the same match.
   replay its seek (Q55). A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
+- **The starter tree carries a library (Q53).** `data/starter`, the
+  default programs directory, holds `lib/` beside the fixed folders:
+  ordinary player files, written in the game's language with a docstring
+  on every function — `geo` (positions, directions, distances), `sense`
+  (tiles, machines and ore the team knows of), `act` (actions that return
+  `True` or `False` instead of raising), `nav` (`go_to` and `approach`,
+  which search for a route when `move_to` is boxed in or pacing), `share`
+  (splitting a list of jobs between bots by rank) and `jobs` (the starter
+  bot's build, paint and patrol steps). `robots/bot.py` imports `jobs`
+  and is the loop alone. The player may read, edit, replace or delete any
+  of it; none of it is a game module (`02`), and nothing in the sim knows
+  it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
   screen as first ruled; Q41 moved the dock into the tree; Q55 added the
   debugger's and the version windows).** One window per open file, one
@@ -230,8 +242,9 @@ and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.
 
 A tile carrying the player's team's plan shows it as a smaller,
-see-through version of its effect (Q50) — a square of the new color inset
-from the tile's edge, with any paint already there showing round it; a
+see-through version of its effect (Q50) — for paint, a solid square of
+the new color (Q54) inset from the tile's edge, with any paint already
+there showing round it; a
 smaller overlay marker under its label (Q51); a scaled-down translucent
 ghost of the building, a printer for a printer plan; a clear plan hatches
 the slot — and the armed tool shows the same ghost under the cursor, or
