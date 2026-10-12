@@ -41,7 +41,7 @@ every entry point below, none of which the match's sim has — built from one
 or from a re-run, standing at that tick's end stopped as *opened*;
 positions and their order, the step-4 damage position included; statements
 beginning on their `op.statement` and the clauses that begin again, a
-docstring never, a `while` on each pass once [T30](TASKS.md) charges it so;
+docstring never, a `while` each time its condition is tested, as [T30](history/tasks-completed/task-completed-0030.md) charges it;
 a fork recording the match's commands it took per tick, applying them and
 then its own log, with its faithful, ahead, stale and diverged flags
 (`SetSpeed` never stales it); content hashes; `sim.step` taking a team's
@@ -134,17 +134,3 @@ unaffected, since the Fool's script has nothing after tick 0; a new test
 loads a script with an entry after the pause and asserts the driver stops
 short of it. Fixes [P6](PROBLEMS.md).
 
-## M9 — The language as ruled
-
-**T30 — A `while` header charges `op.statement` on every pass** `⚠HASH`
-
-`01`'s costs part, the operations table's first row: a `while` header is
-charged once per pass. In `lang`, the compiler's `While` arm places its
-loop's start after the statement's one `Instr::Stmt`, so the back edge and
-`continue` skip the charge; moving the start before it charges every
-pass. Every program with a `while` loop spends more per pass, so the
-language fixtures and the golden replays whose programs loop with `while`
-change hash, and the PR says why. A language fixture asserts that a loop of
-three passes charges its header three times. [T26](TASKS.md)'s statement
-rule anchors a `while`'s beginnings on this charge. Fixes
-[P7](PROBLEMS.md).

@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-12: 7 opened, 3 fixed — 4 open.**
+**Status 2026-10-12: 7 opened, 4 fixed — 3 open.**
 
 ## Open
 
@@ -77,13 +77,3 @@ debugger's, runs on without the clock to the script's next entry. It is
 latent today only because the Fool's script has nothing after tick 0. The
 work is [T29](TASKS.md).
 
-**P7 — A `while` header is charged once per loop, not once per pass**
-
-`01`'s costs part charges a statement each time it executes, a `while`
-header once per pass, and `06`'s Forks has a `while` begin again on each
-pass for that reason. The compiler charges the header's `op.statement` once,
-before the loop's start (`crates/lang/src/compile.rs`, the `While` arm), so
-a loop of a hundred passes pays for its header once, and every program with
-a `while` loop runs cheaper than ruled — the starter's and the Fool's robots
-among them. Found in review of Q55, whose statement rule would otherwise be
-built on the lagging charge. The work is [T30](TASKS.md).
