@@ -841,3 +841,57 @@ f()
 ");
     assert_eq!(log, ["ran"]);
 }
+
+// ------------------------------------------------------- while headers ---
+
+/// The smallest tick budget at which `src`'s first slice reaches its
+/// `wait()`, with every cost zero but `op.statement`: so the number of
+/// statements that begin before the wait, give or take a constant.
+fn statements_before_wait(src: &str) -> u64 {
+    let mut section = String::new();
+    let costs: String = COSTS_TOML
+        .lines()
+        .map(|line| {
+            let t = line.trim();
+            if t.starts_with('[') {
+                section = t.to_string();
+                return line.to_string();
+            }
+            match t.split_once('=') {
+                Some((key, _)) if !t.starts_with('#') => {
+                    let keep = section == "[op]" && key.trim() == "statement";
+                    format!("{} = {}", key.trim(), if keep { 1 } else { 0 })
+                }
+                _ => line.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let costs = Rc::new(Costs::parse(&costs).expect("costs"));
+    let program = load(src);
+    (1..100)
+        .find(|&budget| {
+            let limits = LIMITS_TOML.replace("tick = 200", &format!("tick = {budget}"));
+            let limits = Rc::new(Limits::parse(&limits).expect("limits"));
+            let mut m = Machine::new(&program, costs.clone(), limits);
+            m.run_slice(&mut TestHost::default()) == Slice::Wait
+        })
+        .expect("never reached the wait")
+}
+
+#[test]
+fn a_while_header_is_charged_each_time_its_condition_is_tested() {
+    assert!(LIMITS_TOML.contains("tick = 200"), "the budget line moved");
+    let none = statements_before_wait("i = 0\nwait()\n");
+    let zero = statements_before_wait("i = 0\nwhile i < 0:\n    i += 1\nwait()\n");
+    let three = statements_before_wait("i = 0\nwhile i < 3:\n    i += 1\nwait()\n");
+    // A loop that never runs still tests its condition once.
+    assert_eq!(zero - none, 1, "the header of a loop that never runs");
+    // Three passes test it three more times, beside three bodies: the
+    // header is charged four times in all, the last for the test that ends
+    // the loop.
+    assert_eq!(three - zero, 6, "three passes of header and body");
+    // `continue` goes back through the header too.
+    let skip = statements_before_wait("i = 0\nwhile i < 3:\n    i += 1\n    continue\nwait()\n");
+    assert_eq!(skip - zero, 9, "three passes of header, body and continue");
+}

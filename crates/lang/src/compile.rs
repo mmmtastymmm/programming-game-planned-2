@@ -363,7 +363,7 @@ impl<'a> Ctx<'a> {
 
     fn stmt(&mut self, s: &Stmt) -> C<()> {
         self.line = s.line;
-        self.emit(Instr::Stmt);
+        let stmt_at = self.emit(Instr::Stmt);
         match &s.kind {
             StmtKind::Expr(e) => {
                 self.expr(e)?;
@@ -426,7 +426,10 @@ impl<'a> Ctx<'a> {
                 }
             }
             StmtKind::While { cond, body, orelse } => {
-                let start = self.here();
+                // The loop starts at the header's own statement, so the back
+                // edge and `continue` charge `op.statement` on every pass, as
+                // `costs.md`'s first row rules (P7).
+                let start = stmt_at;
                 self.expr(cond)?;
                 let jexit = self.emit(Instr::JumpIfFalsePop(0));
                 self.loops.push(LoopCtx {
