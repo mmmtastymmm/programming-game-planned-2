@@ -217,8 +217,9 @@ and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.
 
 A tile carrying the player's team's plan shows it as a smaller,
-see-through version of its effect (Q50) — a square of the new color inset
-from the tile's edge, with any paint already there showing round it; a
+see-through version of its effect (Q50) — for paint, a solid square of
+the new color (Q54) inset from the tile's edge, with any paint already
+there showing round it; a
 smaller overlay marker under its label (Q51); a scaled-down translucent
 ghost of the building, a printer for a printer plan; a clear plan hatches
 the slot — and the armed tool shows the same ghost under the cursor, or

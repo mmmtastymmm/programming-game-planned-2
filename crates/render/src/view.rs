@@ -394,7 +394,8 @@ fn spawn_plans(
         );
     };
     if let Some(plan) = &plans.paint {
-        let at = Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.01));
+        // Clear of the paint's top by a margin depth can always resolve.
+        let at = Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.025));
         let (mat, t) = match plan {
             // A smaller version of the paint it plans (Q50): the new color
             // in a square inset from the tile's edge, so any paint already
@@ -1291,7 +1292,7 @@ pub fn markers(
     if let Ok((mut t, mut v)) = hover.single_mut() {
         match state.hover {
             Some(p) => {
-                t.translation = frame.tile_xyz(p, surface_at(&ents, p) + MARK_HALF + 0.015);
+                t.translation = frame.tile_xyz(p, surface_at(&ents, p) + MARK_HALF + 0.04);
                 *v = Visibility::Inherited;
             }
             None => *v = Visibility::Hidden,
@@ -1304,7 +1305,7 @@ pub fn markers(
             .map(|m| m.record.pos);
         match at {
             Some(p) => {
-                t.translation = frame.tile_xyz(p, surface_at(&ents, p) + MARK_HALF + 0.02);
+                t.translation = frame.tile_xyz(p, surface_at(&ents, p) + MARK_HALF + 0.045);
                 *v = Visibility::Inherited;
             }
             None => *v = Visibility::Hidden,
