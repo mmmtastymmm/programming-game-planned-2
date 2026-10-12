@@ -66,6 +66,7 @@ The evaluator charges these as it walks the program.
 | `import`, the first time per run | `op.import`, then the module body's own operations |
 | a `match` arm tested | `op.pattern` per pattern node tried |
 | an interrupt's prologue or epilogue | nothing — system code |
+| a docstring ([syntax](syntax.md#functions), Q52) | nothing — it is dropped at load |
 
 ## Builtins
 
