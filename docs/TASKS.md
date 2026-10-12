@@ -36,64 +36,80 @@ Two conventions carried over from the predecessor project:
 **T26 — Forks in `sim`: positions, watches, stopping mid-tick, steps, saved states, edits**
 
 Q55, ruled in `06`'s Forks section. `sim.save()`, the match's full state at
-a tick's end, and a fork built from one or from a re-run, standing at that
-tick's end stopped as *opened*; positions and their order, the step-4
-damage position included; statements beginning on their `op.statement` and
-the clauses that begin again, a docstring never; a fork recording the
-match's commands it took per tick, applying them and then its own log, with
-its faithful, ahead, stale and diverged flags (`SetSpeed` never stales it);
-content hashes; `sim.step` taking a team's watches and reporting, per
-watched machine and tick, the first beginning with its position and a
-count, read-only and outside the hash; the language VM stopping at any
-boundary mid-slice and resuming, and reporting frames, every run module's
-globals, the record with action and progress, budget, deficit, pending
-interrupts and handler state; the line, over, tick, continue and run steps,
-*tick* reporting watched beginnings as `sim.step` does and stopping at
-none, the step limit as an argument, and every stop with its cause and
-position, the match's end among them; saving and restoring a fork's state,
-which saved states a fork may use, and the re-run fallback; edits at slice
-positions or a tick's end but not at a death, naming a frame by depth, with
-live values counted as an assignment would; what-if deploys in the fork's
-log; a fork's snapshot at any position; a new branch discarding later
-entries and states; the PvP bound and refusal. Tests that an untouched fork
-reproduces the golden stream hash for hash, that watching lines changes no
-hash, that a re-run across an edit applies it, that a yield before a
-watched statement is no hit, and that a fork run ahead goes stale when the
-match's log gains a `Mark` but not a `SetSpeed`.
+a tick's end, and a fork — a type of its own wrapping a world, holding
+every entry point below, none of which the match's sim has — built from one
+or from a re-run, standing at that tick's end stopped as *opened*;
+positions and their order, the step-4 damage position included; statements
+beginning on their `op.statement` and the clauses that begin again, a
+docstring never, a `while` on each pass once [T30](TASKS.md) charges it so;
+a fork recording the match's commands it took per tick, applying them and
+then its own log, with its faithful, ahead, stale and diverged flags
+(`SetSpeed` never stales it); content hashes; `sim.step` taking a team's
+watches and reporting, per watched machine and tick, the first beginning
+with its position and a count, read-only and outside the hash; the language
+VM stopping at any boundary mid-slice and resuming, and reporting frames,
+every run module's globals, the record with action and progress, budget,
+deficit, pending interrupts and handler state; the line, over, tick,
+continue and run steps, *tick* reporting watched beginnings as `sim.step`
+does and stopping at none, *run* paused at a tick's end, the step limit as
+an argument, and every stop with its cause and position, the match's end
+among them; saving and restoring a fork's state, which saved states a fork
+may use, and the re-run fallback, taking the match's log only before the
+fork's first tick and its own record after; edits at slice positions or a
+tick's end, never of a machine at its own death, each entry naming its
+machine and a frame by depth, with live values counted as an assignment
+would; what-if deploys in the fork's log; a fork's snapshot at any
+position, the team's own machines as they stand and everything else as at
+the last completed tick's end; a new branch discarding later entries and
+states; the PvP bound and refusal. `06`'s forks-and-watches gate: a golden
+replay watched on every line gives its stream unchanged, and a fork stopped
+and resumed at every boundary, one restored from each saved state, and a
+replay's playback each reproduce it — with mutations in
+`scripts/lib/rust-gates.mjs` that make a watch charge budget and a resumed
+slice re-charge its deficit, each of which the gate must catch. Tests that
+a re-run across an edit applies it to its machine, that a yield before a
+watched statement is no hit, that a fork run ahead goes stale when the
+match's log gains a `Mark` but not a `SetSpeed`, and that a stale fork's
+re-run takes none of the commands that staled it.
 
 **T27 — The debugger in `render`, and replays on the start screen**
 
 Q55, ruled in `07`'s Debugging section and The match. Gutter breakpoints on
 the shown text, moved to a line where a statement begins, carried through
-edits, watching that text's content hash, scoped to a machine or the file,
-greyed while nothing runs it, kept with the tree; version windows, read-
-only, one per version of a file a machine runs or a replay ran; the driver
-saving the match's state at once when debugging starts and at every
-multiple of `debug_checkpoint_ticks`, keeping `debug_checkpoints_kept` and
-every state an open fork or listed hit needs; a hit opening a fork at the
-tick's earliest hit and, in a live single-player or PvE match, submitting a
-pause unless the player's last speed is already `0`, a replay's playback
-pausing instead; a fork opened by hand at the latest tick or a replay's;
-further hits listed, the last `debug_hits_kept`; the debugger window, its
-stop causes and the fork banner with its state flags; the map drawing the
-fork in the team's view, the mark tools resting and *show the match*
-restoring them; the step keys and *run*'s speed; variable editing outside
-PvP and never at a death. Replays: *open a replay* on the start screen and
-`--replay <path>`, played on a fork as `06` rules — sending no command,
-stepped a tick at a time at the viewer's pace and paused by the viewer,
-reporting hits, saving its own states from before tick 1, seeking by
-restoring one, and standing for the match when the debugger forks from it;
-the saver's team in the file and its name `<map>-<tick>-<hash>-<team>.ron`,
-outside the replay's identity; version windows for the team's own deployed
-versions. The `debug_*` constants in `data/interface.toml`.
+edits, watching that text's content hash, scoped to a selected machine of
+the team that runs that text or else to the team, greyed while nothing runs
+it, kept with the tree; version windows, read- only, one per version of a
+file a machine runs or a replay ran, opened from a file window, the
+inspector or the stack, and never another team's code; the driver saving
+the match's state at once, between ticks, when debugging starts and at
+every multiple of `debug_checkpoint_ticks`, keeping
+`debug_checkpoints_kept` and every state an open fork or listed hit needs;
+a hit opening a fork at the tick's earliest hit and, in a live
+single-player or PvE match, submitting a pause unless the speed once every
+`SetSpeed` in flight lands is already `0`, a replay's playback pausing
+instead; a fork opened by hand at the latest tick or a replay's; further
+hits listed, the last `debug_hits_kept`; the debugger window, its stop
+causes and the fork banner with its state flags; the map drawing the fork
+in the team's view, the mark tools resting and *show the match* restoring
+them; the step keys, *run*'s speed and its pause; variable editing outside
+PvP, never in step 4 and never of a machine at its own death. Replays:
+*open a replay* on the start screen and `--replay <path>`, played on a fork
+as `06` rules — sending no command, stepped a tick at a time at the
+viewer's pace and paused by the viewer, reporting hits, saving its own
+states from before tick 1, seeking by restoring one or by running on from
+where it stands, and standing for the match when the debugger forks from
+it; the saver's team in the file and its name
+`<map>-<tick>-<hash>-<team>.ron`, outside the replay's identity; version
+windows for the team's own deployed versions. The `debug_*` constants in
+`data/interface.toml`.
 
 **T28 — What-if**
 
 Q55: *try in the fork* on each file window, beside deploy in a match and
 alone on a replay, sending the file's deploys into the open fork for its
-next tick, at any stop but a death; *take it* deploying to the match the
-very bundles the last try sent, not the tree's later text; refused in a
-live PvP match.
+next tick, at any stop but one in step 4; *take it* deploying to the
+match the bundles the last try sent, offered only while the tree still
+holds every file of them as tried; refused in a live PvP match.
 
 [P5](PROBLEMS.md) closes with whichever of T26, T27 and T28 lands last.
 
@@ -102,12 +118,27 @@ live PvP match.
 Q55 rule 13, amending Q32, in `06`'s Decided entry and The driver. At speed
 `0`, `render`'s driver runs to the next tick carrying a player's command,
 through a `net` query that skips a scripted team's commands — `06`'s
-pseudocode names it `next_tick_with_a_player_command`. `net`'s log records
-only senders and cannot tell a scripted one; the driver can, having loaded
-the scripts, so it passes the query the scripted teams. Its `local_peers`
-is no such test: in single-player it also holds every team neither the
-player's nor scripted. No replay hash changes — the sim's ticks are the
-same. The existing paused test, with the Fool loaded, is unaffected, since
-the Fool's script has nothing after tick 0; a new test loads a script with
-an entry after the pause and asserts the driver stops short of it. Fixes
-[P6](PROBLEMS.md).
+pseudocode names it `next_tick_with_a_player_command(tick, scripted)`.
+`net`'s log records only senders and cannot tell a scripted one; the driver
+can, having loaded the scripts, so it passes the query the scripted teams.
+Its `local_peers` is no such test: in single-player it also holds every
+team neither the player's nor scripted. No replay hash changes — the sim's
+ticks are the same. The existing paused test, with the Fool loaded, is
+unaffected, since the Fool's script has nothing after tick 0; a new test
+loads a script with an entry after the pause and asserts the driver stops
+short of it. Fixes [P6](PROBLEMS.md).
+
+## M9 — The language as ruled
+
+**T30 — A `while` header charges `op.statement` on every pass** `⚠HASH`
+
+`01`'s costs part, the operations table's first row: a `while` header is
+charged once per pass. In `lang`, the compiler's `While` arm places its
+loop's start after the statement's one `Instr::Stmt`, so the back edge and
+`continue` skip the charge; moving the start before it charges every
+pass. Every program with a `while` loop spends more per pass, so the
+language fixtures and the golden replays whose programs loop with `while`
+change hash, and the PR says why. A language fixture asserts that a loop of
+three passes charges its header three times. [T26](TASKS.md)'s statement
+rule anchors a `while`'s beginnings on this charge. Fixes
+[P7](PROBLEMS.md).

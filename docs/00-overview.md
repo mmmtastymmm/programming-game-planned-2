@@ -104,9 +104,9 @@ pass.
   stall and the desync), Q39 (windows, amending Q33), Q41 (the program
   tree, amending Q33 and Q39), Q44 (the rectangle mark and the withdrawing
   clear, amending Q37), Q45, Q47 and Q48 (a team shown by lights and trim),
-  Q46 (a bot's id on its top), Q50 and Q51 (plan previews) and Q55 (the
-  debugger and what-if) are its Decided entries, and they are not repeated
-  here.
+  Q46 (a bot's id on its top), Q50, Q51 and Q54 (plan previews), Q53 (the
+  starter library) and Q55 (the debugger and what-if) are its Decided
+  entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in

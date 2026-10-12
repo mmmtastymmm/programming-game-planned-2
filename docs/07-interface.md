@@ -40,13 +40,13 @@ different renderer sees the same match.
   it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
   screen as first ruled; Q41 moved the dock into the tree; Q55 added the
-  debugger's and the version windows).** One window per open file, one
-  each for the inspector, the tools and the log, the debugger's while a
-  fork is open, and a read-only **version window** per version of a file
-  the player opens to read or debug, dragged, resized, collapsed and
-  closed by the player; the tree panel opens each but the version windows,
-  which open from a file window or the inspector; the layout is remembered
-  in `windows.toml` beside the programs.
+  debugger's and the version windows).** One window per open file, one each
+  for the inspector, the tools and the log, the debugger's while a fork is
+  open, and a read-only **version window** per version of a file the player
+  opens to read or debug, dragged, resized, collapsed and closed by the
+  player; the tree panel opens each but the version windows, which open
+  from a file window, the inspector or the debugger's stack; the layout is
+  remembered in `windows.toml` beside the programs.
 - **A start screen, an end screen, and the replay always saved (Q36, as
   Q55 amended).** The map, the cards, the programs directory and play,
   host, join or open a replay are picked in the game; the end names the
@@ -56,15 +56,17 @@ different renderer sees the same match.
   saver's; every option is also a command-line flag, which skips the
   screen.
 - **The mark tools are a strip, a tool stays armed, a drag marks, and a
-  plan previews (Q37, amended by Q44, Q50 and Q51).** Rows of building
-  models, paint colors and overlay labels each ending in a clear,
+  plan previews (Q37, amended by Q44, Q49, Q50, Q51 and Q54).** Rows of
+  building models, paint colors and overlay labels each ending in a clear,
   `B`/`P`/`O` and `1`–`9` to pick, `Esc` to disarm; a drag marks every tile
   it crosses once, and a `Shift`+drag fills the rectangle between its
   corners on release; *clear* withdraws the team's plan of its kind where
   one stands, and plans the slot emptied elsewhere; the player's own plans
-  show as a smaller, see-through version of their effect, and the armed
-  tool as the same ghost under the cursor or over the rectangle, except on
-  a tile already carrying exactly that plan.
+  show as a smaller version of their effect — see-through, but for a paint
+  plan's opaque square — and the armed tool as the same ghost under the
+  cursor or over the rectangle, only on tiles it can plan — paint and
+  overlays on ground the team has seen — and never on a tile already
+  carrying exactly that plan.
 - **A stall is a banner with a resign; a desync freezes the match with
   the report and the replay saved (Q38).** The banner names the peer, the
   tick and the wait; everything else keeps working. A desync's banner
@@ -119,8 +121,8 @@ floats over it (Q39, Q41):
 |---|---|---|
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end, and on a replay its seek; nothing else | Q6, Q12, `06`, Q41, Q55 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools, the log, and the debugger while a fork is open | Q41, Q55 |
-| **one per open file** | the file being edited, the versions it is deployed as, the deploy and export buttons; the faults naming this file | Q33, Q34, Q39, Q41 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's color to change | Q34, Q43, Q45 |
+| **one per open file** | the file being edited and its gutter breakpoints, the versions it is deployed as and those the team's machines run, each opening a version window, the deploy and export buttons, and while a fork is open *try in the fork* and *take it*; the faults naming this file | Q33, Q34, Q39, Q41, Q55 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change | Q34, Q43, Q45, Q55 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 | **debugger** | while a fork is open: its tick, state and controls, why the last step stopped, the hit list, the selected machine's stack, locals, globals, action, budget and interrupts | Q55 |
@@ -306,9 +308,9 @@ match's sim is only read — its snapshot, its hit reports and its saved
 states — and given breakpoint watches, which change nothing.
 
 - **Breakpoints.** A click in a window's gutter sets a breakpoint on that
-  line of the text the window shows, scoped to the selected machine if
-  its bundle holds the file, and otherwise to every machine of the team
-  whose bundle does; on a line where no statement begins (`06`) it moves
+  line of the text the window shows, scoped to the selected machine if it
+  is the team's and runs exactly that text, and otherwise to every machine
+  of the team; on a line where no statement begins (`06`) it moves
   to the next one. It becomes `06`'s watch on that text's content hash, so
   it hits wherever that exact text runs, and is greyed while nothing runs
   it. In a **file window** the text is the tree's, which the player edits:
@@ -321,21 +323,24 @@ states — and given breakpoint watches, which change nothing.
   team's machines hit them.
 - **Version windows.** A version is one file's text, by its content hash
   (`06`). A file window offers each version of its file that a machine of
-  the team runs, and the inspector the version of each file in the
-  selected machine's bundle; each opens a read-only version window, apart
-  from the tree, never exported or deployed. On a replay, the versions are
-  those the team's own deploys in its log carried, never another team's.
+  the team runs, the inspector, for a selected machine of the team, the
+  version of each file it runs, and the debugger's stack each frame's; each
+  opens a read-only version window, apart from the tree, never exported or
+  deployed. Only the team's own code is shown, never another team's, though
+  every team's bundles are in the log; on a replay, the versions are those
+  the team's own deploys carried.
 - **Saved states.** While a breakpoint is set or a fork is open, the
   driver saves the match's state at once — at the latest completed tick,
   so a hit or a fork opened by hand always has one to start from — and at
   every later tick that is a multiple of `debug_checkpoint_ticks`, keeping
   the last `debug_checkpoints_kept`; a fork saves its own on the same
-  terms. A saved state a fork was opened from, or that a listed hit needs,
-  is kept for as long as that fork or that hit is, beyond the count. With
-  no usable state a fork re-runs from the start (`06`). A replay's
-  playback saves its own whether or not a breakpoint is set, for seeking
-  and for forks — at once, too, when a fork is opened by hand — and keeps
-  them on the same terms (`06`, The driver).
+  terms. A replay's playback (`06`, The driver) saves its own on the same
+  terms whether or not a breakpoint is set, for seeking and for forks:
+  before tick 1, which it keeps beside the count, at every multiple, and at
+  once when a fork is opened by hand. A saved state a fork was opened
+  from, or that a listed hit needs, is kept for as long as that fork or
+  that hit is, beyond the count. With no usable state a fork re-runs from
+  the start (`06`). This bullet is the one statement of these terms.
 - **A hit** opens a fork at the earliest position among the tick's hits
   (`06` orders them): from the latest saved state before the hit's tick,
   run to that position; the tick's other hits are listed as further hits.
@@ -343,11 +348,13 @@ states — and given breakpoint watches, which change nothing.
   its state — faithful, or each of ahead, stale and diverged that holds
   (`06`) — and the debugger window opens on that machine. In single-player
   and PvE the match is also paused by a `SetSpeed(0)`, which lands `delay`
-  ticks later (Q12), unless the last speed the player submitted is
-  already `0` — so a resume still in flight is overtaken by the pause; in
-  PvP it runs on, and the time bar keeps the live tick. On a replay, which
-  sends no command, the playback pauses at once, at the end of the hit's
-  tick.
+  ticks later (Q12), unless the speed the match will have once every
+  `SetSpeed` the player has submitted lands — the speed in force, if none
+  is in flight — is already `0`: a resume still in flight is overtaken by
+  the pause, and a pause already in force is not woken by a redundant
+  `SetSpeed(0)`; in PvP it runs on, and the time bar keeps the live tick.
+  On a replay, which sends no command, the playback pauses at once, at the
+  end of the hit's tick.
 - **Further hits** while a fork is open leave it as it is: the debugger
   window lists them by position, the latest first, keeping the last
   `debug_hits_kept`, each with the count `06` reports of the beginnings it
@@ -358,8 +365,9 @@ states — and given breakpoint watches, which change nothing.
   any: from a state saved there as it opens, standing at that tick's end,
   stopped as *opened* (`06`).
 - **The map of a fork** is `06`'s snapshot of it at its position, mid-tick
-  ones included: machines as they stand there, fog as of the fork's last
-  vision pass, in the team's view (Q21). Only the team's machines can be
+  ones included: the team's machines as they stand there, and everything
+  else as at the end of the last tick the fork completed, in the team's
+  view (Q21). Only the team's machines can be
   selected or inspected.
 - **The match while a fork is open** keeps its own controls: resign, the
   speed, and every file window's deploy button act on the match, never
@@ -373,8 +381,8 @@ states — and given breakpoint watches, which change nothing.
   speed the debugger window sets, with a pause. The whole world advances;
   *line* and *over* need a selected machine. The window says why the fork
   stopped: opened, a statement, a watched line and whose, `dying`
-  delivered, death, a restart, the end of the tick, the step limit, the
-  live tick, or the match ending.
+  delivered, death, a restart, the end of the tick, *run* paused at it,
+  the step limit, the live tick, or the match ending.
 - **Inspection**: the selected machine's call stack, each frame with its
   file, line, function and locals, the frame's line marked in a version
   window of the text the machine runs; the globals of each module it has
@@ -383,17 +391,20 @@ states — and given breakpoint watches, which change nothing.
   budget spent — all from the fork at the stop, not from a snapshot.
 - **Editing a variable**: a local of a frame the stack shows, or a global
   of a module the selected machine has run, typed as `06` allows, on a
-  fork paused at any stop but a death, in its slice or in step 4, where
-  the machine is being removed — `dying` delivered is one it may be. The
+  fork paused at any stop but one in step 4, which takes no edit (the
+  tick's end, a *tick* away, does), and never of the machine at its own
+  death, which is being removed; a machine at `dying` may be edited. The
   fork is marked *diverged* in its banner from then on.
-- **What-if**: while a fork is open, paused where an edit could be made,
+- **What-if**: while a fork is open, paused at any stop but one in step 4,
   each file window offers *try in the fork*, which sends that file's
   deploys into the fork, not the match, for its next tick; the fork is
   *diverged*, and the file's breakpoints now hit in it. Beside it in a
   match is the deploy button, and *take it*, which deploys to the match
-  the very bundles that file's last *try* sent into the fork — not the
-  tree's text, if it has been edited since — `delay` ticks after the
-  match's own tick. On a replay
+  the bundles that file's last *try* sent into the fork, `delay` ticks
+  after the match's own tick. It is offered only while the tree still
+  holds every file of those bundles as it was tried, so it deploys exactly
+  what was tried and never reverts a file edited or deployed since; after
+  any such edit, *try* again. On a replay
   there is no match: file windows offer *try in the fork* alone.
 - **PvP**: in a live PvP match a fork stops at the match's latest completed
   tick and waits there, and never diverges: neither edits nor what-if are
