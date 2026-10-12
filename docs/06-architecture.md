@@ -41,7 +41,7 @@ Rulings this doc owns, moved here from the overview when it was written.
   then sender, then submission order. Rate-limiting is deferred with PvP;
   the sender stamp is its hook.
 - **A paused driver still reaches a command, and a hook's wait spends its
-  budget (Q32, as Q53 amended).** At speed `0` the driver runs, without the
+  budget (Q32, as Q55 amended).** At speed `0` the driver runs, without the
   clock, exactly the ticks up to the next one that carries a player's
   command — a scripted team is a sender in the log but not a player, and
   its commands, written in advance (`04`), do not count, or a pause would
@@ -52,7 +52,7 @@ Rulings this doc owns, moved here from the overview when it was written.
 - **Bevy renders, in its own crate, in the sim's process, changing the
   match's sim only through the command log and reading it through
   completed-tick snapshots and the debugger's three read-only channels
-  (Q15, as Q53 amended).** The three are: breakpoint watches the driver
+  (Q15, as Q55 amended).** The three are: breakpoint watches the driver
   passes into `sim.step`, its hit reports, and its full state saved
   between ticks; none changes the world or the hash, and the debugger
   drives forks of its own (Forks). A `render` crate depends on `sim` and
@@ -64,7 +64,7 @@ Rulings this doc owns, moved here from the overview when it was written.
   commands the renderer submits and forgets. Headless — `sim` plus a driver
   with no Bevy — stays the build CI runs.
 - **A program is debugged on a fork, a private copy of the sim that never
-  feeds back into the match (Q53).** The match's sim gives the debugger
+  feeds back into the match (Q55).** The match's sim gives the debugger
   only Q15's three read-only channels above; stepping, rewinding, editing
   a variable and what-if all act on a fork, and a replay plays on one (The
   driver). In a live PvP match a fork never passes the live tick and never
@@ -90,8 +90,8 @@ flowchart LR
 | `lang` | nothing | the interpreter [01-language](01-language.md) specifies: the loader, the evaluator, the interrupt machinery, `num` | none |
 | `sim` | `lang` | the world: tiles, machines, the tick loop, the state hash, the snapshot; the game builtins `02` names, which it registers with `lang` | none |
 | `net` | `sim`'s command types only | the command log as a data structure and its exchange between peers: stamping, the per-tick sets, the stall | none in anything it sends |
-| `render` | `sim`, `net`, `replay`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view, the debugger driving forks and replays played on one (Q53) — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
-| `replay` | `sim`, `net` | the headless driver: runs a `(map, command log)` to a hash stream; the replay's file format, the saver's team in it (Q53), which `render` writes when a match ends (Q36); building a fork from a replay; the golden fixtures; the determinism suite; the cross-architecture check | none |
+| `render` | `sim`, `net`, `replay`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view, the debugger driving forks and replays played on one (Q55) — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
+| `replay` | `sim`, `net` | the headless driver: runs a `(map, command log)` to a hash stream; the replay's file format, the saver's team in it (Q55), which `render` writes when a match ends (Q36); building a fork from a replay; the golden fixtures; the determinism suite; the cross-architecture check | none |
 
 **The arrow that does not exist** is any edge into `sim` or `lang` from
 `render`. The compiler enforces it: `sim` has no `render` dependency, and a
@@ -118,7 +118,7 @@ loop:
     if speed == 0:
         T = net.next_tick_with_a_player_command(tick)  # lowest T > tick with a
                                                  # player's command; a scripted team's
-                                                 # do not count (Q53)
+                                                 # do not count (Q55)
         if T is None: wait for a command; continue
         if not net.have_all_sets(first ..= T): stall; continue
         # run the ticks up to T without consulting the clock (Q32)
@@ -131,7 +131,7 @@ loop:
     snapshot = sim.snapshot()                    # published, never shared
     hash = sim.hash()                            # sent to peers, checked
     tick += 1                                    # the tick just completed
-    if debugger.wants_state(tick):               # its policy, 07 (Q53)
+    if debugger.wants_state(tick):               # its policy, 07 (Q55)
         debugger.keep(tick, sim.save())          # the full state, for forks
 ```
 
@@ -144,7 +144,7 @@ loop:
   `sim.step` reports it applied. The sim carries no rate (Q6). **A paused
   driver still reaches a command** (Q32): at speed `0` it runs, without the
   clock, exactly the ticks up to the next one that carries a player's
-  command, a scripted team's not counting (Q53) — which is how a
+  command, a scripted team's not counting (Q55) — which is how a
   `SetSpeed` above zero lands on its agreed tick and resumes.
 - **The stall** (Q12) is the driver refusing to call `sim.step` until every
   peer's set for the next tick is in hand. The renderer keeps drawing the
@@ -154,7 +154,7 @@ loop:
   may do then — wait, or resign — is `render`'s UI and not a sim rule.
 - **Single-player** is the same loop with one peer, whose sets are its own
   and always in hand, so the delay is felt and the stall never fires.
-- **A replay is played on a fork** (Q53, Forks), not by this loop: it is
+- **A replay is played on a fork** (Q55, Forks), not by this loop: it is
   not a match and has no one to agree with. `render` opens a fork from the
   replay's `(map, command log)` — its **playback** — and steps it a tick at
   a time at the viewer's pace, passing the team's watches as this loop
@@ -244,7 +244,7 @@ A **command** is:
   they enter the log like any peer's. `(map, command log)` is a replay, and
   the log's bytes are hashed into the replay's identity as the map's are,
   each length-prefixed as rule 7 hashes a bundle. A saved replay also
-  records the saver's team (Q53), for the debugger; it is outside the
+  records the saver's team (Q55), for the debugger; it is outside the
   identity, so two peers' files of one match are one replay.
 - **Encoding** on the wire and on disk is one canonical byte layout per
   kind, length-prefixed like the bundle hash (`01`), so that the log hashes
@@ -309,7 +309,7 @@ on either peer — which is the whole reason the log is complete.
 
 ## Forks
 
-A **fork** (Q53) is a private copy of the world, for debugging. It is the
+A **fork** (Q55) is a private copy of the world, for debugging. It is the
 match's sim's code run on a copy: it starts from a **saved state** — the
 match's full world, execution state included, at the end of a tick, which
 the driver saves for the debugger — or, failing one, from `(map, command

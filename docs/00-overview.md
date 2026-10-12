@@ -21,7 +21,7 @@ reopened by this corpus:
    without it does not become deterministic later.
 2. **`sim` is renderer-free plain Rust.** Whatever renders the game reads sim
    state and never writes it. A debugger may run a private copy of the sim,
-   and a replay plays on one (Q53); the copy is not the match, and nothing
+   and a replay plays on one (Q55); the copy is not the match, and nothing
    it does reaches it.
 
 ```mermaid
@@ -39,7 +39,7 @@ flowchart LR
 
 The diagram is why the crate boundary is worth its inconvenience: the arrow from
 `render` back to `sim` does not exist, and any commit that draws one is the
-architecture violation to catch in review. The debugger (Q53) passes the match's
+architecture violation to catch in review. The debugger (Q55) passes the match's
 sim breakpoint watches and reads its hit reports and saved states, none of which
 changes the world or its hash, and edits only private copies, the kind a
 replay also plays on; that is not the arrow.
@@ -94,7 +94,7 @@ pass.
   is not repeated here; Q21 and Q22, which `03` cites, are `02`'s.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
-  Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q53
+  Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q55
   (forks, the sim's half of debugging) are its Decided entries, and they
   are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
@@ -104,7 +104,7 @@ pass.
   stall and the desync), Q39 (windows, amending Q33), Q41 (the program
   tree, amending Q33 and Q39), Q44 (the rectangle mark and the withdrawing
   clear, amending Q37), Q45, Q47 and Q48 (a team shown by lights and trim),
-  Q46 (a bot's id on its top), Q50 and Q51 (plan previews) and Q53 (the
+  Q46 (a bot's id on its top), Q50 and Q51 (plan previews) and Q55 (the
   debugger and what-if) are its Decided entries, and they are not repeated
   here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
