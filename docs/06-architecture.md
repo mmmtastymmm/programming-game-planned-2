@@ -51,9 +51,10 @@ Rulings this doc owns, moved here from the overview when it was written.
   [01-language](01-language/execution.md)'s.
 - **Bevy renders, in its own crate, in the sim's process, reading only
   completed-tick snapshots and writing only to the command log (Q15, as
-  Q52 amended).** The one further read of the match's sim is the
-  driver's saving its full state between ticks for the debugger, and the
-  debugger drives forks of its own (Forks). A
+  Q52 amended).** The debugger adds three channels to the match's sim and
+  no more, none of which changes it: the driver passes breakpoint watches
+  into `sim.step` and reads its hit reports, and saves its full state
+  between ticks; the debugger drives forks of its own (Forks). A
   `render` crate depends on `sim` and Bevy; `sim` depends on neither. The
   driver — wall clock, speed, peer wait, next tick — is a Bevy system that
   owns the sim as a resource; every other system sees only the snapshot the
@@ -114,8 +115,9 @@ loop:
     first = 0 if tick == 0 else tick + 1         # tick 0 is never stepped:
                                                  # its set applies with tick 1
     if speed == 0:
-        T = net.next_tick_with_a_command(tick)   # lowest T > tick with a player's command;
-                                                 # a scripted team's do not count (Q52)
+        T = net.next_tick_with_a_player_command(tick)  # lowest T > tick with a
+                                                 # player's command; a scripted team's
+                                                 # do not count (Q52)
         if T is None: wait for a command; continue
         if not net.have_all_sets(first ..= T): stall; continue
         # run the ticks up to T without consulting the clock (Q32)
@@ -127,9 +129,9 @@ loop:
                                                  # are the debugger's (Forks)
     snapshot = sim.snapshot()                    # published, never shared
     hash = sim.hash()                            # sent to peers, checked
+    tick += 1                                    # the tick just completed
     if debugging and tick % debug_checkpoint_ticks == 0:
-        debugger.keep(sim.save())                # the full state, for forks (Q52)
-    tick += 1
+        debugger.keep(tick, sim.save())          # the full state, for forks (Q52)
 ```
 
 - **`sim.step` is the only entry point that changes the world**, and it
@@ -290,55 +292,68 @@ on either peer — which is the whole reason the log is complete.
 
 A **fork** (Q52) is a private copy of the world, for debugging. It is the
 match's sim's code run on a copy: it starts from a **saved state** — the
-match's full world, execution state included, at a completed tick, which
-the driver saves for the debugger — or from `(map, command log)` re-run,
-and its state hash there equals the match's. It runs the tick loop of The
-tick unchanged. It is never a peer and never the match's sim: it sends
-nothing to any peer, and nothing it does reaches the match's world, log or
-hash. The rule that `sim.step` is the only entry point that changes the
-world, and the review rule on mutable references (Crates), are the match's
-sim's; a fork has the further entry points below. `sim` holds a fork's
-code, `render`'s debugger drives one, and `replay` builds one from a
-replay file.
+match's full world, execution state included, at the end of a tick, which
+the driver saves for the debugger — or, failing one, from `(map, command
+log)` re-run, and its state hash there equals the match's. It runs the
+tick loop of The tick unchanged. It is never a peer and never the match's
+sim: it sends nothing to any peer, and nothing it does reaches the match's
+world, log or hash. The rule that `sim.step` is the only entry point that
+changes the world, and the review rule on mutable references (Crates),
+are the match's sim's; a fork has the further entry points below. `sim`
+holds a fork's code, `render`'s debugger drives one, and `replay` builds
+one from a replay file.
 
-- **Positions.** A point in a tick is a **position**: `(tick, machine,
-  the number of boundaries that machine's slice has passed this tick)` —
-  every boundary `01` names counts, the slice's opening one, those inside
-  a wait and a restart's included — or `(tick, end)`, after step 9. A
-  fork stops only at positions, every hit names one, and every entry in a
-  fork's log is made at one.
-- **Statements.** A machine **begins a statement** at the boundary before
-  the statement's first operation (`01`, Metering), on the statement's
-  first line. A compound statement's clauses also begin there: an `if` or
-  `elif` each time its condition is evaluated, a `while` each time its
-  condition is, a `for` each time it takes the next element, an `except`
-  each time it is tested, a `case` each time its pattern is. Nothing else
-  begins: not a line holding only `else:`, `try:` or `finally:`, not a
-  continuation line of a multi-line statement, and not the return from a
-  call into the middle of a statement. A line on which nothing can begin
-  takes no breakpoint; one set there moves to the next line that can.
+- **Positions.** A point in a tick is a **position**: `(tick, machine, n)`,
+  the `n`-th boundary that machine's slice passes this tick — every
+  boundary `01` names counts, the slice's opening one, those inside a wait
+  and a restart's included; `(tick, damage, machine)`, in step 4 after the
+  tick's damage is applied and before that machine's `death` removes it;
+  or `(tick, end)`, after step 9. A fork stops only at positions, every hit
+  names one, and every entry in a fork's log is made at a slice position
+  or a tick's end.
+- **Statements.** The statements that **begin** are every simple
+  statement, and these clauses of compound ones: an `if` or `elif` each
+  time its condition is evaluated, a `while` each time its condition is,
+  a `for` once as it evaluates its iterable and again each time it binds
+  an element after the first, an `except` each time it is tested, and a
+  `case` each time its pattern is. Nothing else begins — not `try:`,
+  `else:` or `finally:`, which have no operation of their own, and not a
+  continuation line. A machine begins one when it **starts** that
+  statement's or clause's first operation, on its first line; the hit's
+  position is the boundary just before that operation, in the slice that
+  runs it. Reaching that boundary and yielding there, sitting at it in
+  deficit, or being delivered an interrupt there begins nothing, and
+  returning from a call into the middle of a statement begins nothing. A
+  breakpoint on a line where nothing can begin moves to the next line that
+  can.
 - **Its commands.** For each tick it runs, a fork takes the commands the
   match's log (or the replay's) holds for it at that moment and records
   them, so a re-run of that tick applies the same ones. They apply in step
   1 by The tick's order, followed by the fork's own what-if `Deploy`s
-  agreed for that tick; the fork's own edits apply at their positions.
-  The what-if deploys and the edits are the **fork's log**. A fork is
-  **faithful** while its log is empty and every tick it ran took the
-  match's complete set for that tick. It is **ahead** at a tick past the
-  match's latest completed one, where the match's sets are not final; it
-  becomes **stale** from a tick at which the match's log later gains a
-  command it did not take. A fork with entries in its own log is
-  **diverged**. The debugger shows which.
+  agreed for that tick; the fork's own edits apply at their positions. The
+  what-if deploys and the edits are the **fork's log**.
+- **Its state** is any of three flags, or **faithful** when none holds:
+  **ahead**, at a tick past the match's latest completed one, whose sets
+  are not final; **stale**, from a tick at which the match's log later
+  gained a command other than `SetSpeed` that the fork did not take
+  (`SetSpeed` changes no world); and **diverged**, once the fork's log has
+  an entry. A faithful fork reproduces the match hash for hash.
+- **Content hashes.** A file's **content hash** is FNV-1a 64-bit, the
+  state hash's function, over the file's bytes as its bundle holds them —
+  its UTF-8 text, byte-exact (CLAUDE.md rule 7) — with no name and no
+  length prefix. The renderer hashes a window's text the same way.
 - **Watches.** A watch is `(file in the bundle, the file's content hash,
   line, deployment or any, machine or any)` for one team: the content
   hash of the one file, so a watch outlives deploys of other files, and
   the deployment because every robot file is its bundle's `main.py`. The
   driver passes the team's watches to `sim.step` beside the tick's
-  commands; they are not commands and no part of the state hash.
-  `sim.step` reports, beside its usual report, every time a machine
-  matching a watch begins a statement on a watched line, with its
-  position. It charges nothing and changes nothing, so a peer watching
-  lines hashes as one that is not. A fork takes watches the same way.
+  commands; they are not commands and no part of the state hash. For each
+  machine matching a watch that begins a statement on a watched line,
+  `sim.step` reports, beside its usual report, the tick's first such
+  beginning with its position and a count of the rest. It charges nothing
+  and changes nothing, so a peer watching lines hashes as one that is not.
+  A fork takes watches the same way, and stops at every beginning, not
+  only the first.
 - **Stopping.** A fork can stop at a position and resume from it; stopped
   mid-tick it has no state hash until the tick completes. For a machine it
   reports, computed from the fork's world at that position: each frame's
@@ -354,27 +369,35 @@ replay file.
   one step. **Tick** — to the end of the tick. **Continue** — until any
   machine matching a watch begins a statement on a watched line, the
   selected machine or another; a stop on another machine selects it.
-  *Line* and *over* need a selected machine; *tick* and *continue* do not.
-  *Line*, *over* and *continue* also stop when the selected machine is
-  delivered `dying`, when its `death` runs, and when its program restarts
-  (a fault, a redeploy, or main flow running off its end). Every step
-  stops after `debug_step_max_ticks` ticks with no other stop, and in PvP
-  at the live tick. Each stop is reported with its cause and position.
+  **Run** — continue with no step limit, paced by the caller, until
+  continue would stop or the caller pauses it. *Line* and *over* need a
+  selected machine; the others do not. *Line*, *over*, *continue* and
+  *run* also stop when the selected machine is delivered `dying`, when its
+  program restarts (a fault, a redeploy, or main flow running off its
+  end), and when its `death` runs — inside its slice, at that position, or
+  in step 4, at `(tick, damage, machine)`. Every step but *run* stops after
+  a number of ticks with no other stop, a limit the caller passes
+  (`07`'s `debug_step_max_ticks`); every step stops in PvP at the live
+  tick, and on any fork when its world's match ends (`04`), after which it
+  takes no step forward. Each stop is reported with its cause and
+  position.
 - **Saved states and back.** A fork can save its state at the end of a
   tick and be restored to one. *Back* returns to the previous stop: the
   fork restores the latest usable saved state before it and runs forward,
   taking its recorded commands and its own log, to that position. A saved
   state is usable by a fork if the fork saved it, or if the match saved it
   at a tick before the fork's first entry and the fork was faithful there.
-  Edits sit in the fork's log at their positions, so a re-run applies them
-  where they were made.
-- **Editing.** On a paused fork, a local, or a global of any module the
-  machine has run, may be set to a value written as a literal or a display
-  of literals — a `num` (with an optional leading `-`), `str`, `bool` or
-  `None`, or a tuple, list, dict or set of such values, nested — parsed as
-  `01` parses it and checked against `01`'s Limits; a value over a limit
-  is refused, naming the limit. The edit enters the fork's log at the
-  position the fork is stopped at.
+  With none usable, the fork re-runs `(map, command log)` from the start —
+  slow, and the caller keeps states so it is rarely needed (`07`). Edits
+  sit in the fork's log at their positions, so a re-run applies them where
+  they were made.
+- **Editing.** On a fork paused at a slice position or a tick's end, a
+  local, or a global of any module the machine has run, may be set to a
+  value written as a literal or a display of literals — a `num` (with an
+  optional leading `-`), `str`, `bool` or `None`, or a tuple, list, dict
+  or set of such values, nested — parsed as `01` parses it and checked
+  against `01`'s Limits; a value over a limit is refused, naming the limit.
+  The edit enters the fork's log at that position.
 - **What-if** puts `Deploy`s in the fork's log, agreed for the fork's next
   tick and applied in its step 1 after the match's own commands for that
   tick, so a later deploy in the match's log to the same deployment

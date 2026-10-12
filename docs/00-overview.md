@@ -38,7 +38,10 @@ flowchart LR
 
 The diagram is why the crate boundary is worth its inconvenience: the arrow from
 `render` back to `sim` does not exist, and any commit that draws one is the
-architecture violation to catch in review.
+architecture violation to catch in review. The debugger (Q52) passes the match's
+sim breakpoint watches and reads its hit reports and saved states, none of which
+changes the world or its hash, and edits only private copies; that is not the
+arrow.
 
 Note the shape of the arrows that *do* reach the sim. Player edits and a remote
 peer's edits enter by the same road — the ordered command log — and neither
@@ -90,14 +93,15 @@ pass.
   (forks, the sim's half of debugging) are its Decided entries, and they
   are not repeated here; Q32's other half is
   [01-language](01-language.md)'s.
-- **The interface's rulings live in [07-interface](07-interface.md)** —
-  Q33 (the editor), Q34 (faults), Q35 and Q43 (a bot's color and the team
+- **The interface's rulings live in [07-interface](07-interface.md)** — Q33
+  (the editor), Q34 (faults), Q35 and Q43 (a bot's color and the team
   outline), Q36 (the start and end screens), Q37 (the mark tools), Q38 (the
   stall and the desync), Q39 (windows, amending Q33), Q41 (the program
-  tree, amending Q33 and Q39), Q44 (the rectangle mark and the
-  withdrawing clear, amending Q37), Q45, Q47 and Q48 (a team shown by
-  lights and trim), Q46 (a bot's id on its top) and Q52 (the debugger and
-  what-if) are its Decided entries, and they are not repeated here.
+  tree, amending Q33 and Q39), Q44 (the rectangle mark and the withdrawing
+  clear, amending Q37), Q45, Q47 and Q48 (a team shown by lights and trim),
+  Q46 (a bot's id on its top), Q50 and Q51 (plan previews) and Q52 (the
+  debugger and what-if) are its Decided entries, and they are not repeated
+  here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in
