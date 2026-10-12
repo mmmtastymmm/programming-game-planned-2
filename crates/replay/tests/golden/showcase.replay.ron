@@ -24,7 +24,7 @@
                 deployment: "bot",
                 bundle: (
                     files: [
-                        ("main.py", "# The fixture\'s first bot program: haul ore from the nearest deposit into\n# the team\'s building plan — a printer, whose price rises with the team\'s\n# printers (Q42) — building the site when there is none, and keep a tally\n# that a redeploy will throw away.\nsteps = 0\nCAPACITY = 10\n\n\ndef deposit():\n    for t in tiles(-30, -30, 30, 30):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            return (t.x, t.y)\n    return None\n\n\ndef site():\n    for p in plans(\"building\"):\n        return (p[0], p[1])\n    for m in see():\n        if m.team == me().team and m.model == \"site\":\n            return (m.pos[0], m.pos[1])\n    return None\n\n\ndef adjacent(p):\n    here = me().pos\n    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1\n\n\ndef step_off():\n    for d in [\"n\", \"e\", \"s\", \"w\"]:\n        try:\n            move(d)\n            return\n        except ValueError:\n            pass\n    wait(1)\n\n\nwhile True:\n    full = me().load[\"ore\"] >= CAPACITY\n    target = site() if full else deposit()\n    if target is None:\n        wait(5)\n        continue\n    here = me().pos\n    if (here[0], here[1]) == target:\n        step_off()\n        continue\n    if adjacent(target):\n        if full:\n            for p in plans(\"building\"):\n                if (p[0], p[1]) == target:\n                    try:\n                        build(p[2], p[0], p[1])\n                        log(\"site placed\")\n                    except ValueError:\n                        pass\n            try:\n                drop(\"ore\")\n                log(\"dropped\")\n            except ValueError:\n                wait(1)\n        else:\n            try:\n                pick(\"ore\")\n                log(\"picked\", me().load[\"ore\"])\n            except ValueError:\n                wait(1)\n        continue\n    try:\n        move_to(target[0], target[1])\n        steps += 1\n    except ValueError:\n        wait(2)\n    if steps % 4 == 0:\n        log(\"steps\", steps, \"sees\", len(see()), \"hears\", len(hear()))\n"),
+                        ("main.py", "# The fixture\'s first bot program: haul ore from the nearest deposit into\n# the team\'s building plan — a printer, whose price rises with the team\'s\n# printers (Q42) — building the site when there is none, and keep a tally\n# that a redeploy will throw away. It wears its job as its color (Q43):\n# orange while hauling to the site, cyan while fetching ore.\nsteps = 0\nCAPACITY = 10\n\n\ndef deposit():\n    for t in tiles(-30, -30, 30, 30):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            return (t.x, t.y)\n    return None\n\n\ndef site():\n    for p in plans(\"building\"):\n        return (p[0], p[1])\n    for m in see():\n        if m.team == me().team and m.model == \"site\":\n            return (m.pos[0], m.pos[1])\n    return None\n\n\ndef adjacent(p):\n    here = me().pos\n    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1\n\n\ndef step_off():\n    for d in [\"n\", \"e\", \"s\", \"w\"]:\n        try:\n            move(d)\n            return\n        except ValueError:\n            pass\n    wait(1)\n\n\nwhile True:\n    full = me().load[\"ore\"] >= CAPACITY\n    job = \"orange\" if full else \"cyan\"\n    if me().color != job:\n        set_color(job)\n    target = site() if full else deposit()\n    if target is None:\n        wait(5)\n        continue\n    here = me().pos\n    if (here[0], here[1]) == target:\n        step_off()\n        continue\n    if adjacent(target):\n        if full:\n            for p in plans(\"building\"):\n                if (p[0], p[1]) == target:\n                    try:\n                        build(p[2], p[0], p[1])\n                        log(\"site placed\")\n                    except ValueError:\n                        pass\n            try:\n                drop(\"ore\")\n                log(\"dropped\")\n            except ValueError:\n                wait(1)\n        else:\n            try:\n                pick(\"ore\")\n                log(\"picked\", me().load[\"ore\"])\n            except ValueError:\n                wait(1)\n        continue\n    try:\n        move_to(target[0], target[1])\n        steps += 1\n    except ValueError:\n        wait(2)\n    if steps % 4 == 0:\n        log(\"steps\", steps, \"sees\", len(see()), \"hears\", len(hear()))\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
                     ],
@@ -32,9 +32,9 @@
             ),
         ),
         (
-            tick: 0,
+            tick: 2,
             sender: (0),
-            seq: 2,
+            seq: 0,
             kind: Mark(
                 at: (
                     x: -9,
@@ -45,9 +45,9 @@
             ),
         ),
         (
-            tick: 0,
+            tick: 2,
             sender: (0),
-            seq: 3,
+            seq: 1,
             kind: Mark(
                 at: (
                     x: -8,

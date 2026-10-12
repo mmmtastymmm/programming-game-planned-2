@@ -57,17 +57,25 @@ here changes a hash; a peer with a different renderer sees the same match.
   its faults by line across every deployment the file reaches, the full
   record in the inspector, and a line in the log. The record itself is the sim's (Q20);
   the renderer only shows it.
-- **A bot's body is the color its program set, and every team is an
-  outline the player colors (Q43, amending Q35 and Q42).** A bot is drawn
-  in its `color` (`02`), or a neutral body color while it has none; a
-  building's body is the neutral color. Every machine has an outline in
-  its team's outline color: the player's own green by default, each other
-  team's the next of a list in `data/interface.toml` in team order,
-  skipping the player's — blue first, so a default one-on-one is green
-  against blue. The player may
-  change any team's outline color, their own included, from the
-  inspector; the choice is saved in `colors.toml` beside the programs and
-  never reaches a peer. No bot wears a number.
+- **A bot's body is the color its program set, and every team is a color
+  the player chooses (Q43, amending Q35 and Q42; amended by Q45, Q47 and
+  Q48).** A bot is drawn in its `color` (`02`), or a neutral body color
+  while it has none, and its lights — the lens, the marker lights, the
+  tail light, the dot on top — glow in its team's color over that paint; a
+  printer's and a depot's body is the neutral color with its lights
+  glowing in its team's color and a printer's trim painted in it, and a
+  site, which has no lights, is outlined in it. The player's own team is
+  green by default, each other team's the next of a list in
+  `data/interface.toml` in team order, skipping the player's — blue first,
+  so a default one-on-one is green against blue. The player may change any
+  team's color, their own included, from the inspector; the choice is
+  saved in `colors.toml` beside the programs and never reaches a peer.
+- **Every bot wears its entity id on top (Q46, amending Q42 and Q43).**
+  The id's last three digits, in a seven-segment display set into the top
+  face: fixed segments, lit in the team's color in whichever quarter turn
+  reads upright from the camera, so it redraws rather than spins; the
+  chevron, the trim and the light around it keep the heading, the paint
+  and the team readable from above.
 - **A program is debugged on a fork (Q50).** Line breakpoints are the
   editor's; a hit opens a private copy of the sim at that point, where the
   player steps by line, by tick or over an action, rewinds, inspects the
@@ -88,7 +96,7 @@ floats over it (Q39, Q41):
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end; nothing else | Q6, Q12, `06`, Q41 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools and the log | Q41 |
 | **one per open file** | the file being edited, the versions it is deployed as, the deploy and export buttons; the faults naming this file | Q33, Q34, Q39, Q41 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's outline color to change | Q34, Q43 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, the teams and their deployments' versions, each team's color to change | Q34, Q43, Q45 |
 | **tools** | the mark strip and resign | Q37 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 | **debugger** | while a fork is open: its tick and controls, the selected machine's stack, locals, globals, action, budget and interrupts | Q50 |
@@ -173,10 +181,16 @@ clears only when those machines fault again or die.
 - **Body:** a bot is an atlas cube in its `color`, or the neutral body
   color while it is `None`; a printer, a depot and a site are their own
   shapes in the neutral body color (Q43).
-- **Outline:** every machine is outlined in its team's outline color —
-  the player's own green unless changed, each other team's from the list
-  in data unless changed — so friend and foe read at a glance and three
-  teams stay three (Q43).
+- **Team:** a bot's lights glow in its team's color (Q45), and so do a
+  printer's — its panel light, side markers and status light, made larger
+  (Q48) — and a depot's lamp where its braces cross (Q47); a printer's
+  trim — its bands and the rails of its top — is painted in it (Q48); a
+  site, which has no lights, is outlined in it (Q43).
+- **Number:** a bot's entity id, its last three digits, in fixed seven
+  segments on its top face, lit in its team's color in the quarter turn
+  that reads upright from the camera (Q46). The player's own team is green unless changed,
+  each other team's from the list in data unless changed, so friend and
+  foe read at a glance and three teams stay three.
 - **Health:** a bar over the machine for a few seconds after any change.
 - **Fault:** the mark above.
 - **Fog:** as Q21 rules — a machine on a remembered tile is drawn as last
@@ -203,11 +217,16 @@ and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.
 
 A tile carrying the player's team's plan shows it as a translucent version
-of its effect — the color at half alpha, the overlay's label, a ghost of
-the building; a clear plan hatches the slot — and the armed tool shows the
-same ghost under the cursor, or over a `Shift`+drag's rectangle. Only the player's team's plans are drawn,
-since plans are private (`03`), and the snapshot carries that team's plan
-values per tile for it: a read, in no hash.
+of its effect — the color at half alpha, or over a tile already painted a
+nearly solid square of the new color inside a border of the old (Q49), the
+overlay's label, a ghost of the building; a clear plan hatches the slot —
+and the armed tool shows the same ghost under the cursor, or over a
+`Shift`+drag's rectangle, on the tiles it can plan: paint and overlays go
+only on ground the team has seen (`03`, Q49), so a single mark elsewhere
+is refused with the reason and a stroke marks the rest and says how many
+it skipped. Only the player's team's plans are drawn, since plans are
+private (`03`), and the snapshot carries that team's plan values per tile
+for it: a read, in no hash.
 
 ## The match
 
@@ -307,9 +326,9 @@ match's sim is only read.
 
 Every number this doc names is a tuning constant in `data/interface.toml`:
 `fault_mark_ticks`, `debug_checkpoint_ticks`, `debug_checkpoints_kept` and
-`debug_step_max_ticks` (Q50), the neutral body color, the player's default outline
-color and the outline list for the other teams. None is a sim value; the
-player's own outline choices live in `colors.toml` beside the programs.
+`debug_step_max_ticks` (Q50), the neutral body color, the player's default team
+color and the list for the other teams. None is a sim value; the
+player's own choices live in `colors.toml` beside the programs.
 
 ## What this doc leaves open
 

@@ -31,37 +31,6 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M6 — The match's edges
-
-**T20 — The mark strip, drag marking, the armed tool and the plan preview**
-
-Q37, amended by Q44: the tools window as three rows from data, each
-ending in a clear, with `B`/`P`/`O` and `1`–`9`; a tool armed until
-`Esc`; a drag marking every tile it crosses once and not panning; a
-`Shift`+drag filling the rectangle between its corners on release; a
-*clear* withdrawing the team's own plan of its kind where one stands; the
-player's own plans drawn as a translucent version of their effect and the
-armed tool as a ghost under the cursor or over the rectangle. The snapshot
-gains the player's team's plan values per tile — a read the renderer
-makes, in no hash — replacing the driver's `snapshot_plan` peek.
-Finishing it fixes [P4](PROBLEMS.md).
-
-## M7 — Bot colors and team outlines
-
-**T25 — A bot's `set_color`, and the team outline the player colors** `⚠HASH`
-
-Q43, ruled in `02` and `07`. The sim: a `color` attribute on bots, `None`
-when printed, kept across redeploy and fault, settable while `dying`, in
-sightings and the hash; the zero-tick `set_color(color)` action, refusing
-anything not in the paint list or `None`, with its row in
-`data/language/costs.toml`. The renderer: a bot's body in its color or the
-neutral body color, buildings in the neutral color, an outline on every
-machine in its team's color replacing the ring, the player's own green by
-default and the others from a list in `data/interface.toml`, changed from
-the inspector and saved in `colors.toml` beside the programs. The golden
-fixtures, regenerated with the reason in the PR. Finishing it fixes
-[P2](PROBLEMS.md).
-
 ## M8 — The debugger
 
 **T26 — Forks in `sim`: watches, stopping mid-tick, steps, saved states, edits**

@@ -652,6 +652,31 @@ impl<'a> GameHost<'a> {
         Ok(HostCall::Value(Value::None))
     }
 
+    /// `set_color(color)` (Q43): a zero-tick bot action, so a busy bot is
+    /// refused; a `dying` one may still call it. The color is one from the
+    /// paint list, or `None`; anything else is a `ValueError`.
+    fn set_color(&mut self, args: &[Value]) -> R<HostCall> {
+        self.require_bot()?;
+        let [color] = args else {
+            return Err(type_error());
+        };
+        if self.me().action.is_some() {
+            return Err(value_error());
+        }
+        let color = match color {
+            Value::None => None,
+            v => {
+                let c = v.expect_str().map_err(|_| value_error())?.to_string();
+                if !self.world.data.machines.colors.contains(&c) {
+                    return Err(value_error());
+                }
+                Some(c)
+            }
+        };
+        self.me_mut().color = color;
+        Ok(HostCall::Value(Value::None))
+    }
+
     /// Cancel the action in progress (a fault, dying or redeploy prologue).
     fn cancel(&mut self) {
         self.me_mut().action = None;
@@ -697,6 +722,7 @@ impl<'a> Host for GameHost<'a> {
             "wait" => self.action_wait(&args),
             "log" => self.log(&args, &kwargs),
             "rename" => self.rename(&args),
+            "set_color" => self.set_color(&args),
             _ => Ok(HostCall::Unknown),
         }
     }

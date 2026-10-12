@@ -273,6 +273,7 @@ pub fn install(world: &mut World) {
         w.title = title.clone();
     }
     let layout_path = crate::layout::Layout::path(m.programs.as_deref());
+    let state_programs = m.programs.clone();
     let mut state = ViewState {
         layout: crate::layout::Layout::load(layout_path.as_deref()),
         layout_path,
@@ -290,6 +291,9 @@ pub fn install(world: &mut World) {
     });
     world.insert_resource(state);
     world.insert_resource(crate::view::Entities::default());
+    world.insert_resource(crate::outlines::TeamColors::load(
+        crate::outlines::TeamColors::path(state_programs.as_deref()),
+    ));
     world.insert_resource(MatchInfo {
         map_stem: m.map_stem,
     });

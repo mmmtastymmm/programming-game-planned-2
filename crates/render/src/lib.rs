@@ -29,12 +29,14 @@
 
 pub mod app;
 pub mod camera;
+pub mod digits;
 pub mod driver;
 pub mod editor;
 pub mod input;
 pub mod launch;
 pub mod layout;
 pub mod marks;
+pub mod outlines;
 pub mod palette;
 pub mod programs;
 pub mod screens;

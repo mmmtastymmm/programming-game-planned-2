@@ -72,6 +72,9 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
     if let Some(l) = load {
         fields.push(("load", l));
     }
+    if let Some(c) = &r.color {
+        fields.push(("color", opt_str(c.as_deref())));
+    }
     if let Some(s) = store {
         fields.push(("store", s));
     }

@@ -198,6 +198,11 @@ impl Sim {
                 if !w.map.in_bounds(*at) {
                     return Err(());
                 }
+                // Paint and overlay plans only on ground the team has
+                // seen (Q49): a team's knowledge changes over the match,
+                // so this is checked on the tick the command applies, not
+                // at submission, and a mark that fails it is dropped.
+                w.may_plan(c.sender, *at, *plan).map_err(|_| ())?;
                 let p = match value {
                     Some(v) => Plan::Set(v.clone()),
                     None => Plan::Clear,
@@ -907,6 +912,13 @@ fn write_record(h: &mut Fnv1a, r: &MachineRecord) {
     h.write_bytes(&r.health.raw().to_le_bytes());
     write_opt_str(h, r.busy);
     write_amounts(h, r.load.as_ref());
+    match &r.color {
+        None => h.write_u8(0),
+        Some(c) => {
+            h.write_u8(1);
+            write_opt_str(h, c.as_deref());
+        }
+    }
     write_amounts(h, r.store.as_ref());
     h.write_u64(r.progress);
     match r.printing {

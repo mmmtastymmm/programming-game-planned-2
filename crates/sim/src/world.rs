@@ -2,7 +2,7 @@
 //! `BTreeMap`s, no ECS (CLAUDE.md rule 1). Everything here is in the state
 //! hash except the diagnostic log.
 
-use crate::command::{Bundle, TeamId};
+use crate::command::{Bundle, PlanKind, TeamId};
 use crate::data::Data;
 use crate::map::{Map, Terrain, TilePos, index};
 use lang::{Costs, Limits, Num, Program};
@@ -170,6 +170,9 @@ pub struct Machine {
     pub action: Option<Action>,
     /// A bot's carried resources, every kind present.
     pub load: BTreeMap<String, Num>,
+    /// A bot's color, set by `set_color` (Q43): a paint color, or `None`
+    /// as printed. Kept across a redeploy and a fault; `None` on a building.
+    pub color: Option<String>,
     /// A building's held resources, every kind present.
     pub store: BTreeMap<String, Num>,
     pub store_capacity: BTreeMap<String, Num>,
@@ -252,6 +255,9 @@ pub struct MachineRecord {
     pub health: Num,
     pub busy: Option<&'static str>,
     pub load: Option<BTreeMap<String, Num>>,
+    /// A bot's `color` (Q43): `Some` of its color or `None` on a bot,
+    /// absent on a building, as `load` is.
+    pub color: Option<Option<String>>,
     pub store: Option<BTreeMap<String, Num>>,
     pub progress: u64,
     /// A printer's `printing`; absent on every other model.
@@ -271,6 +277,7 @@ impl MachineRecord {
             health: m.health,
             busy: m.busy(),
             load: m.is_bot().then(|| m.load.clone()),
+            color: m.is_bot().then(|| m.color.clone()),
             store: m.is_building().then(|| m.store.clone()),
             progress: m.progress(),
             printing: (m.model == Model::Printer).then_some(m.printing),
@@ -587,6 +594,7 @@ impl World {
                 dying: false,
                 action: None,
                 load,
+                color: None,
                 store,
                 store_capacity,
                 becomes: None,
@@ -620,6 +628,48 @@ impl World {
             loudness,
             tick: self.tick,
         });
+    }
+
+    /// Whether `team` may place a `plan` on `p` now (Q49): a paint or
+    /// overlay plan, a value or a clear, only on ground the team has seen —
+    /// never on rock or water, and never on a tile still unknown to it,
+    /// which is checked first, so a refusal tells it nothing it could not
+    /// see. A building plan may go anywhere on the map, as before. It
+    /// depends on what the team has seen, so `Sim::validate` does not call
+    /// it; a `Mark` that fails it on its tick is dropped, and a renderer
+    /// asks it before submitting.
+    pub fn may_plan(&self, team: TeamId, p: TilePos, plan: PlanKind) -> Result<(), String> {
+        if plan == PlanKind::Building {
+            return Ok(());
+        }
+        let what = if plan == PlanKind::Paint {
+            "paint"
+        } else {
+            "an overlay"
+        };
+        let idx = self
+            .tile_index(p)
+            .ok_or_else(|| format!("({}, {}) is off the map", p.x, p.y))?;
+        let seen = self
+            .teams
+            .get(&team)
+            .is_some_and(|t| t.memory[idx].state != TileState::Unknown);
+        if !seen {
+            return Err(format!(
+                "({}, {}) is unknown to your team: only ground it has seen takes {what}",
+                p.x, p.y
+            ));
+        }
+        let terrain = self.tiles[idx].terrain;
+        if terrain != Terrain::Ground {
+            return Err(format!(
+                "({}, {}) is {}: only ground takes {what}",
+                p.x,
+                p.y,
+                terrain.name()
+            ));
+        }
+        Ok(())
     }
 
     /// Plans of `team` on `p`, if any.
