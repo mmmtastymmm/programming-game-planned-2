@@ -191,7 +191,7 @@ struct Ctx<'a> {
 pub fn compile_module(file: &str, stmts: &[Stmt]) -> C<Rc<Code>> {
     let mut ctx = Ctx::new(file, "<module>", true);
     ctx.globals_hint = assigned_names(stmts);
-    ctx.compile_body(stmts)?;
+    ctx.compile_body(without_docstring(stmts))?;
     {
         let k = ctx.const_index(Value::None);
         ctx.emit(Instr::Const(k));
@@ -534,7 +534,7 @@ impl<'a> Ctx<'a> {
                 for n in assigned_names(body) {
                     child.local_set.insert(n);
                 }
-                child.compile_body(body)?;
+                child.compile_body(without_docstring(body))?;
                 child.emit(Instr::ReturnClass);
                 let code = child.finish(0, None, None);
                 self.children.push(Rc::new(code));
@@ -718,7 +718,7 @@ impl<'a> Ctx<'a> {
         for n in assigned_names(body) {
             child.local_set.insert(n);
         }
-        child.compile_body(body)?;
+        child.compile_body(without_docstring(body))?;
         let c = child.const_index(Value::None);
         child.emit(Instr::Const(c));
         child.emit(Instr::Return);
@@ -1294,6 +1294,26 @@ pub fn imported_modules(stmts: &[Stmt]) -> BTreeSet<String> {
 /// Every name assigned anywhere in a body: assignment targets, `for`
 /// targets, `def` names, `except … as` names. Comprehension targets are not
 /// included, since they are private to the comprehension.
+/// A module, `def` or `class` body without its docstring: a first
+/// statement that is a plain string literal compiles to nothing, so it costs
+/// nothing and is no boundary (`syntax.md`, Functions).
+fn without_docstring(stmts: &[Stmt]) -> &[Stmt] {
+    match stmts.split_first() {
+        Some((
+            Stmt {
+                kind:
+                    StmtKind::Expr(Expr {
+                        kind: ExprKind::Str(_),
+                        ..
+                    }),
+                ..
+            },
+            rest,
+        )) => rest,
+        _ => stmts,
+    }
+}
+
 fn assigned_names(stmts: &[Stmt]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     fn walk(stmts: &[Stmt], out: &mut BTreeSet<String>) {
