@@ -956,6 +956,13 @@ enum Menu {
 /// The tree (`docs/07`, Q41): `robots`, `interrupts`, then the player's
 /// folders and files; a click opens; new file, new folder, rename and
 /// delete on the player's entries.
+/// How many `/` a path directly inside the folder `prefix` holds: `prefix`
+/// is `""` for the root or a folder's path with a trailing `/`, so `lib/`
+/// holds `lib/geo.py` and `lib/sub`, one `/` each.
+fn level_depth(prefix: &str) -> usize {
+    prefix.matches('/').count()
+}
+
 pub fn tree_panel(
     ui: &mut egui::Ui,
     state: &mut ViewState,
@@ -1029,11 +1036,7 @@ pub fn tree_panel(
         file_row: &mut dyn FnMut(&mut egui::Ui, &mut ViewState, &str, &mut Vec<Menu>),
         menus: &mut Vec<Menu>,
     ) {
-        let depth = if prefix.is_empty() {
-            0
-        } else {
-            prefix.matches('/').count() + 1
-        };
+        let depth = level_depth(prefix);
         let mut subfolders: Vec<&String> = folders
             .iter()
             .filter(|f| {
@@ -1299,6 +1302,20 @@ fn deployment_order_paths(mut paths: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_lists_the_paths_directly_inside_it() {
+        let inside = |prefix: &str, path: &str| {
+            path.starts_with(prefix) && path.matches('/').count() == level_depth(prefix)
+        };
+        assert!(inside("", "nav.py"));
+        assert!(inside("", "lib"));
+        assert!(!inside("", "lib/geo.py"));
+        assert!(inside("lib/", "lib/geo.py"));
+        assert!(inside("lib/", "lib/sub"));
+        assert!(!inside("lib/", "lib/sub/deep.py"));
+        assert!(inside("lib/sub/", "lib/sub/deep.py"));
+    }
 
     fn spans(text: &str) -> Vec<(String, egui::Color32)> {
         highlight(text, egui::FontId::monospace(12.0), None)
