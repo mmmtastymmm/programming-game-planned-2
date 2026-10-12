@@ -206,16 +206,17 @@ and forgets (Q15): what the player sees is the plan the sim reports,
 
 A tile carrying the player's team's plan shows it as a smaller,
 see-through version of its effect (Q50) — a square of the new color inset
-from the tile's edge, with any paint already there showing round it; the
-overlay's marker and label; a scaled-down translucent ghost of the
-building, a printer for a printer plan; a clear plan hatches the slot —
-and the armed tool shows the same ghost under the cursor, or over a
-`Shift`+drag's rectangle, on the tiles it can plan: paint and overlays go
-only on ground the team has seen (`03`, Q49), so a single mark elsewhere
-is refused with the reason and a stroke marks the rest and says how many
-it skipped. Only the player's team's plans are drawn, since plans are
-private (`03`), and the snapshot carries that team's plan values per tile
-for it: a read, in no hash.
+from the tile's edge, with any paint already there showing round it; a
+smaller overlay marker under its label (Q51); a scaled-down translucent
+ghost of the building, a printer for a printer plan; a clear plan hatches
+the slot — and the armed tool shows the same ghost under the cursor, or
+over a `Shift`+drag's rectangle, on the tiles it can plan and that do not
+already carry exactly that plan (Q51): paint and overlays go only on
+ground the team has seen (`03`, Q49), so a single mark elsewhere is
+refused with the reason and a stroke marks the rest and says how many it
+skipped. Only the player's team's plans are drawn, since plans are private
+(`03`), and the snapshot carries that team's plan values per tile for it:
+a read, in no hash.
 
 ## The match
 

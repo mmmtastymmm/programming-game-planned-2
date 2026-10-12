@@ -422,11 +422,19 @@ fn spawn_plans(
             }
             Plan::Clear => palette.hatch_mat.clone(),
         };
+        // A smaller version of the marker it plans (Q50); a plan to clear
+        // hatches the marker full size.
+        let scale = if matches!(plan, Plan::Set(_)) {
+            PLAN_SCALE
+        } else {
+            1.0
+        };
         spawn(
             palette.overlay_cube.clone(),
             mat,
             Transform::from_translation(frame.tile_xyz(p, top + 0.16))
-                .with_rotation(Quat::from_rotation_y(0.6)),
+                .with_rotation(Quat::from_rotation_y(0.6))
+                .with_scale(Vec3::splat(scale)),
         );
     }
     if let Some(plan) = &plans.building {
@@ -463,9 +471,26 @@ fn spawn_plans(
 /// unknown to the team (Q49).
 pub fn plannable_preview(state: &ViewState, driver: &Driver) -> Vec<TilePos> {
     let mut tiles = state.preview();
-    if let Tool::Mark(plan, _) = &state.tool {
-        tiles.retain(|p| driver.may_plan(*p, *plan).is_ok());
-    }
+    let (Tool::Mark(plan, _), Some(ghost)) = (&state.tool, crate::marks::ghost_of(&state.tool))
+    else {
+        return tiles;
+    };
+    let snap = driver.snapshot();
+    let held: HashMap<TilePos, &Plans> = snap
+        .teams
+        .iter()
+        .find(|t| t.id == driver.player)
+        .map(|t| t.plans.iter().map(|(p, x)| (*p, x)).collect())
+        .unwrap_or_default();
+    let wanted = crate::marks::slot(&ghost, *plan);
+    tiles.retain(|p| {
+        // A tile already carrying exactly this plan shows it: a second,
+        // identical ghost on top would fight it and blink.
+        let already = held
+            .get(p)
+            .is_some_and(|h| crate::marks::slot(h, *plan) == wanted);
+        !already && driver.may_plan(*p, *plan).is_ok()
+    });
     tiles
 }
 
