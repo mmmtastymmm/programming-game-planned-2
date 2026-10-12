@@ -37,7 +37,7 @@ The evaluator charges these as it walks the program.
 
 | Operation | Cost |
 |---|---|
-| a statement, each time it executes — a `while` header once per pass | `op.statement` |
+| a statement, each time it executes — a `while` header each time its condition is tested: once per pass, and once more for the test that ends the loop, so three passes charge it four times and a loop that never runs once | `op.statement` |
 | a name load | `op.name` |
 | a literal | `op.literal` |
 | a unary, binary, comparison or boolean operator, on any operands not priced below; `and`, `or`, `not`; the conditional `a if c else b`; `is` | `op.operator` |
