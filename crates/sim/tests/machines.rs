@@ -749,10 +749,13 @@ fn the_markable_values_are_exactly_what_validation_accepts() {
 #[test]
 fn the_snapshot_carries_each_teams_own_plans_and_no_one_elses() {
     let mut sim = sim();
+    // One tick first: paint and overlay go only on ground the team has
+    // seen (Q49), and its first sight lands in tick 1.
+    sim.step(&[]);
     let at = TilePos::new(0, 0);
     let mark = |team, plan, value: Option<&str>| {
         Command::new(
-            1,
+            2,
             TeamId(team),
             0,
             CommandKind::Mark {
@@ -893,4 +896,91 @@ fn a_bots_color_is_in_the_hash() {
     assert_ne!(red, before, "None and red");
     s.world.machines.get_mut(&id).unwrap().color = Some("blue".into());
     assert_ne!(s.state_hash(), red, "red and blue");
+}
+
+/// Q49: paint and overlay plans go only on ground the team has seen. A
+/// mark on rock, on water, or on a tile still unknown to the team is
+/// dropped on its tick — unknown checked first, so a refusal says nothing
+/// the team could not see — while a building plan may go anywhere.
+#[test]
+fn paint_and_overlay_plans_go_only_on_ground_the_team_has_seen() {
+    let mut s = sim();
+    run(&mut s, vec![], 2);
+    let team = TeamId(0);
+    let state = |s: &Sim, p: TilePos| {
+        let idx = s.world.tile_index(p).unwrap();
+        s.world.teams[&team].memory[idx].state
+    };
+    let ground = TilePos::new(-3, -1);
+    let rock = TilePos::new(-1, 2);
+    assert_ne!(
+        state(&s, ground),
+        TileState::Unknown,
+        "the start's ground is seen"
+    );
+    assert_ne!(state(&s, rock), TileState::Unknown, "the rock is in sight");
+    // A ground tile the team has not seen yet: behind the rock, or past
+    // its sight.
+    let far = s
+        .world
+        .map
+        .positions()
+        .into_iter()
+        .find(|p| {
+            state(&s, *p) == TileState::Unknown
+                && s.world.tile(*p).unwrap().terrain == sim::map::Terrain::Ground
+        })
+        .expect("some ground is still unknown to team 0");
+    for (p, plan) in [
+        (ground, PlanKind::Paint),
+        (rock, PlanKind::Paint),
+        (rock, PlanKind::Overlay),
+        (far, PlanKind::Paint),
+        (far, PlanKind::Overlay),
+        (far, PlanKind::Building),
+    ] {
+        assert!(
+            s.world.may_plan(team, p, plan).is_ok() == (p == ground || plan == PlanKind::Building),
+            "{p:?} {plan:?}"
+        );
+    }
+    assert!(
+        s.world
+            .may_plan(team, far, PlanKind::Paint)
+            .unwrap_err()
+            .contains("unknown"),
+        "an unknown tile is refused as unknown, whatever lies there"
+    );
+    let tick = s.world.tick + 1;
+    let mark = |seq, at, plan, value: &str| {
+        Command::new(
+            tick,
+            team,
+            seq,
+            CommandKind::Mark {
+                at,
+                plan,
+                value: Some(value.into()),
+            },
+        )
+    };
+    let report = s.step(&[
+        mark(0, ground, PlanKind::Paint, "red"),
+        mark(1, rock, PlanKind::Paint, "red"),
+        mark(2, rock, PlanKind::Overlay, "a"),
+        mark(3, far, PlanKind::Paint, "red"),
+        mark(4, far, PlanKind::Building, "depot"),
+    ]);
+    let plans = |p| s.world.plans(team, p).cloned().unwrap_or_default();
+    assert!(plans(ground).paint.is_some(), "ground in sight takes paint");
+    assert!(
+        plans(rock).paint.is_none() && plans(rock).overlay.is_none(),
+        "rock takes neither"
+    );
+    assert!(plans(far).paint.is_none(), "an unknown tile takes no paint");
+    assert!(
+        plans(far).building.is_some(),
+        "a building plan may go anywhere"
+    );
+    assert_eq!(report.dropped.len(), 3, "{:?}", report.dropped);
 }

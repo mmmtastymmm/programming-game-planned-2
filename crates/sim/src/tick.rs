@@ -198,6 +198,11 @@ impl Sim {
                 if !w.map.in_bounds(*at) {
                     return Err(());
                 }
+                // Paint and overlay plans only on ground the team has
+                // seen (Q49): a team's knowledge changes over the match,
+                // so this is checked on the tick the command applies, not
+                // at submission, and a mark that fails it is dropped.
+                w.may_plan(c.sender, *at, *plan).map_err(|_| ())?;
                 let p = match value {
                     Some(v) => Plan::Set(v.clone()),
                     None => Plan::Clear,

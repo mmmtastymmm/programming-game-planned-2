@@ -68,12 +68,14 @@ fn golden_replay() -> Replay {
             bundle: composed["bot"].clone(),
         },
     ));
-    // A paint plan and an overlay plan beside the start, for the marks path.
+    // A paint plan and an overlay plan beside the start, for the marks
+    // path: agreed for tick 2, since paint and overlay go only on ground
+    // the team has seen (Q49), and its first sight lands in tick 1.
     let start = map.teams[0][0];
     commands.push(Command::new(
-        0,
-        player,
         2,
+        player,
+        0,
         CommandKind::Mark {
             at: TilePos::new(start.x, start.y.saturating_add(1)),
             plan: PlanKind::Paint,
@@ -81,9 +83,9 @@ fn golden_replay() -> Replay {
         },
     ));
     commands.push(Command::new(
-        0,
+        2,
         player,
-        3,
+        1,
         CommandKind::Mark {
             at: TilePos::new(start.x.saturating_add(1), start.y),
             plan: PlanKind::Overlay,

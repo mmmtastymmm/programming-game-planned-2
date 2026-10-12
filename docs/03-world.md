@@ -16,6 +16,14 @@ grid of tiles that the colony remembers, and **Q22**, which made deposits
 terrain that regrows. Everything below is this doc's own, and none of it
 overrides those.
 
+- **Paint and overlays are planned only on ground the team has seen
+  (Q49).** A `Mark` of a paint or an overlay plan, a value or a clear,
+  applies only on a `ground` tile the sending team has seen — visible or
+  remembered — and is dropped on its tick otherwise: never on rock or
+  water, and never on a tile still unknown to the team, which is tested
+  first so that marking cannot scout. A building plan may go anywhere, and
+  an `Unmark` always applies.
+
 ## Tiles
 
 The world is a **rectangle of tiles**, `width` by `height`, both integral
@@ -39,7 +47,7 @@ Every tile holds exactly:
 | `deposit` | a `dict` of resource kind to amount, or `None`; on any passable tile the map puts one on |
 | `paint` | the tile's one paint, a color from `deployment.colors` in data or `None`; influences nothing |
 | `overlay` | the tile's one overlay, a label from `mark.overlays` in data or `None`; influences bots through the programs that read it |
-| `plans` | **per team**, three plans — paint, overlay, building — each `None` or a value (a color, a label, a model; or a plan to clear); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27), read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
+| `plans` | **per team**, three plans — paint, overlay, building — each `None` or a value (a color, a label, a model; or a plan to clear); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint and overlay only on ground the team has seen (Q49) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
 
 **Paint and overlay are the tile's, not a team's** (Q28): every team's bots

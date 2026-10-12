@@ -194,7 +194,9 @@ A **command** is:
   (`01`) — so
   the log holds only commands every peer would accept. A command that
   cannot apply *on its tick* — a `Mark` on a tile the sender has since lost
-  the right to, a `Resign` from a team already out — is dropped in
+  the right to, or a paint or overlay plan on a tile that is not ground
+  the sender has seen (Q49), a `Resign` from a team already out — is
+  dropped in
   `sim.step` and recorded nowhere.
 - **The log is append-only and complete**: every command every peer ever
   applied, in order — a scripted team's commands (`04`) among them, since
