@@ -310,6 +310,18 @@ pub struct Palette {
     pub site_cube: Handle<Mesh>,
     pub cover_quad: Handle<Mesh>,
     pub mark_quad: Handle<Mesh>,
+    /// Copies of `mark_quad` for the see-through layers drawn over paint:
+    /// a clear plan's hatch, and the hover and selection markers. Bevy
+    /// merges see-through meshes that share a mesh, a pipeline and the
+    /// bindless bind group into one draw whose instance order the GPU's
+    /// culling pass decides afresh each frame, so a layer sharing the
+    /// paint's mesh drew under it in some frames and over it in others.
+    /// A mesh of its own keeps each layer in a draw of its own, in the
+    /// order the distance sort gives. The hover and selection markers can
+    /// lie on one tile, so they get one each.
+    pub hatch_quad: Handle<Mesh>,
+    pub hover_quad: Handle<Mesh>,
+    pub select_quad: Handle<Mesh>,
     pub overlay_cube: Handle<Mesh>,
     pub ring: Handle<Mesh>,
     pub scribble_quad: Handle<Mesh>,
@@ -494,6 +506,9 @@ impl Palette {
             site_cube: meshes.add(Cuboid::from_size(2.0 * body_half(Model::Site))),
             cover_quad: meshes.add(Cuboid::new(1.0, 0.02, 1.0)),
             mark_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
+            hatch_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
+            hover_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
+            select_quad: meshes.add(Cuboid::new(0.9, 2.0 * MARK_HALF, 0.9)),
             overlay_cube: meshes.add(Cuboid::new(0.22, 0.22, 0.22)),
             ring: meshes.add(Annulus::new(0.36, 0.44)),
             scribble_quad: meshes.add(Rectangle::new(1.05, 0.85)),
