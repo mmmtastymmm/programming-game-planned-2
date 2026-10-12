@@ -64,11 +64,12 @@ Rulings this doc owns, moved here from the overview when it was written.
   commands the renderer submits and forgets. Headless — `sim` plus a driver
   with no Bevy — stays the build CI runs.
 - **A program is debugged on a fork, a private copy of the sim that never
-  feeds back into the match (Q53).** The live sim only reports breakpoint
-  hits, read-only; stepping, rewinding, editing a variable and what-if all
-  act on a fork. In PvP a fork never passes the live tick and never
-  diverges. The amendment to the paused driver is Q32's entry above. Forks,
-  below; the player's side is [07-interface](07-interface.md)'s.
+  feeds back into the match (Q53).** The match's sim gives the debugger
+  only Q15's three read-only channels above; stepping, rewinding, editing
+  a variable and what-if all act on a fork, and a replay plays on one (The
+  driver). In a live PvP match a fork never passes the live tick and never
+  diverges. The amendment to the paused driver is Q32's entry above.
+  Forks, below; the player's side is [07-interface](07-interface.md)'s.
 
 ## Crates
 
@@ -89,7 +90,7 @@ flowchart LR
 | `lang` | nothing | the interpreter [01-language](01-language.md) specifies: the loader, the evaluator, the interrupt machinery, `num` | none |
 | `sim` | `lang` | the world: tiles, machines, the tick loop, the state hash, the snapshot; the game builtins `02` names, which it registers with `lang` | none |
 | `net` | `sim`'s command types only | the command log as a data structure and its exchange between peers: stamping, the per-tick sets, the stall | none in anything it sends |
-| `render` | `sim`, `net`, `replay`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view, the debugger driving forks (Q53) — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
+| `render` | `sim`, `net`, `replay`, Bevy | the driver, the ECS built from snapshots, interpolation, input, the editor, the mark tools, the log view, the debugger driving forks and replays played on one (Q53) — what each shows is [07-interface](07-interface.md)'s | yes, and only here |
 | `replay` | `sim`, `net` | the headless driver: runs a `(map, command log)` to a hash stream; the replay's file format, the saver's team in it (Q53), which `render` writes when a match ends (Q36); building a fork from a replay; the golden fixtures; the determinism suite; the cross-architecture check | none |
 
 **The arrow that does not exist** is any edge into `sim` or `lang` from
@@ -153,15 +154,22 @@ loop:
   may do then — wait, or resign — is `render`'s UI and not a sim rule.
 - **Single-player** is the same loop with one peer, whose sets are its own
   and always in hand, so the delay is felt and the stall never fires.
-- **A replay's driver** (Q53) is the same loop with no peer, every set in
-  hand from its log, and three differences, since a replay is not a match
-  and has no one to agree with: its speed and pause are the viewer's, so
-  the `SetSpeed` commands in its log apply to the world as recorded and set
-  nothing, and a paused replay stays paused; it saves the replay's state
-  before tick 1 and every `debug_checkpoint_ticks` after, keeping the last
-  `debug_checkpoints_kept` and the first; and a seek **restores** a saved
-  state into its sim — the latest at or before the tick asked for — and
-  runs on to it, which only a replay's sim permits.
+- **A replay is played on a fork** (Q53, Forks), not by this loop: it is
+  not a match and has no one to agree with. `render` opens a fork from the
+  replay's `(map, command log)` — its **playback** — and steps it a tick at
+  a time at the viewer's pace, passing the team's watches as this loop
+  passes them, so it reports hits as `sim.step` does and stops at none. Its
+  speed and pause are the viewer's, so the `SetSpeed` commands in its log
+  apply to the world as recorded and set nothing, and a paused replay stays
+  paused. It takes no edit and no what-if, so it reproduces the recorded
+  match hash for hash, and the debugger forks from it as from a match
+  (`07`). It saves its state before tick 1, at every multiple of
+  `debug_checkpoint_ticks` and when a fork is opened from where it stands,
+  keeping the last `debug_checkpoints_kept`, the first, and any a fork or a
+  listed hit needs (`07`); they are its own, so a seek restores the latest
+  at or before the tick asked for and runs on to it, as a fork may. The
+  headless driver in `replay` still runs a replay through this loop, to its
+  hash stream.
 
 ## The tick
 
@@ -235,7 +243,9 @@ A **command** is:
   applied, in order — a scripted team's commands (`04`) among them, since
   they enter the log like any peer's. `(map, command log)` is a replay, and
   the log's bytes are hashed into the replay's identity as the map's are,
-  each length-prefixed as rule 7 hashes a bundle.
+  each length-prefixed as rule 7 hashes a bundle. A saved replay also
+  records the saver's team (Q53), for the debugger; it is outside the
+  identity, so two peers' files of one match are one replay.
 - **Encoding** on the wire and on disk is one canonical byte layout per
   kind, length-prefixed like the bundle hash (`01`), so that the log hashes
   identically everywhere. `net` owns the layout; it is spec once written and
@@ -303,14 +313,15 @@ A **fork** (Q53) is a private copy of the world, for debugging. It is the
 match's sim's code run on a copy: it starts from a **saved state** — the
 match's full world, execution state included, at the end of a tick, which
 the driver saves for the debugger — or, failing one, from `(map, command
-log)` re-run, and its state hash there equals the match's. It runs the
-tick loop of The tick unchanged. It is never a peer and never the match's
-sim: it sends nothing to any peer, and nothing it does reaches the match's
-world, log or hash. The rule that `sim.step` is the only entry point that
-changes the world, and the review rule on mutable references (Crates),
-are the match's sim's; a fork has the further entry points below. `sim`
-holds a fork's code, `render`'s debugger drives one, and `replay` builds
-one from a replay file.
+log)` re-run, and its state hash there equals the match's. On a replay, the
+playback (The driver) stands for the match throughout this section: its
+saved states, its log and its tick. It runs the tick loop of The tick
+unchanged. It is never a peer and never the match's sim: it sends nothing
+to any peer, and nothing it does reaches the match's world, log or hash.
+The rule that `sim.step` is the only entry point that changes the world,
+and the review rule on mutable references (Crates), are the match's sim's;
+a fork has the further entry points below. `sim` holds a fork's code,
+`render`'s debugger drives one, and `replay` builds one from a replay file.
 
 - **Positions.** A point in a tick is a **position**: `(tick, machine, n)`,
   the `n`-th boundary that machine's slice passes this tick — every
@@ -323,7 +334,9 @@ one from a replay file.
   the end of tick `T` sits after every position of `T` but `(T, end)`, and
   before that one. A fork stops only at positions and every hit names one;
   every entry in a fork's log is made at a slice position or a tick's end,
-  never at a damage position.
+  never at a damage position. A fork opened from a state saved at the end
+  of `T` stands at `(T, end)`, stopped with the cause *opened*; one opened
+  at a hit runs from its saved state to the hit's position.
 - **Statements.** Every statement **begins** each time it executes, when
   its statement operation (`01`'s `op.statement`) starts — `try`, `match`,
   `def`, `class` and `return` as much as an assignment or a call, a `def`
@@ -333,12 +346,13 @@ one from a replay file.
   it, a `for` again each time it binds an element after the first, an
   `except` each time it is tested, and a `case` each time its pattern is. A
   line holding only `else:` or `finally:`, and a continuation line, begin
-  nothing. The hit's position is the boundary just before the starting
-  operation, in the slice that runs it. Reaching that boundary and yielding
-  there, sitting at it in deficit, or being delivered an interrupt there
-  begins nothing, and returning from a call into the middle of a statement
-  begins nothing. A breakpoint on a line where nothing can begin moves to
-  the next line that can.
+  nothing, and nor does a docstring, which compiles to nothing (Q52). The
+  hit's position is the boundary just before the starting operation, in the
+  slice that runs it. Reaching that boundary and yielding there, sitting at
+  it in deficit, or being delivered an interrupt there begins nothing, and
+  returning from a call into the middle of a statement begins nothing. A
+  breakpoint on a line where nothing can begin moves to the next line that
+  can.
 - **Its commands.** For each tick it runs, a fork takes the commands the
   match's log (or the replay's) holds for it at that moment and records
   them, so a re-run of that tick applies the same ones. They apply in step
@@ -350,7 +364,9 @@ one from a replay file.
   are not final; **stale**, from a tick at which the match's log later
   gained a command other than `SetSpeed` that the fork did not take
   (`SetSpeed` changes no world); and **diverged**, once the fork's log has
-  an entry. A faithful fork reproduces the match hash for hash.
+  an entry. A faithful fork reproduces the match hash for hash. A replay's
+  log is complete, so a fork of one is never stale, and ahead only past
+  its last tick.
 - **Content hashes.** A file's **content hash** is FNV-1a 64-bit, the
   state hash's function, over the file's bytes as its bundle holds them —
   its UTF-8 text, byte-exact (CLAUDE.md rule 7) — with no name and no
@@ -366,8 +382,10 @@ one from a replay file.
   beginning with its position and a count of the rest; with several
   machines, each machine's first, in position order. It charges nothing
   and changes nothing, so a peer watching lines hashes as one that is not.
-  A fork takes watches the same way, and stops at every beginning, not
-  only the first.
+  A fork takes watches the same way; stepped by *line*, *over*,
+  *continue* or *run* (Steps) it stops at every beginning, not only the
+  first, and stepped by *tick* it reports them as `sim.step` does and stops
+  at none.
 - **Stopping.** A fork can stop at a position and resume from it; stopped
   mid-tick it has no state hash until the tick completes. For a machine it
   reports, computed from the fork's world at that position: each frame's
@@ -391,9 +409,9 @@ one from a replay file.
   end), and when its `death` runs — inside its slice, at that position, or
   in step 4, at `(tick, damage, machine)`. Every step but *run* stops after
   a number of ticks with no other stop, a limit the caller passes
-  (`07`'s `debug_step_max_ticks`); every step stops in PvP at the live
-  tick, and on any fork when its world's match ends (`04`), after which it
-  takes no step forward. Each stop is reported with its cause and
+  (`07`'s `debug_step_max_ticks`); every step stops in a live PvP match at
+  the live tick, and on any fork when its world's match ends (`04`), after
+  which it takes no step forward. Each stop is reported with its cause and
   position.
 - **Saved states and back.** A fork can save its state at the end of a
   tick and be restored to one. *Back* returns to the previous stop: the
@@ -416,8 +434,9 @@ one from a replay file.
   would be: the value's own sizes, and the machine's live values counted
   with the new value in place of the old. A value over a limit is refused,
   naming the limit. The edit enters the fork's log at that position, with
-  its frame or module.
-- **What-if**, on a fork paused at a slice position or a tick's end, puts
+  its frame or module. A stop at a death, in its slice or in step 4, takes
+  no edit, since the machine is being removed; a stop at `dying` takes one.
+- **What-if**, on a fork paused where an edit could be made, puts
   `Deploy`s in the fork's log, agreed for the fork's next tick and applied
   in its step 1 after the match's own commands for that tick, so a later
   deploy in the match's log to the same deployment replaces the tried
@@ -434,8 +453,8 @@ one from a replay file.
   commands, which are known in advance (`04`).
 - **Drawing a fork.** A fork gives the renderer a snapshot at any position:
   every machine as it stands there, and the team's tiles as of the fork's
-  last vision pass (step 8 of the previous tick), so fog is never fresher
-  than the match's would be.
+  last vision pass — step 8 of the previous tick, or of tick `T` itself at
+  `(T, end)` — so fog is never fresher than the match's would be.
 
 ## Testing
 

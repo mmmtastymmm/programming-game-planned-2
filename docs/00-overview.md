@@ -20,8 +20,9 @@ reopened by this corpus:
    CLAUDE.md's determinism rules, and it is expensive to reverse — a sim built
    without it does not become deterministic later.
 2. **`sim` is renderer-free plain Rust.** Whatever renders the game reads sim
-   state and never writes it. A debugger may run a private copy of the sim
-   (Q53); the copy is not the match, and nothing it does reaches it.
+   state and never writes it. A debugger may run a private copy of the sim,
+   and a replay plays on one (Q53); the copy is not the match, and nothing
+   it does reaches it.
 
 ```mermaid
 flowchart LR
@@ -40,8 +41,8 @@ The diagram is why the crate boundary is worth its inconvenience: the arrow from
 `render` back to `sim` does not exist, and any commit that draws one is the
 architecture violation to catch in review. The debugger (Q53) passes the match's
 sim breakpoint watches and reads its hit reports and saved states, none of which
-changes the world or its hash, and edits only private copies; that is not the
-arrow.
+changes the world or its hash, and edits only private copies, the kind a
+replay also plays on; that is not the arrow.
 
 Note the shape of the arrows that *do* reach the sim. Player edits and a remote
 peer's edits enter by the same road — the ordered command log — and neither
@@ -79,14 +80,18 @@ pass.
   which byte-exact program version a machine runs is part of the state hash.
 - **The language's rulings live in [01-language](01-language.md)** — Q5
   and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
-  interrupts), Q14 and Q19 (numbers) and Q41's hook sources are the Decided
-  entries of the parts that elaborate them, and they are not repeated here.
+  interrupts), Q14 and Q19 (numbers), Q41's hook sources and Q52 (free
+  docstrings) are the Decided entries of the parts that elaborate them, and
+  they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and
   Q21 (sensing and memory), Q9 (production), Q22 and Q23 (the economy,
   which `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
   (combat), Q30 (a printer's defence), Q42 (building printers, printing and
   the deployments) and Q43 (a bot's color) are its Decided entries, and
   they are not repeated here; Q31 and Q40, which Q42 withdrew, have none.
+- **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint and
+  overlays only on ground the team has seen) is its Decided entry, and it
+  is not repeated here; Q21 and Q22, which `03` cites, are `02`'s.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q53

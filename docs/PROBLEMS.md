@@ -70,8 +70,9 @@ that finishes whichever of them lands last.
 Q53 amended Q32 so a paused driver runs only to the next tick carrying a
 player's command, a scripted team's not counting. `render`'s driver still
 takes the next tick carrying any command, through `net`'s
-`next_tick_with_a_command`, and a scripted team's whole script enters the
-log when the driver is built (`04`). So a pause in PvE, a player's or a
+`next_tick_with_a_command`, and the driver puts a scripted team's whole
+script into the log when it is built, a script being a command log written
+in advance (`04`). So a pause in PvE, a player's or a
 debugger's, runs on without the clock to the script's next entry. It is
 latent today only because the Fool's script has nothing after tick 0. The
 work is [T29](TASKS.md).
