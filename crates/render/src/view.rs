@@ -186,13 +186,18 @@ pub fn setup(
             ents.covers.insert(*p, e);
         }
     }
-    for (marker, mat) in [
-        (true, palette.select_mat.clone()),
-        (false, palette.hover_mat.clone()),
+    for (marker, mesh, mat) in [
+        (
+            true,
+            palette.select_quad.clone(),
+            palette.select_mat.clone(),
+        ),
+        (false, palette.hover_quad.clone(), palette.hover_mat.clone()),
     ] {
         let mut e = commands.spawn((
             DespawnOnEnter(Screen::Start),
-            Mesh3d(palette.mark_quad.clone()),
+            // See-through over paint ([`Palette::hatch_quad`]).
+            Mesh3d(mesh),
             MeshMaterial3d(mat),
             Transform::from_xyz(0.0, 0.0, 0.0),
             Visibility::Hidden,
@@ -396,7 +401,7 @@ fn spawn_plans(
     if let Some(plan) = &plans.paint {
         // Clear of the paint's top by a margin depth can always resolve.
         let at = Transform::from_translation(frame.tile_xyz(p, surface + MARK_HALF + 0.025));
-        let (mat, t) = match plan {
+        let (mesh, mat, t) = match plan {
             // A smaller version of the paint it plans (Q50): the new color
             // in a square inset from the tile's edge, so any paint already
             // there shows round it rather than mixing with it.
@@ -407,13 +412,16 @@ fn spawn_plans(
                     .cloned()
                     .unwrap_or_else(|| palette.paint_mats["white"].clone());
                 (
+                    palette.mark_quad.clone(),
                     palette.solid(materials, &live),
                     at.with_scale(Vec3::new(PLAN_SCALE, 1.0, PLAN_SCALE)),
                 )
             }
-            Plan::Clear => (palette.hatch_mat.clone(), at),
+            // See-through over paint, so a mesh of its own
+            // ([`Palette::hatch_quad`]).
+            Plan::Clear => (palette.hatch_quad.clone(), palette.hatch_mat.clone(), at),
         };
-        spawn(palette.mark_quad.clone(), mat, t);
+        spawn(mesh, mat, t);
     }
     if let Some(plan) = &plans.overlay {
         let mat = match plan {
