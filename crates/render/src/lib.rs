@@ -32,6 +32,7 @@ pub mod camera;
 pub mod digits;
 pub mod driver;
 pub mod editor;
+pub mod hover;
 pub mod input;
 pub mod launch;
 pub mod layout;

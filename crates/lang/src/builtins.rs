@@ -207,7 +207,9 @@ pub fn method_entry(
     }
 }
 
-const BUILTINS: &[&str] = &[
+/// The language's builtin functions (`syntax.md`, Builtins): the whole
+/// list, which the editor's hover docs are checked against.
+pub const BUILTINS: &[&str] = &[
     "len",
     "range",
     "min",
