@@ -11,14 +11,14 @@ them).
 from sense import machines
 
 
-def rank():
+def rank() -> tuple[int, int]:
     """(this bot's place among the team's bots by id, how many there are)."""
     mine = me().id
     ids = sorted([m.id for m in machines("bot")])
     return (ids.index(mine), len(ids))
 
 
-def claim(items):
+def claim(items: list):
     """The item this bot should take: items[rank % len(items)], or None if
     items is empty.
 
@@ -32,7 +32,7 @@ def claim(items):
     return items[r[0] % len(items)]
 
 
-def mine(items):
+def mine(items: list) -> list:
     """Every item this bot should take: one in every n, n the number of
     bots."""
     r = rank()

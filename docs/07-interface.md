@@ -30,7 +30,7 @@ hash; a peer with a different renderer sees the same match.
 - **The starter tree carries a library (Q53).** `data/starter`, the
   default programs directory, holds `lib/` beside the fixed folders:
   ordinary player files, written in the game's language with a docstring
-  on every function — `geo` (positions, directions, distances), `sense`
+  and type annotations (`01`, Q56) on every function — `geo` (positions, directions, distances), `sense`
   (tiles, machines and ore the team knows of), `act` (actions that return
   `True` or `False` instead of raising), `nav` (`go_to` and `approach`,
   which search for a route when `move_to` is boxed in or pacing), `share`
