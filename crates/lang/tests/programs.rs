@@ -895,3 +895,67 @@ fn a_while_header_is_charged_each_time_its_condition_is_tested() {
     let skip = statements_before_wait("i = 0\nwhile i < 3:\n    i += 1\n    continue\nwait()\n");
     assert_eq!(skip - zero, 9, "three passes of header, body and continue");
 }
+
+// --------------------------------------------------------- annotations ---
+
+#[test]
+fn an_annotation_is_never_evaluated_and_costs_nothing() {
+    // Names that exist nowhere: an annotation is not checked or run.
+    let (_, log) = run("\
+def f(a: nothing_here, b: list[also_nothing] = []) -> nmu:
+    total: num = a + len(b)
+    return total
+
+class C:
+    n: num = 4
+    m: unknown
+
+x: str | None = 'ok'
+y: Machine
+log(f(2), C.n, x)
+");
+    assert_eq!(log, ["2 4 ok"]);
+
+    // A bare annotation is no statement at all; an annotated assignment
+    // costs exactly what the assignment does.
+    assert_eq!(
+        statements_before_wait("x: num\ny: list[str]\nwait()\n"),
+        statements_before_wait("wait()\n"),
+    );
+    assert_eq!(
+        statements_before_wait("x: num = 0\nwait()\n"),
+        statements_before_wait("x = 0\nwait()\n"),
+    );
+    let bare = "\
+def f(a, b):
+    return a
+n = 0
+while True:
+    n = f(n, 1) + 1
+";
+    let annotated = "\
+def f(a: num, b: num) -> num:
+    return a
+n: num = 0
+while True:
+    n = f(n, 1) + 1
+";
+    assert_eq!(progress(annotated), progress(bare));
+}
+
+#[test]
+fn a_bare_annotation_in_a_function_makes_the_name_local() {
+    // As in Python: `x: num` with no value still makes `x` local to the
+    // function, so reading it is an UnboundLocalError, not the global.
+    let (_, _, end, _) = run_to_end(
+        "\
+x = 1
+def f():
+    x: num
+    return x
+f()
+",
+    );
+    let e = end.expect_err("reading an annotated, unassigned local");
+    assert_eq!(e.class, ExcClass::UnboundLocalError);
+}

@@ -55,6 +55,9 @@ pub struct Editor {
     pub focus_rename: bool,
     /// Rows a window's text box shows.
     pub rows: usize,
+    /// Every file's outline, for what resting the pointer on a name shows
+    /// (Q57).
+    pub index: crate::hover::Index,
 }
 
 /// The fixed files a tree always holds (Q41), besides the robots.
@@ -181,6 +184,11 @@ impl Editor {
 
     /// Compose every bundle and load each the sim's way.
     pub fn recompose(&mut self) {
+        self.index.update(
+            self.files
+                .iter()
+                .map(|(p, d)| (p.as_str(), d.text.as_str())),
+        );
         let limits = Limits::parse(lang::data::LIMITS_TOML).expect("limits");
         match compose(&self.tree()) {
             Ok(bundles) => {
@@ -781,6 +789,40 @@ pub fn sync(driver: &DriverResource, state: &mut ViewState) {
     }
 }
 
+/// The char under a point in a laid-out text, or `None` if the point is
+/// past the end of a line or between rows: the cursor egui puts nearest
+/// the point, checked against the glyph on either side of it.
+fn char_under(galley: &egui::Galley, local: egui::Vec2) -> Option<usize> {
+    let c = galley.cursor_from_pos(local).index.0;
+    [c.checked_sub(1), Some(c)]
+        .into_iter()
+        .flatten()
+        .find(|&i| {
+            let a = galley.pos_from_cursor(egui::text::CCursor::new(i));
+            let b = galley.pos_from_cursor(egui::text::CCursor::new(i.saturating_add(1)));
+            a.min.y == b.min.y
+                && local.x >= a.min.x
+                && local.x < b.min.x
+                && local.y >= a.min.y
+                && local.y <= a.max.y
+        })
+}
+
+/// A hover's box: the signature highlighted as code, the docstring, and
+/// where the name is defined.
+fn hover_ui(ui: &mut egui::Ui, h: &crate::hover::Hover, font: egui::FontId) {
+    ui.set_max_width(560.0);
+    let mut job = highlight(&h.signature, font, None);
+    job.wrap.max_width = 560.0;
+    ui.label(job);
+    if let Some(doc) = &h.doc {
+        ui.separator();
+        ui.label(doc);
+    }
+    ui.separator();
+    ui.label(egui::RichText::new(h.origin.label()).small().weak());
+}
+
 /// One file's window (`docs/07`, Q41): the text, what it reaches and the
 /// state of each, the buttons, and the faults naming this file (Q34).
 pub fn window_body(
@@ -807,20 +849,29 @@ pub fn window_body(
         galley
     };
     let mut changed = false;
+    let hover_font = egui::TextStyle::Monospace.resolve(ui.style());
     if let Some(doc) = state.editor.files.get_mut(path) {
-        let response = egui::ScrollArea::vertical()
+        let output = egui::ScrollArea::vertical()
             .max_height((ui.available_height() - 150.0).max(80.0))
             .show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut doc.text)
-                        .code_editor()
-                        .desired_rows(rows)
-                        .desired_width(f32::INFINITY)
-                        .layouter(&mut layouter),
-                )
+                egui::TextEdit::multiline(&mut doc.text)
+                    .code_editor()
+                    .desired_rows(rows)
+                    .desired_width(f32::INFINITY)
+                    .layouter(&mut layouter)
+                    .show(ui)
             })
             .inner;
+        let response = output.response.response;
         changed = response.changed();
+        // Resting on a name shows its signature and docstring (Q57).
+        let hovered = response
+            .hover_pos()
+            .and_then(|pos| char_under(&output.galley, pos - output.galley_pos))
+            .and_then(|at| state.editor.index.hover(path, &doc.text, at));
+        if let Some(h) = hovered {
+            response.on_hover_ui_at_pointer(|ui| hover_ui(ui, &h, hover_font));
+        }
     }
     if changed {
         state.editor.recompose();

@@ -44,7 +44,17 @@ pub enum StmtKind {
     Def {
         name: String,
         params: Params,
+        /// The `-> T` annotation, if any (Q56): never evaluated.
+        returns: Option<Annotation>,
         body: Vec<Stmt>,
+    },
+    /// `target: T` or `target: T = value` (Q56). The annotation is never
+    /// evaluated; with a value it assigns as `target = value` does, and
+    /// without one it compiles to nothing.
+    AnnAssign {
+        target: Target,
+        annotation: Annotation,
+        value: Option<Expr>,
     },
     /// `class Name(Base):` — at most one base, named by an expression.
     Class {
@@ -153,6 +163,39 @@ pub struct Params {
     pub defaults: Vec<Option<Expr>>,
     pub star: Option<String>,
     pub dstar: Option<String>,
+    /// One per name, then `*args`'s and `**kwargs`'s: each parameter's
+    /// annotation, if any (Q56). Never evaluated; a `lambda` has none.
+    pub annotations: Vec<Option<Annotation>>,
+    pub star_annotation: Option<Annotation>,
+    pub dstar_annotation: Option<Annotation>,
+}
+
+/// A type annotation (Q56): a type expression the parser reads and the
+/// compiler drops. It exists for the editor, so it is kept as written.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Annotation {
+    pub line: u32,
+    pub ty: TypeExpr,
+}
+
+/// The type expressions an annotation may hold (`syntax.md`, Annotations).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeExpr {
+    /// `num`, `str`, a class, `Machine`: any name, known or not, since an
+    /// annotation is never checked at load.
+    Name(String),
+    /// `module.Name`: a class from an imported module.
+    Attr(String, String),
+    /// `None`.
+    None,
+    /// `list[T]`, `dict[K, V]`, `tuple[A, B]`: a name subscripted.
+    Generic(Box<TypeExpr>, Vec<TypeExpr>),
+    /// `...`, inside a subscript only: `tuple[num, ...]`.
+    Ellipsis,
+    /// `A | B | …`, two or more.
+    Union(Vec<TypeExpr>),
+    /// A string holding a type expression, as Python allows.
+    Str(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -284,7 +327,10 @@ pub enum ExprKind {
         gens: Vec<Comp>,
     },
     Lambda {
-        params: Params,
+        /// Boxed, so every expression node stays small: the parser recurses
+        /// once per bracket, and a node as large as a `Params` overflowed
+        /// the stack at the nesting limit.
+        params: Box<Params>,
         body: Box<Expr>,
     },
     FString(Vec<FPart>),

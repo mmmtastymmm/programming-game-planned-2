@@ -288,12 +288,18 @@ impl<'a> Parser<'a> {
                 let name = self.expect_name()?;
                 self.expect_op("(")?;
                 let params = self.params(")")?;
+                let returns = if self.eat_op("->") {
+                    Some(self.annotation()?)
+                } else {
+                    None
+                };
                 self.def_depth = self.def_depth.wrapping_add(1);
                 let body = self.block();
                 self.def_depth = self.def_depth.wrapping_sub(1);
                 Some(StmtKind::Def {
                     name,
                     params,
+                    returns,
                     body: body?,
                 })
             }
@@ -329,6 +335,7 @@ impl<'a> Parser<'a> {
                     match &st.kind {
                         StmtKind::Def { .. }
                         | StmtKind::Assign { .. }
+                        | StmtKind::AnnAssign { .. }
                         | StmtKind::AugAssign { .. }
                         | StmtKind::Pass
                         | StmtKind::Expr(_) => {}
@@ -486,6 +493,7 @@ impl<'a> Parser<'a> {
             }
             if self.eat_op("**") {
                 params.dstar = Some(self.expect_name()?);
+                params.dstar_annotation = self.param_annotation(close)?;
                 self.eat_op(",");
                 self.expect_op(close)?;
                 break;
@@ -495,11 +503,13 @@ impl<'a> Parser<'a> {
                     return Err(self.err("one `*args` per function"));
                 }
                 params.star = Some(self.expect_name()?);
+                params.star_annotation = self.param_annotation(close)?;
             } else {
                 let name = self.expect_name()?;
                 if params.names.contains(&name) {
                     return Err(self.err(format!("duplicate parameter `{name}`")));
                 }
+                let annotation = self.param_annotation(close)?;
                 let default = if self.eat_op("=") {
                     seen_default = true;
                     Some(self.expr()?)
@@ -516,6 +526,7 @@ impl<'a> Parser<'a> {
                 }
                 params.names.push(name);
                 params.defaults.push(default);
+                params.annotations.push(annotation);
             }
             if !self.eat_op(",") {
                 self.expect_op(close)?;
@@ -523,6 +534,82 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(params)
+    }
+
+    /// A parameter's `: T`, in a `def` only: a `lambda`'s parameter list
+    /// ends at its `:`, so it can have none, as in Python.
+    fn param_annotation(&mut self, close: &str) -> P<Option<Annotation>> {
+        if close == ")" && self.eat_op(":") {
+            Ok(Some(self.annotation()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // --------------------------------------------------- annotations ---
+
+    /// A type annotation (Q56, `syntax.md` Annotations): a name, a
+    /// `module.Name`, `None`, a string, a name subscripted with types, or
+    /// a union of these with `|`. Read and kept, never evaluated, and never
+    /// checked against the names in scope: that is the editor's.
+    fn annotation(&mut self) -> P<Annotation> {
+        let line = self.line();
+        let ty = self.type_union(false)?;
+        Ok(Annotation { line, ty })
+    }
+
+    fn type_union(&mut self, in_subscript: bool) -> P<TypeExpr> {
+        let first = self.type_atom(in_subscript)?;
+        if !self.at_op("|") {
+            return Ok(first);
+        }
+        let mut arms = vec![first];
+        while self.eat_op("|") {
+            arms.push(self.type_atom(false)?);
+        }
+        Ok(TypeExpr::Union(arms))
+    }
+
+    fn type_atom(&mut self, in_subscript: bool) -> P<TypeExpr> {
+        let base = match self.peek().clone() {
+            Tok::Name(n) => {
+                self.bump();
+                if self.eat_op(".") {
+                    TypeExpr::Attr(n, self.expect_name()?)
+                } else {
+                    TypeExpr::Name(n)
+                }
+            }
+            Tok::Keyword("None") => {
+                self.bump();
+                return Ok(TypeExpr::None);
+            }
+            Tok::Str(s) => {
+                self.bump();
+                return Ok(TypeExpr::Str(s));
+            }
+            Tok::Op("...") if in_subscript => {
+                self.bump();
+                return Ok(TypeExpr::Ellipsis);
+            }
+            _ => {
+                return Err(self.err(
+                    "an annotation is a type: a name, `None`, a string, `name[…]` or `A | B`",
+                ));
+            }
+        };
+        if !self.eat_op("[") {
+            return Ok(base);
+        }
+        let mut args = Vec::new();
+        loop {
+            args.push(self.type_union(true)?);
+            if !self.eat_op(",") || self.at_op("]") {
+                break;
+            }
+        }
+        self.expect_op("]")?;
+        Ok(TypeExpr::Generic(Box::new(base), args))
     }
 
     /// A module name: one identifier, never dotted.
@@ -838,7 +925,26 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 let first = self.expr_list()?;
-                if self.at_op("=") {
+                if self.eat_op(":") {
+                    let target = self.to_target(first)?;
+                    if matches!(target, Target::Tuple(..)) {
+                        return Err(self.err("an annotated assignment takes a single target"));
+                    }
+                    let annotation = self.annotation()?;
+                    let value = if self.eat_op("=") {
+                        Some(self.expr_list()?)
+                    } else {
+                        None
+                    };
+                    if self.at_op("=") {
+                        return Err(self.err("an annotated assignment takes a single target"));
+                    }
+                    StmtKind::AnnAssign {
+                        target,
+                        annotation,
+                        value,
+                    }
+                } else if self.at_op("=") {
                     let mut targets = vec![self.to_target(first)?];
                     let mut value;
                     loop {
@@ -1005,7 +1111,7 @@ impl<'a> Parser<'a> {
         Ok(Expr {
             line,
             kind: ExprKind::Lambda {
-                params,
+                params: Box::new(params),
                 body: Box::new(body),
             },
         })
@@ -1603,6 +1709,89 @@ mod tests {
         assert!(fails("f(x=1, 2)"));
         assert!(fails("x = f'{a{b}}'"));
         assert!(fails("try:\n    pass\n"));
+    }
+
+    #[test]
+    fn annotations_parse_in_python_s_three_places() {
+        let s = parse(
+            "def f(a: num, b: list[str] = [], *rest: num, **kw: dict[str, num]) -> tuple[num, ...]:\n    return a\n",
+        );
+        let StmtKind::Def {
+            params, returns, ..
+        } = &s[0].kind
+        else {
+            panic!()
+        };
+        let name = |n: &str| TypeExpr::Name(n.into());
+        let tys: Vec<Option<TypeExpr>> = params
+            .annotations
+            .iter()
+            .map(|a| a.as_ref().map(|a| a.ty.clone()))
+            .collect();
+        assert_eq!(
+            tys,
+            [
+                Some(name("num")),
+                Some(TypeExpr::Generic(Box::new(name("list")), vec![name("str")]))
+            ]
+        );
+        assert_eq!(params.defaults.len(), 2);
+        assert!(params.defaults[1].is_some());
+        assert_eq!(
+            params.star_annotation.as_ref().map(|a| &a.ty),
+            Some(&name("num"))
+        );
+        assert!(params.dstar_annotation.is_some());
+        assert_eq!(
+            returns.as_ref().map(|a| &a.ty),
+            Some(&TypeExpr::Generic(
+                Box::new(name("tuple")),
+                vec![name("num"), TypeExpr::Ellipsis]
+            ))
+        );
+
+        let s = parse("x: num | None = None\ny: Machine\nz: geo.Point\nw: 'Node' = n\n");
+        let anns: Vec<(&TypeExpr, bool)> = s
+            .iter()
+            .map(|st| match &st.kind {
+                StmtKind::AnnAssign {
+                    annotation, value, ..
+                } => (&annotation.ty, value.is_some()),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            anns,
+            [
+                (&TypeExpr::Union(vec![name("num"), TypeExpr::None]), true),
+                (&name("Machine"), false),
+                (&TypeExpr::Attr("geo".into(), "Point".into()), false),
+                (&TypeExpr::Str("Node".into()), true),
+            ]
+        );
+
+        // An attribute target in a method, and annotations in a class body.
+        parse(
+            "class C:\n    n: num = 0\n    m: str\n    def __init__(self, v: num) -> None:\n        self.v: num = v\n",
+        );
+        // A lambda's parameters take none: its `:` ends them.
+        assert!(matches!(
+            &parse("f = lambda x: x")[0].kind,
+            StmtKind::Assign { .. }
+        ));
+    }
+
+    #[test]
+    fn a_malformed_annotation_is_a_parse_error() {
+        assert!(fails("x: 1 + 2\n"));
+        assert!(fails("x: f(y)\n"));
+        assert!(fails("a, b: num = 1, 2\n"));
+        assert!(fails("x: num = y = 1\n"));
+        assert!(fails("x: ...\n"));
+        assert!(fails("x: list[]\n"));
+        assert!(fails("def f() -> :\n    pass\n"));
+        assert!(fails("def f(x:) :\n    pass\n"));
+        assert!(fails("x: num |\n"));
     }
 
     #[test]
