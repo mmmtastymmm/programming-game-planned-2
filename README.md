@@ -25,7 +25,8 @@ in `rust-toolchain.toml`.
 | Path | What |
 |---|---|
 | `docs/` | The design corpus, plus the four registers — questions, problems, tasks, inbox |
-| `crates/sim/` | Deterministic world simulation. Placeholder model, real determinism gate |
+| `crates/` | The five crates [docs/06-architecture.md](docs/06-architecture.md) draws: `lang` (the interpreter), `sim` (the deterministic world, plain Rust), `net` (the command log and its bytes), `replay` (the headless driver and the golden fixtures) and `render` (Bevy, and the one crate allowed a float) |
+| `data/` | Every tuning value, by subject, plus the maps, the opposition's scripts, the starter program tree and the editor's hover text |
 | `scripts/` | CI entry point, the eight checks (`check-*.mjs`) and the file-size gate |
 | `docs/history/` | Closed records: one file per answered question, fixed problem, completed task, triaged note |
 | `spikes/` | Standalone experiments answering a design question; not part of the build |

@@ -112,11 +112,12 @@ machine runs over and over; one that wants memory across runs writes a
 
 ## Metering
 
-Main flow does not run to completion inside a tick; it runs until it has spent
-the machine's **tick budget** and then yields, resuming from the same operation
-boundary next tick with every variable intact. This is the one resumption the
-language has (doorway invariant 3) and the one divergence a Python programmer
-has to learn rather than avoid.
+Main flow does not run to completion inside a tick; it runs until it has
+spent the machine's **tick budget** and then yields, resuming from the same
+operation boundary next tick with every variable intact — or, for a bot
+left unpowered (`docs/02`, Power, Q59), on the first tick its team powers
+it again. This is the one resumption the language has (doorway invariant 3)
+and the one divergence a Python programmer has to learn rather than avoid.
 
 - **An operation** is one evaluated expression node or one executed statement:
   every name, literal, call, subscript, attribute and operator, and the
@@ -137,20 +138,24 @@ has to learn rather than avoid.
   completes, interrupts delivering at the boundaries inside the wait as
   anywhere. Main flow restarts at most once per tick: a `main.py` with no
   operations reaches its end boundary, restarts, and yields.
-- **The tick budget** is a per-machine tuning constant. Each tick, every machine runs
-  its slice in turn until its budget is spent or it yields at a restart. The
-  order of slices is the tick loop's, which `docs/06` will own; this doc
-  assumes ascending entity id and nothing here depends on more than the order
-  being fixed. Unspent budget does not carry over; **overspend does**, and
-  this is the one statement of the rule: an operation that completes past the
-  budget leaves a deficit, each following tick's budget is reduced by what
-  remains of it until it is paid, and nothing clears it — not a `fault`, not
-  a `redeploy` — so a large traversal costs its full price however the ticks
-  fall. A slice whose budget opens at or below zero still opens with its
-  boundary, so interrupts are delivered to a machine in deficit; only operations
-  wait. Inside a hook the same cost is debited in full from the hook budget as
-  well, and at a boundary inside a hook the hook budget is checked before the
-  tick budget, so exhaustion escalates before a yield could hide it.
+- **The tick budget** is a per-machine tuning constant. Each tick, every
+  machine runs its slice in turn until its budget is spent or it yields at
+  a restart. The order of slices is the tick loop's, which `docs/06` will
+  own; this doc assumes ascending entity id and nothing here depends on
+  more than the order being fixed. Unspent budget does not carry over;
+  **overspend does**, and this is the one statement of the rule: an
+  operation that completes past the budget leaves a deficit, each following
+  tick's budget is reduced by what remains of it until it is paid, and
+  nothing clears it — not a `fault`, not a `redeploy` — so a large
+  traversal costs its full price however the ticks fall. A slice whose
+  budget opens at or below zero still opens with its boundary, so
+  interrupts are delivered to a machine in deficit; only operations wait. A
+  bot left unpowered (`docs/02`, Power, Q59) opens its slice and its budget
+  the same way, so a dark tick pays down a deficit as any tick does; its
+  main flow does not run on it, and a hook does. Inside a hook the same
+  cost is debited in full from the hook budget as well, and at a boundary
+  inside a hook the hook budget is checked before the tick budget, so
+  exhaustion escalates before a yield could hide it.
 - **Yielding is invisible to the program.** No variable changes, no
   exception is raised; the next tick continues. (On a debugging fork a
   player may set a variable while the machine is stopped — doorway
