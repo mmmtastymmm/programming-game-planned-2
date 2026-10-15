@@ -234,8 +234,9 @@ The two meet only through `Deploy`.
   was already open — scrolls the line into view, briefly lights it, and
   puts the cursor at its start. A builtin's box has no link: its text is
   in `docs.toml`, not in the tree.
-- Highlighting, completion and the editor's keys are the build's choices
-  and not rules; they change nothing a peer sees.
+- Highlighting, line numbers, the cursor's line and column, completion
+  and the editor's keys are the build's choices and not rules; they
+  change nothing a peer sees.
 
 ## Faults
 
