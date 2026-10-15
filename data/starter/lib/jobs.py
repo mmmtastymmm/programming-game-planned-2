@@ -22,17 +22,17 @@ from act import try_paint, try_unpaint, try_overlay, try_unoverlay
 from nav import approach, go_to
 
 # Ore a bot carries at most (data/machines.toml).
-CAPACITY = 10
+CAPACITY: int = 10
 # How far inside the seen edge the patrol loop runs.
-INSET = 2
+INSET: int = 2
 # Steps a patrol leg may take before the bot gives up on that corner.
-LEG_STEPS = 40
+LEG_STEPS: int = 40
 
 
 # Building
 
 
-def build_step():
+def build_step() -> bool:
     """One step of building; False when there is nothing it can do.
 
     Takes down a building under a plan to clear it first. Otherwise fetches
@@ -74,7 +74,7 @@ def build_step():
 # Painting
 
 
-def mark_jobs():
+def mark_jobs() -> list[tuple[int, int, str, str | None]]:
     """Every paint and overlay plan there is something to do about, as
     (x, y, slot, value) tuples, slot "paint" or "overlay"."""
     jobs = []
@@ -90,7 +90,7 @@ def mark_jobs():
     return jobs
 
 
-def do_mark(job):
+def do_mark(job: tuple[int, int, str, str | None]) -> bool:
     """Carry out one mark job on its adjacent tile; True if it started."""
     x, y, slot, value = job
     if slot == "paint":
@@ -98,7 +98,7 @@ def do_mark(job):
     return try_unoverlay(x, y) if value is None else try_overlay(x, y)
 
 
-def mark_step():
+def mark_step() -> bool:
     """One step of painting; False when there is nothing to paint."""
     jobs = mark_jobs()
     target = nearest([(j[0], j[1]) for j in jobs])
@@ -116,7 +116,7 @@ def mark_step():
 # Patrolling
 
 
-def corners():
+def corners() -> list[tuple[int, int]]:
     """The patrol loop: the corners of the seen part of the map, inset."""
     seen = seen_tiles()
     x0 = min([t.x for t in seen])
@@ -132,7 +132,7 @@ def corners():
     return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
 
 
-def patrol_step(leg, steps):
+def patrol_step(leg: int, steps: int) -> tuple[int, int]:
     """One step round the loop, which uncovers the map as it goes.
 
     leg is the corner (0 to 3) being walked to and steps how many steps
