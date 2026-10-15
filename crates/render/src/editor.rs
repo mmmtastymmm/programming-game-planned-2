@@ -878,6 +878,55 @@ fn hover_ui(
     }
 }
 
+/// The 1-based line and column of char `at`.
+pub fn line_col(text: &str, at: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for c in text.chars().take(at) {
+        if c == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+/// Each line's number in the gutter ending at `right`, level with the
+/// line's first row; a line wrapped onto more rows numbers only the first.
+/// The cursor's line is drawn brighter.
+fn line_numbers(
+    ui: &egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    right: f32,
+    font: egui::FontId,
+    current: Option<usize>,
+) {
+    let clip = ui.clip_rect();
+    let weak = ui.visuals().weak_text_color();
+    let strong = ui.visuals().strong_text_color();
+    let mut line = 1;
+    let mut starts = true;
+    for row in &output.galley.rows {
+        if starts {
+            let r = row.rect().translate(output.galley_pos.to_vec2());
+            if r.bottom() >= clip.top() && r.top() <= clip.bottom() {
+                let color = if current == Some(line) { strong } else { weak };
+                ui.painter().text(
+                    egui::pos2(right, r.top()),
+                    egui::Align2::RIGHT_TOP,
+                    line.to_string(),
+                    font.clone(),
+                    color,
+                );
+            }
+            line += 1;
+        }
+        starts = row.ends_with_newline;
+    }
+}
+
 /// The screen rect of 1-based `line`'s first row, across the text box.
 fn line_rect(
     galley: &egui::Galley,
@@ -1001,6 +1050,7 @@ pub fn window_body(
     let mut changed = false;
     let hover_font = egui::TextStyle::Monospace.resolve(ui.style());
     let now = ui.input(|i| i.time);
+    let mut cursor_at = None;
     let reveal = state
         .editor
         .reveal
@@ -1008,35 +1058,57 @@ pub fn window_body(
         .filter(|r| r.path == path)
         .map(|r| (r.line, r.since));
     if let Some(doc) = state.editor.files.get_mut(path) {
+        // The gutter fits the last line's number, and never fewer than two
+        // digits, so it does not widen at line 10.
+        let lines = doc.text.split('\n').count();
+        let digits = lines.to_string().len().max(2);
+        let digit_w = ui.fonts_mut(|f| f.glyph_width(&hover_font, '0'));
+        let gutter_w = digit_w * digits as f32 + 4.0;
+        let gutter_font = hover_font.clone();
         let mut output = egui::ScrollArea::vertical()
             .max_height((ui.available_height() - 150.0).max(80.0))
             .show(ui, |ui| {
-                let output = egui::TextEdit::multiline(&mut doc.text)
-                    .code_editor()
-                    .desired_rows(rows)
-                    .desired_width(f32::INFINITY)
-                    .layouter(&mut layouter)
-                    .show(ui);
-                // A definition gone to (Q58): scrolled into view once, then
-                // lit, fading.
-                if let Some((line, since)) = reveal {
-                    let across = output.response.response.rect;
-                    let rect =
-                        line_rect(&output.galley, output.galley_pos, across, &doc.text, line);
-                    if since.is_none() {
-                        ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                ui.horizontal_top(|ui| {
+                    let gutter = ui.allocate_space(egui::vec2(gutter_w, 0.0)).1;
+                    let output = egui::TextEdit::multiline(&mut doc.text)
+                        .code_editor()
+                        .desired_rows(rows)
+                        .desired_width(f32::INFINITY)
+                        .layouter(&mut layouter)
+                        .show(ui);
+                    let current = output
+                        .state
+                        .cursor
+                        .char_range()
+                        .map(|r| line_col(&doc.text, r.primary.index.0).0);
+                    line_numbers(ui, &output, gutter.right(), gutter_font, current);
+                    // A definition gone to (Q58): scrolled into view once, then
+                    // lit, fading.
+                    if let Some((line, since)) = reveal {
+                        let across = output.response.response.rect;
+                        let rect =
+                            line_rect(&output.galley, output.galley_pos, across, &doc.text, line);
+                        if since.is_none() {
+                            ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                        }
+                        let left = 1.0 - since.map_or(0.0, |s| (now - s) / FLASH_SECS);
+                        if left > 0.0 {
+                            let alpha = (left.min(1.0) * 70.0) as u8;
+                            let lit = egui::Color32::from_rgba_unmultiplied(255, 214, 90, alpha);
+                            ui.painter().rect_filled(rect, 2.0, lit);
+                            ui.ctx().request_repaint();
+                        }
                     }
-                    let left = 1.0 - since.map_or(0.0, |s| (now - s) / FLASH_SECS);
-                    if left > 0.0 {
-                        let alpha = (left.min(1.0) * 70.0) as u8;
-                        let lit = egui::Color32::from_rgba_unmultiplied(255, 214, 90, alpha);
-                        ui.painter().rect_filled(rect, 2.0, lit);
-                        ui.ctx().request_repaint();
-                    }
-                }
-                output
+                    output
+                })
+                .inner
             })
             .inner;
+        // Where the cursor is, for the window's foot.
+        cursor_at = output.state.cursor.char_range().map(|r| {
+            let (line, col) = line_col(&doc.text, r.primary.index.0);
+            (line, col, r.primary.index.0.abs_diff(r.secondary.index.0))
+        });
         let response = output.response.response.clone();
         changed = response.changed();
         if let Some((line, since)) = reveal {
@@ -1156,6 +1228,16 @@ pub fn window_body(
         }
         if ui.button("export").clicked() {
             export_now = true;
+        }
+        if let Some((line, col, selected)) = cursor_at {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let picked = if selected > 0 {
+                    format!(" ({selected} selected)")
+                } else {
+                    String::new()
+                };
+                ui.small(format!("Ln {line}, Col {col}{picked}"));
+            });
         }
     });
     if deploy_now {
@@ -1607,6 +1689,16 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn line_and_column_count_from_one() {
+        let text = "ab\nc\n\ndé";
+        assert_eq!(line_col(text, 0), (1, 1));
+        assert_eq!(line_col(text, 2), (1, 3)); // before the newline
+        assert_eq!(line_col(text, 3), (2, 1));
+        assert_eq!(line_col(text, 6), (4, 1)); // after the empty line
+        assert_eq!(line_col(text, 8), (4, 3)); // chars, not bytes
     }
 
     #[test]
