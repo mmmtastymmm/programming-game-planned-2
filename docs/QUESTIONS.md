@@ -51,9 +51,10 @@ Q50 and is `07`'s. Q55, debugging on a fork with what-if, was opened and
 answered in one commit, amends Q15, Q32, Q36, Q39 and Q41, and is `07`'s
 and `06`'s. Q56, type annotations that do nothing at run time, amends Q13
 and is [01-language](01-language.md)'s syntax part; Q57, a name's
-signature and docstring on hover, is `07`'s. Q59, power from printers and
-solar panels wired to a printer, with the newest bots stopping when a team
-is short, was opened and answered in one commit, amends Q10, Q27, Q37, Q42
+signature and docstring on hover, is `07`'s; Q58, going from a hover to the
+definition, amends Q57 and is `07`'s. Q59, power from printers and solar
+panels wired to a printer, with the newest bots stopping when a team is
+short, was opened and answered in one commit, amends Q10, Q27, Q37, Q42
 and Q49, and is `02`'s, `03`'s, `05`'s and `07`'s. The rulings of Q7, Q9,
 Q21, Q22, Q23, Q24, Q25, Q30, Q42, Q43 and Q59 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and

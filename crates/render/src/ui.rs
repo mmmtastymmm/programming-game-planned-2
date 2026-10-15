@@ -165,6 +165,27 @@ pub fn panels(
         }
         to_open.extend(FIXED_WINDOWS.iter().map(|s| s.to_string()));
     }
+    // A definition gone to from a hover box (Q58): its file's window
+    // opens, expanded and in front, and shows the line.
+    if let Some((path, line)) = state.editor.goto.take()
+        && state.editor.files.contains_key(&path)
+    {
+        let id = egui::Id::new(("window", &path));
+        let mut fold = egui::collapsing_header::CollapsingState::load_with_default_open(
+            &ctx,
+            id.with("collapsing"),
+            true,
+        );
+        fold.set_open(true);
+        fold.store(&ctx);
+        ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, id));
+        state.editor.reveal = Some(editor::Reveal {
+            path: path.clone(),
+            line,
+            since: None,
+        });
+        to_open.push(path);
+    }
     // A file clicked in the tree opens; a fixed window's label toggles.
     let screen = root.available_rect_before_wrap();
     let count = state.layout.windows.len();

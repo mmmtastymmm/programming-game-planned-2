@@ -501,12 +501,9 @@ fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-/// The dotted name ending at the identifier under char `at`: hovering
-/// `go_to` in `nav.go_to(p)` gives `["nav", "go_to"]`, and hovering `nav`
-/// gives `["nav"]`. `None` off an identifier, and for an attribute of
-/// anything but a plain name (`me().pos`), which only a type could
-/// resolve.
-fn chain_at(text: &str, at: usize) -> Option<Vec<String>> {
+/// The chars of the identifier under char `at`, which a hover box sits
+/// under; `None` off an identifier.
+pub fn word_at(text: &str, at: usize) -> Option<std::ops::Range<usize>> {
     let chars: Vec<char> = text.chars().collect();
     if !chars.get(at).copied().is_some_and(is_ident) {
         return None;
@@ -524,6 +521,17 @@ fn chain_at(text: &str, at: usize) -> Option<Vec<String>> {
     while chars.get(end).copied().is_some_and(is_ident) {
         end = end.saturating_add(1);
     }
+    Some(start..end)
+}
+
+/// The dotted name ending at the identifier under char `at`: hovering
+/// `go_to` in `nav.go_to(p)` gives `["nav", "go_to"]`, and hovering `nav`
+/// gives `["nav"]`. `None` off an identifier, and for an attribute of
+/// anything but a plain name (`me().pos`), which only a type could
+/// resolve.
+fn chain_at(text: &str, at: usize) -> Option<Vec<String>> {
+    let std::ops::Range { start, end } = word_at(text, at)?;
+    let chars: Vec<char> = text.chars().collect();
     if chars.get(start).is_some_and(|c| c.is_ascii_digit()) {
         return None;
     }
@@ -614,6 +622,18 @@ mod tests {
             h.doc.as_deref(),
             Some("Getting a bot from here to there.\n\nMore below.")
         );
+    }
+
+    #[test]
+    fn a_word_is_the_identifier_under_the_char() {
+        let text = "x = nav.go_to(p2)";
+        let w = |at| word_at(text, at);
+        assert_eq!(w(8), Some(8..13)); // in `go_to`
+        assert_eq!(w(12), Some(8..13)); // its last char
+        assert_eq!(w(4), Some(4..7)); // `nav`
+        assert_eq!(w(7), None); // the dot
+        assert_eq!(w(15), Some(14..16)); // `p2`
+        assert_eq!(w(17), None); // past the end
     }
 
     #[test]
