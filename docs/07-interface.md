@@ -138,6 +138,12 @@ hash; a peer with a different renderer sees the same match.
   the tree carries a link in its box, and a command-click on the name
   does the same: the file's window opens in front and shows the line.
   Programs and the editor, below.
+- **What the types say cannot fit is underlined (Q61).** The editor reads
+  the annotations (`01`, Q56) and the builtins' signatures and underlines
+  in red only what is certainly wrong — a call with the wrong arguments,
+  a value its annotation rules out, an operator the language lacks, an
+  annotation naming no type — and the box says why. It never stops a
+  deploy. Programs and the editor, below.
 
 ## The screen
 
@@ -235,6 +241,31 @@ The two meet only through `Deploy`.
   was already open — scrolls the line into view, briefly lights it, and
   puts the cursor at its start. A builtin's box has no link: its text is
   in `docs.toml`, not in the tree.
+- **Type underlines** (Q61). The editor checks every file of the tree
+  that parses against the annotations it and the files it imports carry
+  (`01`, Q56) and the signatures in `docs.toml`, and underlines in red,
+  with the reason in the hover box above anything else the box shows:
+  - a call to a `def`, a class or a method with too many or too few
+    arguments, a keyword with no parameter, or one given twice; and a
+    game builtin's call with the wrong number of arguments or any
+    keyword, which the host refuses (`see`, `hear` and `me` ignore
+    extra arguments, so those pass);
+  - an argument, a returned value, an annotated name's value or a
+    parameter's default that its annotation rules out;
+  - an operator or comparison the language has for none of the types
+    either side may hold, such as `"a" + 1` or `None < 2`;
+  - an annotation naming something that is no type, with the spelling
+    the language uses where Python's `typing` would have supplied one
+    (`Optional[int]` is `int | None`).
+
+  It underlines only what is certain. A value's type is known from a
+  literal, an annotation, a call to an annotated `def` or a builtin, an
+  operator on known types, or every assignment to an unannotated name
+  joined; anything else, an attribute such as `me().pos` included, is
+  unknown and fits everything. A union fits if any member does, a `num`
+  may be an `int`, and a `bool` is a `num`. The check reads only the
+  tree, changes nothing a peer sees, and never stops a deploy: a program
+  it underlines runs as it would have.
 - Highlighting, line numbers, the cursor's line and column, completion
   and the editor's keys are the build's choices and not rules; they
   change nothing a peer sees.

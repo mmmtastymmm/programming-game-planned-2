@@ -54,14 +54,17 @@ pub fn parse_file_bounded(file: &str, src: &str, nesting: u32) -> P<Vec<Stmt>> {
     Ok(stmts)
 }
 
-/// Parse a single expression (an f-string's `{…}` segment).
-fn parse_expr_src(file: &str, line: u32, src: &str) -> P<Expr> {
+/// Parse a single expression (an f-string's `{…}` segment). Its tokens
+/// take the line and the span of the whole f-string.
+fn parse_expr_src(file: &str, line: u32, span: Span, src: &str) -> P<Expr> {
     let toks = Lexer::new(file, src).tokenize()?;
     let toks: Vec<Token> = toks
         .into_iter()
         .filter(|t| !matches!(t.tok, Tok::Newline | Tok::Indent | Tok::Dedent))
         .map(|mut t| {
             t.line = line;
+            t.start = span.start;
+            t.end = span.end;
             t
         })
         .collect();
@@ -94,6 +97,24 @@ impl<'a> Parser<'a> {
 
     fn line(&self) -> u32 {
         self.toks.get(self.pos).map(|t| t.line).unwrap_or(0)
+    }
+
+    /// Where the next token begins.
+    fn start(&self) -> u32 {
+        self.toks.get(self.pos).map_or(0, |t| t.start)
+    }
+
+    /// From `start` to the end of the last token read.
+    fn since(&self, start: u32) -> Span {
+        let end = self
+            .pos
+            .checked_sub(1)
+            .and_then(|i| self.toks.get(i))
+            .map_or(start, |t| t.end);
+        Span {
+            start,
+            end: end.max(start),
+        }
     }
 
     fn peek(&self) -> &Tok {
@@ -554,8 +575,13 @@ impl<'a> Parser<'a> {
     /// checked against the names in scope: that is the editor's.
     fn annotation(&mut self) -> P<Annotation> {
         let line = self.line();
+        let start = self.start();
         let ty = self.type_union(false)?;
-        Ok(Annotation { line, ty })
+        Ok(Annotation {
+            line,
+            span: self.since(start),
+            ty,
+        })
     }
 
     fn type_union(&mut self, in_subscript: bool) -> P<TypeExpr> {
@@ -710,6 +736,7 @@ impl<'a> Parser<'a> {
 
     fn literal_pattern(&mut self) -> P<Option<Expr>> {
         let line = self.line();
+        let start = self.start();
         let kind = match self.peek().clone() {
             Tok::Num(n) => {
                 self.bump();
@@ -747,7 +774,11 @@ impl<'a> Parser<'a> {
             }
             _ => return Ok(None),
         };
-        Ok(Some(Expr { kind, line }))
+        Ok(Some(Expr {
+            kind,
+            line,
+            span: self.since(start),
+        }))
     }
 
     fn closed_pattern(&mut self) -> P<Pattern> {
@@ -755,6 +786,7 @@ impl<'a> Parser<'a> {
             return Ok(Pattern::Literal(lit));
         }
         let line = self.line();
+        let start = self.start();
         match self.peek().clone() {
             Tok::Name(n) if n == "_" => {
                 self.bump();
@@ -762,6 +794,7 @@ impl<'a> Parser<'a> {
             }
             Tok::Name(n) => {
                 self.bump();
+                let name_span = self.since(start);
                 if self.eat_op("(") {
                     let mut kwargs = Vec::new();
                     while !self.at(&Tok::Op(")")) {
@@ -790,6 +823,7 @@ impl<'a> Parser<'a> {
                         class: Expr {
                             kind: ExprKind::Name(n),
                             line,
+                            span: name_span,
                         },
                         kwargs,
                     });
@@ -1032,8 +1066,10 @@ impl<'a> Parser<'a> {
             }
             items.push(self.expr_or_star()?);
         }
+        let span = self.since(items.first().map_or(0, |e| e.span.start));
         Ok(Expr {
             line,
+            span,
             kind: ExprKind::Tuple(items),
         })
     }
@@ -1053,8 +1089,10 @@ impl<'a> Parser<'a> {
             }
             items.push(self.star_or(Self::bit_or)?);
         }
+        let span = self.since(items.first().map_or(0, |e| e.span.start));
         Ok(Expr {
             line,
+            span,
             kind: ExprKind::Tuple(items),
         })
     }
@@ -1071,10 +1109,12 @@ impl<'a> Parser<'a> {
 
     fn star_or(&mut self, inner: fn(&mut Self) -> P<Expr>) -> P<Expr> {
         let line = self.line();
+        let start = self.start();
         if self.eat_op("*") {
             let e = inner(self)?;
             return Ok(Expr {
                 line,
+                span: self.since(start),
                 kind: ExprKind::Starred(Box::new(e)),
             });
         }
@@ -1093,6 +1133,7 @@ impl<'a> Parser<'a> {
             let orelse = self.expr()?;
             return Ok(Expr {
                 line,
+                span: self.since(then.span.start),
                 kind: ExprKind::IfExp {
                     cond: Box::new(cond),
                     then: Box::new(then),
@@ -1105,11 +1146,13 @@ impl<'a> Parser<'a> {
 
     fn lambda(&mut self) -> P<Expr> {
         let line = self.line();
+        let start = self.start();
         self.expect_kw("lambda")?;
         let params = self.params(":")?;
         let body = self.expr()?;
         Ok(Expr {
             line,
+            span: self.since(start),
             kind: ExprKind::Lambda {
                 params: Box::new(params),
                 body: Box::new(body),
@@ -1125,6 +1168,7 @@ impl<'a> Parser<'a> {
             let right = self.and_test()?;
             left = Expr {
                 line,
+                span: self.since(left.span.start),
                 kind: ExprKind::BoolOp {
                     is_and: false,
                     left: Box::new(left),
@@ -1143,6 +1187,7 @@ impl<'a> Parser<'a> {
             let right = self.not_test()?;
             left = Expr {
                 line,
+                span: self.since(left.span.start),
                 kind: ExprKind::BoolOp {
                     is_and: true,
                     left: Box::new(left),
@@ -1155,10 +1200,12 @@ impl<'a> Parser<'a> {
 
     fn not_test(&mut self) -> P<Expr> {
         let line = self.line();
+        let start = self.start();
         if self.eat_kw("not") {
             let e = self.not_test()?;
             return Ok(Expr {
                 line,
+                span: self.since(start),
                 kind: ExprKind::UnaryOp(UnaryOp::Not, Box::new(e)),
             });
         }
@@ -1204,6 +1251,7 @@ impl<'a> Parser<'a> {
         }
         Ok(Expr {
             line,
+            span: self.since(first.span.start),
             kind: ExprKind::Compare {
                 first: Box::new(first),
                 rest,
@@ -1280,6 +1328,7 @@ impl<'a> Parser<'a> {
 
     fn factor(&mut self) -> P<Expr> {
         let line = self.line();
+        let start = self.start();
         let op = match self.peek() {
             Tok::Op("-") => Some(UnaryOp::Neg),
             Tok::Op("+") => Some(UnaryOp::Pos),
@@ -1290,6 +1339,7 @@ impl<'a> Parser<'a> {
             let e = self.factor()?;
             return Ok(Expr {
                 line,
+                span: self.since(start),
                 kind: ExprKind::UnaryOp(op, Box::new(e)),
             });
         }
@@ -1315,6 +1365,7 @@ impl<'a> Parser<'a> {
                 let args = self.call_args()?;
                 e = Expr {
                     line,
+                    span: self.since(e.span.start),
                     kind: ExprKind::Call {
                         func: Box::new(e),
                         args,
@@ -1325,12 +1376,14 @@ impl<'a> Parser<'a> {
                 self.expect_op("]")?;
                 e = Expr {
                     line,
+                    span: self.since(e.span.start),
                     kind: ExprKind::Subscript(Box::new(e), Box::new(idx)),
                 };
             } else if self.eat_op(".") {
                 let name = self.expect_name()?;
                 e = Expr {
                     line,
+                    span: self.since(e.span.start),
                     kind: ExprKind::Attr(Box::new(e), name),
                 };
             } else {
@@ -1341,6 +1394,7 @@ impl<'a> Parser<'a> {
 
     fn subscript(&mut self) -> P<Expr> {
         let line = self.line();
+        let start = self.start();
         let lo = if self.at_op(":") {
             None
         } else {
@@ -1366,6 +1420,7 @@ impl<'a> Parser<'a> {
         };
         Ok(Expr {
             line,
+            span: self.since(start),
             kind: ExprKind::Slice { lo, hi, step },
         })
     }
@@ -1413,6 +1468,7 @@ impl<'a> Parser<'a> {
 
     fn atom(&mut self) -> P<Expr> {
         let line = self.line();
+        let start = self.start();
         let kind = match self.bump() {
             Tok::Num(n) => ExprKind::Num(n),
             Tok::Str(s) => {
@@ -1424,7 +1480,7 @@ impl<'a> Parser<'a> {
                 }
                 ExprKind::Str(s)
             }
-            Tok::FStr(body) => ExprKind::FString(self.fstring(line, &body)?),
+            Tok::FStr(body) => ExprKind::FString(self.fstring(line, self.since(start), &body)?),
             Tok::Keyword("True") => ExprKind::Bool(true),
             Tok::Keyword("False") => ExprKind::Bool(false),
             Tok::Keyword("None") => ExprKind::None,
@@ -1532,7 +1588,11 @@ impl<'a> Parser<'a> {
             Tok::Op(o) => return Err(self.err(format!("`{o}` cannot start an expression"))),
             _ => return Err(self.err("expected an expression")),
         };
-        Ok(Expr { line, kind })
+        Ok(Expr {
+            line,
+            span: self.since(start),
+            kind,
+        })
     }
 
     fn comp_for(&mut self) -> P<Vec<Comp>> {
@@ -1551,7 +1611,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Split an f-string body into literal and expression parts.
-    fn fstring(&self, line: u32, body: &str) -> P<Vec<FPart>> {
+    fn fstring(&self, line: u32, span: Span, body: &str) -> P<Vec<FPart>> {
         let chars: Vec<char> = body.chars().collect();
         let mut parts = Vec::new();
         let mut lit = String::new();
@@ -1601,7 +1661,7 @@ impl<'a> Parser<'a> {
                     if expr_src.trim().is_empty() {
                         return Err(self.err("an empty f-string field"));
                     }
-                    let expr = parse_expr_src(self.file, line, &expr_src)?;
+                    let expr = parse_expr_src(self.file, line, span, &expr_src)?;
                     parts.push(FPart::Expr { expr, spec });
                     i = j.wrapping_add(1);
                 }
@@ -1651,6 +1711,10 @@ fn split_field(field: &str) -> (String, Option<String>) {
 fn binop(line: u32, left: Expr, op: BinOp, right: Expr) -> Expr {
     Expr {
         line,
+        span: Span {
+            start: left.span.start,
+            end: right.span.end,
+        },
         kind: ExprKind::BinOp(Box::new(left), op, Box::new(right)),
     }
 }
@@ -1709,6 +1773,35 @@ mod tests {
         assert!(fails("f(x=1, 2)"));
         assert!(fails("x = f'{a{b}}'"));
         assert!(fails("try:\n    pass\n"));
+    }
+
+    #[test]
+    fn an_expression_records_the_chars_it_was_read_from() {
+        let src = "x = f(a, b + 1)\ny: list[int] = [g(2)]\n";
+        let s = parse(src);
+        let text = |sp: Span| -> String {
+            src.chars()
+                .skip(sp.start as usize)
+                .take((sp.end - sp.start) as usize)
+                .collect()
+        };
+        let StmtKind::Assign { value, .. } = &s[0].kind else {
+            panic!()
+        };
+        assert_eq!(text(value.span), "f(a, b + 1)");
+        let ExprKind::Call { args, .. } = &value.kind else {
+            panic!()
+        };
+        let spans: Vec<String> = args.positional.iter().map(|a| text(a.span)).collect();
+        assert_eq!(spans, ["a", "b + 1"]);
+        let StmtKind::AnnAssign {
+            annotation, value, ..
+        } = &s[1].kind
+        else {
+            panic!()
+        };
+        assert_eq!(text(annotation.span), "list[int]");
+        assert_eq!(text(value.as_ref().expect("value").span), "[g(2)]");
     }
 
     #[test]

@@ -97,9 +97,14 @@ pub struct Outline {
 /// Outline `src`, or `None` if it does not parse.
 pub fn outline(src: &str) -> Option<Outline> {
     let stmts = lang::parser::parse_file("hover.py", src).ok()?;
+    Some(outline_of(&stmts, src))
+}
+
+/// The outline of `src`, parsed as `stmts`.
+fn outline_of(stmts: &[Stmt], src: &str) -> Outline {
     let lines: Vec<&str> = src.lines().collect();
     let mut o = Outline {
-        doc: docstring(&stmts),
+        doc: docstring(stmts),
         ..Outline::default()
     };
     for (i, s) in stmts.iter().enumerate() {
@@ -162,7 +167,7 @@ pub fn outline(src: &str) -> Option<Outline> {
             _ => {}
         }
     }
-    Some(o)
+    o
 }
 
 fn def(lines: &[&str], line: u32, body: &[Stmt]) -> Def {
@@ -268,9 +273,33 @@ pub struct BuiltinDocs {
     exception: BTreeMap<String, Entry>,
 }
 
+/// Which table of `docs.toml` an entry is in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Game,
+    Builtin,
+    Exception,
+}
+
 impl BuiltinDocs {
     pub fn parse(text: &str) -> Result<BuiltinDocs, String> {
         toml::from_str(text).map_err(|e| format!("data/language/docs.toml: {e}"))
+    }
+
+    /// Every entry's kind, name and signature.
+    pub fn signatures(&self) -> Vec<(Kind, &str, &str)> {
+        let tables = [
+            (Kind::Game, &self.game),
+            (Kind::Builtin, &self.builtin),
+            (Kind::Exception, &self.exception),
+        ];
+        tables
+            .into_iter()
+            .flat_map(|(k, t)| {
+                t.iter()
+                    .map(move |(n, e)| (k, n.as_str(), e.signature.as_str()))
+            })
+            .collect()
     }
 
     fn lookup(&self, name: &str) -> Option<Hover> {
@@ -294,8 +323,21 @@ impl BuiltinDocs {
 /// working.
 #[derive(Debug, Clone)]
 pub struct Index {
-    files: BTreeMap<String, (String, Option<Outline>)>,
+    files: BTreeMap<String, FileEntry>,
     docs: BuiltinDocs,
+    builtins: crate::check::Builtins,
+    /// The type check's underlines (Q61) for each file that parses.
+    diags: BTreeMap<String, Vec<crate::check::Diag>>,
+}
+
+/// One file as the index holds it: its text, and its last good parse.
+#[derive(Debug, Clone, Default)]
+struct FileEntry {
+    text: String,
+    outline: Option<Outline>,
+    stmts: Option<Vec<Stmt>>,
+    /// Whether that parse is of `text`.
+    current: bool,
 }
 
 impl Default for Index {
@@ -308,46 +350,71 @@ impl Default for Index {
 
 impl Index {
     pub fn new() -> Index {
+        let docs = BuiltinDocs::parse(DOCS_TOML).expect("docs.toml");
         Index {
             files: BTreeMap::new(),
-            docs: BuiltinDocs::parse(DOCS_TOML).expect("docs.toml"),
+            builtins: crate::check::Builtins::new(&docs),
+            docs,
+            diags: BTreeMap::new(),
         }
     }
 
     /// Bring the index up to date with the tree: outline each file whose
     /// text changed, keeping the old outline where the new text does not
-    /// parse, and forget files that are gone.
+    /// parse, and forget files that are gone; then type-check the tree
+    /// again if anything changed.
     pub fn update<'a>(&mut self, files: impl IntoIterator<Item = (&'a str, &'a str)>) {
         let mut seen = BTreeSet::new();
+        let mut changed = false;
         for (path, text) in files {
             seen.insert(path.to_string());
-            let entry = self
-                .files
-                .entry(path.to_string())
-                .or_insert_with(|| (String::new(), None));
-            if entry.0 != text || entry.1.is_none() {
-                entry.0 = text.to_string();
-                if let Some(o) = outline(text) {
-                    entry.1 = Some(o);
+            let entry = self.files.entry(path.to_string()).or_default();
+            if entry.text != text || entry.outline.is_none() {
+                changed = true;
+                entry.text = text.to_string();
+                match lang::parser::parse_file(path, text) {
+                    Ok(stmts) => {
+                        entry.outline = Some(outline_of(&stmts, text));
+                        entry.stmts = Some(stmts);
+                        entry.current = true;
+                    }
+                    Err(_) => entry.current = false,
                 }
             }
         }
+        let before = self.files.len();
         self.files.retain(|p, _| seen.contains(p));
+        if changed || self.files.len() != before {
+            let parsed = self
+                .files
+                .iter()
+                .filter_map(|(p, e)| {
+                    let stmts = e.stmts.clone()?;
+                    Some((p.clone(), (e.text.clone(), stmts, e.current)))
+                })
+                .collect();
+            self.diags = crate::check::check(&parsed, &self.builtins);
+        }
+    }
+
+    /// The type check's underlines for `path`, in order.
+    pub fn diags(&self, path: &str) -> &[crate::check::Diag] {
+        self.diags.get(path).map_or(&[], |d| d.as_slice())
     }
 
     fn by_path(&self, path: &str) -> Option<&Outline> {
-        self.files.get(path).and_then(|(_, o)| o.as_ref())
+        self.files.get(path).and_then(|e| e.outline.as_ref())
     }
 
     /// The file a module name is, among the files every bundle shares:
     /// a file outside `robots/` by its bare name (`docs/07`). A robot file
     /// is its bundle's `main.py` and never a module.
     fn module(&self, name: &str) -> Option<(&str, &Outline)> {
-        self.files.iter().find_map(|(path, (_, o))| {
+        self.files.iter().find_map(|(path, e)| {
             let stem = path.rsplit('/').next()?.strip_suffix(".py")?;
             (stem == name && sim::script::robot_of(path).is_none())
                 .then_some(())
-                .and(o.as_ref().map(|o| (path.as_str(), o)))
+                .and(e.outline.as_ref().map(|o| (path.as_str(), o)))
         })
     }
 
