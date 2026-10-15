@@ -1,6 +1,6 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q58 — How does power work: solar panels, wires to a printer, and bots that stop when a team is short (amending Q10, Q27, Q37, Q42 and Q49)
+# Q59 — How does power work: solar panels, wires to a printer, and bots that stop when a team is short (amending Q10, Q27, Q37, Q42 and Q49)
 
 ## Ruling
 
@@ -114,7 +114,7 @@ and reaches no hash.
 ## Outcome
 
 - **Docs:** [02-machines.md](../../02-machines.md) — the Q22, Q42 and new
-  Q58 Decided entries, A machine's deployments, the kind tree and table,
+  Q59 Decided entries, A machine's deployments, the kind tree and table,
   the attributes, the senses, the actions, Printing, a new Power section
   and what it leaves open. [03-world.md](../../03-world.md) — the Q49
   bullet, the tile's fields and its slots.
@@ -122,7 +122,7 @@ and reaches no hash.
   tick's budget in Metering. [06-architecture.md](../../06-architecture.md)
   — the Q10 entry, validation at submission, the tick's steps 2, 3, 5 and
   6, the snapshot and the state hash.
-  [07-interface.md](../../07-interface.md) — the Q37 entry and a new Q58
+  [07-interface.md](../../07-interface.md) — the Q37 entry and a new Q59
   entry, the screen's inspector and tools, the program tree, Machines on
   the map and Marks. [05-progression.md](../../05-progression.md) — power
   beside printers. [00-overview.md](../../00-overview.md) — the Decided
@@ -134,7 +134,7 @@ and reaches no hash.
 - **Task:** [T32](../../TASKS.md) — power in the renderer: wires, the wire
   tool on `C`, the unpowered mark, the panel's art and the inspector's
   figures.
-- **Problem:** [P8](../../PROBLEMS.md) — the docs state Q58 as current
+- **Problem:** [P8](../../PROBLEMS.md) — the docs state Q59 as current
   until T31 and T32 land.
 
 ## Worksheet
@@ -186,11 +186,12 @@ building. That handlers still run on a stopped machine, and that a wire
 costs a little ore from the bot's load, were the drafting's calls, made so
 that `dying` still ends in `death` and so that a line of wire is a
 decision; the wire plan followed from Q10's rule that the player marks and
-bots act. The ruling's number moved from Q56 to Q58 when `main` took Q56
-and Q57 while it was open. Review then found the first draft's depots
-drawing power could freeze a team that was not out, so only bots draw; that
-the deploy check, the snapshot and an out team's wires had not caught up;
-that a wire plan could ask for what a tile already had and never be carried
-out; that a dark tick's budget, the first tick's figures and `power()`'s
-spare were undefined; that dark lights hid a building's team; that `W`
-already panned the camera; and that the starter library laid no wire.
+bots act. The ruling's number moved from Q56 to Q58 and then Q59 as `main`
+took Q56, Q57 and Q58 while it was open. Review then found the first
+draft's depots drawing power could freeze a team that was not out, so only
+bots draw; that the deploy check, the snapshot and an out team's wires had
+not caught up; that a wire plan could ask for what a tile already had and
+never be carried out; that a dark tick's budget, the first tick's figures
+and `power()`'s spare were undefined; that dark lights hid a building's
+team; that `W` already panned the camera; and that the starter library laid
+no wire.

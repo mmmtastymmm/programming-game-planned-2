@@ -138,7 +138,7 @@ short of it. Fixes [P6](PROBLEMS.md).
 
 **T31 — Power in `sim`: the grid, powered bots, wires and the solar panel** `⚠HASH`
 
-Q58, ruled in `02`'s Power section, `03`'s tile, `06`'s tick and
+Q59, ruled in `02`'s Power section, `03`'s tile, `06`'s tick and
 snapshot, and `01`'s Metering. The data: the bot's `power_draw`,
 `wire_cost`, `wire_ticks` and `unwire_ticks`; every building's
 `power_supply`, zero for the depot and the site; a `solar` model with its
@@ -171,7 +171,7 @@ PR says why. Fixes [P8](PROBLEMS.md) with [T32](TASKS.md).
 
 **T32 — Power in `render`: wires, the wire tool, the unpowered mark, the panel**
 
-Q58, ruled in `07`'s Decided entry, the screen table, Machines on the map
+Q59, ruled in `07`'s Decided entry, the screen table, Machines on the map
 and Marks. Wires drawn from the snapshot as a bar across each wired tile
 and lines to the same team's wires and buildings beside it, sites
 excluded, two teams side by side, the player's own off-grid wires dimmed;

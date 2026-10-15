@@ -57,9 +57,9 @@ hash; a peer with a different renderer sees the same match.
   saver's; every option is also a command-line flag, which skips the
   screen.
 - **The mark tools are a strip, a tool stays armed, a drag marks, and a
-  plan previews (Q37, amended by Q44, Q49, Q50, Q51, Q54 and Q58).** Rows
+  plan previews (Q37, amended by Q44, Q49, Q50, Q51, Q54 and Q59).** Rows
   of building models, paint colors and overlay labels each ending in a
-  clear, and a wire tool with its own clear (Q58), `B`/`P`/`O`/`C` and
+  clear, and a wire tool with its own clear (Q59), `B`/`P`/`O`/`C` and
   `1`–`9` to pick, `Esc` to disarm; a drag marks every tile it crosses
   once, and a `Shift`+drag fills the rectangle between its corners on
   release; *clear* withdraws the team's plan of its kind where one stands,
@@ -99,7 +99,7 @@ hash; a peer with a different renderer sees the same match.
   reads upright from the camera, so it redraws rather than spins; the
   chevron, the trim and the light around it keep the heading, the paint
   and the team readable from above.
-- **Power shows on the map and in the inspector (Q58, amending Q37).** A
+- **Power shows on the map and in the inspector (Q59, amending Q37).** A
   wire is a line across its tile in its team's color, drawn for every team
   whose wire the player's team sees or remembers, joining it to the same
   team's wires and buildings beside it; the mark strip has a wire tool and
@@ -139,8 +139,8 @@ floats over it (Q39, Q41):
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end, and on a replay its seek; nothing else | Q6, Q12, `06`, Q41, Q55 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools, the log, and the debugger while a fork is open | Q41, Q55 |
 | **one per open file** | the file being edited and its gutter breakpoints, the versions it is deployed as and those the team's machines run, each opening a version window, the deploy and export buttons, and while a fork is open *try in the fork* and *take it*; the faults naming this file | Q33, Q34, Q39, Q41, Q55 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change; the player's own team's power — supply, demand and spare — and the selected bot's `powered` or building's `on_grid` | Q34, Q43, Q45, Q55, Q58 |
-| **tools** | the mark strip, its wire tool among it, and resign | Q37, Q58 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change; the player's own team's power — supply, demand and spare — and the selected bot's `powered` or building's `on_grid` | Q34, Q43, Q45, Q55, Q59 |
+| **tools** | the mark strip, its wire tool among it, and resign | Q37, Q59 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 | **debugger** | while a fork is open: its tick, state and controls, why the last step stopped, the hit list, the selected machine's stack, locals, globals, action, budget and interrupts | Q55 |
 | **one per version window** | one version of a file — one content hash (`06`) — that a machine runs or a replay ran, read-only, apart from the tree; its breakpoints | Q55 |
@@ -159,7 +159,7 @@ text, edited in place. A deployment's **running version** is the sim's
 The two meet only through `Deploy`.
 
 - **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`,
-  `solar.py`, one per deployment (Q42, Q58) — and `interrupts/` with
+  `solar.py`, one per deployment (Q42, Q59) — and `interrupts/` with
   `on_fault.py` and `on_dying.py`; both folders, every deployment's file
   and both interrupt files always exist and cannot be renamed, moved or
   deleted, and the player cannot add a file to either folder. Everything
@@ -242,24 +242,24 @@ clears only when those machines fault again or die.
 
 - **Body:** a bot is an atlas cube in its `color`, or the neutral body
   color while it is `None`; a printer, a depot, a solar panel and a site
-  are their own shapes in the neutral body color (Q43, Q58) — the panel a
+  are their own shapes in the neutral body color (Q43, Q59) — the panel a
   low tilted plate with a lamp at its foot.
 - **Team:** a bot's lights glow in its team's color (Q45), and so do a
   printer's — its panel light, side markers and status light, made larger
   (Q48) — and a depot's lamp where its braces cross (Q47); a printer's trim
   — its bands and the rails of its top — is painted in it (Q48); a solar
-  panel's lamp glows in it (Q58); a site, which has no lights, is outlined
+  panel's lamp glows in it (Q59); a site, which has no lights, is outlined
   in it (Q43). Power never dims them.
 - **Number:** a bot's entity id, its last three digits, in fixed seven
   segments on its top face, lit in its team's color in the quarter turn
   that reads upright from the camera (Q46). The player's own team is green unless changed,
   each other team's from the list in data unless changed, so friend and
   foe read at a glance and three teams stay three.
-- **Power** (Q58): a bot the power step left unpowered, and a building
+- **Power** (Q59): a bot the power step left unpowered, and a building
   off its team's grid, carries a small mark over it — a struck-through
   bolt — while the snapshot says so; a team short of power shows it on
   its newest bots.
-- **Wires** (Q58): every tile carrying a team's wire shows a short bar
+- **Wires** (Q59): every tile carrying a team's wire shows a short bar
   across its centre in that team's color, and from the centre a thin line
   to the centre of each adjacent tile carrying the same team's wire or one
   of its buildings — not a site, which conducts nothing (`02`, Power) — so
@@ -275,10 +275,10 @@ clears only when those machines fault again or die.
 ## Marks
 
 The tools window is a strip (Q37): a row of the building models a plan may
-name (`printer` and `solar` among them, Q42, Q58), a row of the eight paint
+name (`printer` and `solar` among them, Q42, Q59), a row of the eight paint
 colors, a row of the overlay labels in data (Q10, Q26, Q27), each row
 ending in a *clear* — the plan to empty that slot — and a row holding the
-**wire** tool and its *clear* (Q58). `B`, `P`, `O` and `C` — for cable,
+**wire** tool and its *clear* (Q59). `B`, `P`, `O` and `C` — for cable,
 since `W` pans the camera — pick a row and `1`–`9` an entry; a click arms a
 tool, `Esc` or a second click disarms it.
 
@@ -299,11 +299,11 @@ version of its effect (Q50) — for paint, a solid square of the new color
 (Q54) inset from the tile's edge, with any paint already there showing
 round it; a smaller overlay marker under its label (Q51); a scaled-down
 translucent ghost of the building, a printer for a printer plan; a
-see-through line across the tile in the team's color for a wire plan (Q58);
+see-through line across the tile in the team's color for a wire plan (Q59);
 a clear plan hatches the slot — and the armed tool shows the same ghost
 under the cursor, or over a `Shift`+drag's rectangle, on the tiles it can
 plan and that do not already carry exactly that plan (Q51): paint, overlays
-and wires go only on ground the team has seen (`03`, Q49, Q58) — a wire
+and wires go only on ground the team has seen (`03`, Q49, Q59) — a wire
 plan, too, only where the tile lacks the team's wire, its clear only where
 it has one — so a single mark elsewhere is refused with the reason and a
 stroke marks the rest and says how many it skipped. Only the player's

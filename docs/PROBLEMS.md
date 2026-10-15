@@ -77,9 +77,9 @@ debugger's, runs on without the clock to the script's next entry. It is
 latent today only because the Fool's script has nothing after tick 0. The
 work is [T29](TASKS.md).
 
-**P8 — The code lags Q58: no power, wires or solar panels**
+**P8 — The code lags Q59: no power, wires or solar panels**
 
-Q58 ruled that power is a team's flow, supplied by printers and solar
+Q59 ruled that power is a team's flow, supplied by printers and solar
 panels wired back to a printer and drawn by bots, with the newest bots
 stopping when the team is short; `01`, `02`, `03`, `05`, `06` and `07`
 state it as current. None of it exists: the sim has no wires, no `solar`

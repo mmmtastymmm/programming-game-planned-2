@@ -149,7 +149,7 @@ has to learn rather than avoid.
   traversal costs its full price however the ticks fall. A slice whose
   budget opens at or below zero still opens with its boundary, so
   interrupts are delivered to a machine in deficit; only operations wait. A
-  bot left unpowered (`docs/02`, Power, Q58) opens its slice and its budget
+  bot left unpowered (`docs/02`, Power, Q59) opens its slice and its budget
   the same way, so a dark tick pays down a deficit as any tick does; its
   main flow does not run on it, and a hook does. Inside a hook the same
   cost is debited in full from the hook budget as well, and at a boundary

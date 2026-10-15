@@ -8,13 +8,13 @@ nothing persists when the match ends.
 ## Decided
 
 - **Progression is inside a match, and it is building printers and powering
-  them (Q42, replacing Q30's conversion and Q31's fixed count; Q58 added
+  them (Q42, replacing Q30's conversion and Q31's fixed count; Q59 added
   power).** A team's bots build printers for ore, each one dearer than the
   last by how many printers and printer sites the team has, and each one
   standing raises the team's cap by `bots_per_printer`, which its printers
   fill by themselves. No printer changes hands. A printer defends itself,
   dealing `defence_damage` each tick to every adjacent bot of another team
-  (Q30), so taking one down is a fight. Power (Q58) is the second axis:
+  (Q30), so taking one down is a fight. Power (Q59) is the second axis:
   each printer supplies some, solar panels wired back to a printer add
   more, and a team prints no bot it cannot power, so a team grows by
   printers and panels together. There is no progression between matches and
@@ -27,7 +27,7 @@ nothing persists when the match ends.
 A team's reach is measured in printers and the power to run what they
 print. Each printer it holds raises its cap by `bots_per_printer` bots
 (Q24), and its printers print up to that cap only as far as its power
-covers the bots (Q58), so the bots a team runs are the lesser of the two. A
+covers the bots (Q59), so the bots a team runs are the lesser of the two. A
 printer is the one way to raise the cap, and every way to lose one is
 damage or deconstruction, from a rival or from the team itself:
 
