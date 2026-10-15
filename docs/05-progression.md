@@ -24,10 +24,12 @@ nothing persists when the match ends.
 
 ## Inside a match
 
-A team's reach is measured in printers. Each one it holds is
-`bots_per_printer` more bots its printers will print (Q24). There is one
-way up, and every way down is damage or deconstruction, from a rival or
-from the team itself:
+A team's reach is measured in printers and the power to run what they
+print. Each printer it holds raises its cap by `bots_per_printer` bots
+(Q24), and its printers print up to that cap only as far as its power
+covers the bots (Q58), so the bots a team runs are the lesser of the two. A
+printer is the one way to raise the cap, and every way to lose one is
+damage or deconstruction, from a rival or from the team itself:
 
 | Way | Costs | Ruled in |
 |---|---|---|
@@ -43,12 +45,13 @@ can rebuild faster than it was knocked down — the comeback is the rule's,
 on purpose. A team far ahead pays more for each printer than it did for the
 last, so a lead costs more to extend than to hold.
 
-**Power grows the fleet past what printers alone run.** A team's bots are
-capped twice: by its printers (Q24) and by its power (Q58), which its
-printers supply in part and its solar panels, wired back to a printer,
-supply the rest. Once the printers' own power is spent, a panel may be the
-cheaper way to more bots than a printer, as the numbers in data fall, and
-losing a printer drops both caps and every panel wired only through it.
+**Power fills the cap; it never raises it.** A printer supplies power for
+some of the bots its cap allows but not all — data keeps it so (`02`,
+Power) — and solar panels wired back to a printer supply the rest. A team
+whose power falls short of its cap runs fewer bots than its printers allow,
+and a panel is then the way to more of them without a printer; past the
+cap, power buys nothing. Losing a printer lowers the cap, its own supply,
+and every panel wired only through it.
 
 **The last printer is not replaceable.** A team that ends a tick with no
 printer is out (`04`), whatever site it was building, so a replacement must

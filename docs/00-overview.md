@@ -90,9 +90,10 @@ pass.
   the deployments), Q43 (a bot's color) and Q58 (power, wires and the solar
   panel) are its Decided entries, and they are not repeated here; Q31 and
   Q40, which Q42 withdrew, have none.
-- **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint and
-  overlays only on ground the team has seen) is its Decided entry, and it
-  is not repeated here; Q21 and Q22, which `03` cites, are `02`'s.
+- **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint,
+  overlays and, as Q58 extended it, wires only on ground the team has seen)
+  is its Decided entry, and it is not repeated here; Q21 and Q22, which
+  `03` cites, are `02`'s.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q55
@@ -110,9 +111,8 @@ pass.
   map) are its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
-  **progression's in
-  [05-progression](05-progression.md)** — Q42 (building printers); neither
-  is repeated here.
+  **progression's in [05-progression](05-progression.md)** — Q42 and Q58
+  (building printers and powering them); neither is repeated here.
 
 ## What the numbered docs will hold
 

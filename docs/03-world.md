@@ -21,8 +21,12 @@ overrides those.
   wire plan, a value or a clear, applies only on a `ground` tile the
   sending team has seen — visible or remembered — and is dropped on its
   tick otherwise: never on rock or water, and never on a tile still unknown
-  to the team, which is tested first so that marking cannot scout. A
-  building plan may go anywhere, and an `Unmark` always applies.
+  to the team, which is tested first so that marking cannot scout. A wire
+  plan that asks for what the tile already has — to lay where the team's
+  wire lies, or to clear where none does — is dropped on its tick too, and
+  the team's `wire` or `unwire` that makes a tile match its plan consumes
+  it (`02`), so a wire plan is always one a bot can carry out. A building
+  plan may go anywhere, and an `Unmark` always applies.
 
 ## Tiles
 
