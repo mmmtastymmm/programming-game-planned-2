@@ -29,6 +29,7 @@
 
 pub mod app;
 pub mod camera;
+pub mod check;
 pub mod digits;
 pub mod driver;
 pub mod editor;

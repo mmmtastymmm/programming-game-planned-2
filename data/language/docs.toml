@@ -234,7 +234,7 @@ A new sorted list. The sort is stable: equal items keep their order.
 Items that cannot be compared raise TypeError."""
 
 [builtin.enumerate]
-signature = "enumerate(iterable, start: int = 0) -> list[tuple[int, ...]]"
+signature = "enumerate(iterable, start: int = 0) -> list[tuple]"
 doc = """
 Each item paired with its index, as a list of (index, item) tuples."""
 

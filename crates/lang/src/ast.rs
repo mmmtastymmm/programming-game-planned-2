@@ -175,6 +175,7 @@ pub struct Params {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Annotation {
     pub line: u32,
+    pub span: Span,
     pub ty: TypeExpr,
 }
 
@@ -210,7 +211,16 @@ pub enum Target {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
     pub line: u32,
+    pub span: Span,
     pub kind: ExprKind,
+}
+
+/// The chars of its file an expression was read from, end exclusive: for
+/// the editor's underlines (Q59). The compiler never reads it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Span {
+    pub start: u32,
+    pub end: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

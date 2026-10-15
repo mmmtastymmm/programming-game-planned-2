@@ -42,6 +42,10 @@ pub enum Tok {
 pub struct Token {
     pub tok: Tok,
     pub line: u32,
+    /// The chars of the source it was read from, for the editor (Q59);
+    /// empty for the layout tokens.
+    pub start: u32,
+    pub end: u32,
 }
 
 pub struct Lexer<'a> {
@@ -55,6 +59,8 @@ pub struct Lexer<'a> {
     /// parse error past it. Unbounded unless `nesting` sets it.
     max_depth: u32,
     at_line_start: bool,
+    /// Where the token being read began.
+    tok_start: usize,
     out: Vec<Token>,
 }
 
@@ -69,6 +75,7 @@ impl<'a> Lexer<'a> {
             depth: 0,
             max_depth: u32::MAX,
             at_line_start: true,
+            tok_start: 0,
             out: Vec::new(),
         }
     }
@@ -104,9 +111,16 @@ impl<'a> Lexer<'a> {
     }
 
     fn push(&mut self, tok: Tok) {
+        let at = |i: usize| u32::try_from(i).unwrap_or(u32::MAX);
+        let start = match tok {
+            Tok::Indent | Tok::Dedent | Tok::Newline | Tok::Eof => self.pos,
+            _ => self.tok_start,
+        };
         self.out.push(Token {
             tok,
             line: self.line,
+            start: at(start),
+            end: at(self.pos),
         });
     }
 
@@ -120,6 +134,7 @@ impl<'a> Lexer<'a> {
                 }
             }
             let Some(c) = self.peek() else { break };
+            self.tok_start = self.pos;
             match c {
                 ' ' => {
                     self.bump();

@@ -72,9 +72,13 @@ pub struct Editor {
 #[derive(Debug, Clone)]
 pub struct HoverBox {
     pub path: String,
-    pub hover: crate::hover::Hover,
-    /// The name's rect on screen: the box sits under it, or over it near
-    /// the bottom of the screen.
+    /// What the name under the pointer is, if it names something.
+    pub hover: Option<crate::hover::Hover>,
+    /// What the type check says of the code under the pointer (Q59).
+    pub problems: Vec<String>,
+    /// The rect the box belongs to on screen — the name's, or else the
+    /// underlined code's — which it sits under, or over near the bottom
+    /// of the screen.
     pub word: egui::Rect,
     /// Where the box was drawn last frame.
     pub rect: Option<egui::Rect>,
@@ -636,7 +640,7 @@ fn append_span(
     range: std::ops::Range<usize>,
     color: egui::Color32,
     font_id: &egui::FontId,
-    squiggle: &Option<std::ops::Range<usize>>,
+    squiggles: &[std::ops::Range<usize>],
 ) {
     let fmt = |underline: bool| egui::text::TextFormat {
         font_id: font_id.clone(),
@@ -649,7 +653,7 @@ fn append_span(
         ..Default::default()
     };
     let mut cuts = vec![range.start, range.end];
-    if let Some(s) = squiggle {
+    for s in squiggles {
         for b in [s.start, s.end] {
             if b > range.start && b < range.end {
                 cuts.push(b);
@@ -659,9 +663,7 @@ fn append_span(
     cuts.sort_unstable();
     cuts.dedup();
     for w in cuts.windows(2) {
-        let underlined = squiggle
-            .as_ref()
-            .is_some_and(|s| w[0] < s.end && w[1] > s.start);
+        let underlined = squiggles.iter().any(|s| w[0] < s.end && w[1] > s.start);
         job.append(&text[w[0]..w[1]], 0.0, fmt(underlined));
     }
 }
@@ -671,7 +673,7 @@ fn append_span(
 pub fn highlight(
     text: &str,
     font_id: egui::FontId,
-    squiggle: Option<std::ops::Range<usize>>,
+    squiggles: &[std::ops::Range<usize>],
 ) -> egui::text::LayoutJob {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let byte_at = |i: usize| chars.get(i).map_or(text.len(), |&(b, _)| b);
@@ -750,10 +752,10 @@ pub fn highlight(
                 plain_start..start,
                 HL_PLAIN,
                 &font_id,
-                &squiggle,
+                squiggles,
             );
         }
-        append_span(&mut job, text, start..end, color, &font_id, &squiggle);
+        append_span(&mut job, text, start..end, color, &font_id, squiggles);
         plain_start = end;
     }
     if plain_start < text.len() {
@@ -763,7 +765,7 @@ pub fn highlight(
             plain_start..text.len(),
             HL_PLAIN,
             &font_id,
-            &squiggle,
+            squiggles,
         );
     }
     job
@@ -841,16 +843,26 @@ fn char_under(galley: &egui::Galley, local: egui::Vec2) -> Option<usize> {
         })
 }
 
-/// A hover's box: the signature highlighted as code, the docstring, and
-/// where the name is defined — for a file, a link that goes there (Q58),
-/// returned when clicked.
+/// A hover's box: what the type check says of the code (Q59); then the
+/// signature highlighted as code, the docstring, and where the name is
+/// defined — for a file, a link that goes there (Q58), returned when
+/// clicked.
 fn hover_ui(
     ui: &mut egui::Ui,
-    h: &crate::hover::Hover,
+    problems: &[String],
+    h: Option<&crate::hover::Hover>,
     font: egui::FontId,
 ) -> Option<(String, u32)> {
     ui.set_max_width(560.0);
-    let mut job = highlight(&h.signature, font, None);
+    // What the type check says comes first (Q59).
+    for p in problems {
+        ui.label(egui::RichText::new(p).color(HL_ERROR));
+    }
+    let h = h?;
+    if !problems.is_empty() {
+        ui.separator();
+    }
+    let mut job = highlight(&h.signature, font, &[]);
     job.wrap.max_width = 560.0;
     ui.label(job);
     if let Some(doc) = &h.doc {
@@ -944,6 +956,25 @@ fn line_rect(
     )
 }
 
+/// The screen rect of chars `start..end`, on the row `start` is on: to
+/// `end`, or to the row's end if the span wraps or runs on.
+fn span_rect(
+    galley: &egui::Galley,
+    galley_pos: egui::Pos2,
+    start: usize,
+    end: usize,
+) -> egui::Rect {
+    let a = galley.pos_from_cursor(egui::text::CCursor::new(start));
+    let b = galley.pos_from_cursor(egui::text::CCursor::new(end));
+    let right = if b.min.y == a.min.y {
+        b.min.x
+    } else {
+        galley.rect.right()
+    };
+    egui::Rect::from_min_max(a.min, egui::pos2(right.max(a.min.x + 1.0), a.max.y))
+        .translate(galley_pos.to_vec2())
+}
+
 /// The screen rect of the identifier under char `at`.
 fn word_rect(
     galley: &egui::Galley,
@@ -971,7 +1002,7 @@ fn hover_box(
     state: &mut ViewState,
     path: &str,
     response: &egui::Response,
-    under: Option<(crate::hover::Hover, egui::Rect)>,
+    under: Option<(Option<crate::hover::Hover>, Vec<String>, egui::Rect)>,
 ) {
     let delay = ui.style().interaction.tooltip_delay;
     let (still, clicked, command, pointer) = ui.input(|i| {
@@ -986,21 +1017,22 @@ fn hover_box(
     let editor = &mut state.editor;
     let here = editor.hover_box.as_ref().filter(|b| b.path == path);
     match under {
-        Some((h, _)) if response.clicked() && command => {
-            if let crate::hover::Origin::File { path, line } = h.origin {
+        Some((h, _, _)) if response.clicked() && command => {
+            if let Some(crate::hover::Origin::File { path, line }) = h.map(|h| h.origin) {
                 editor.goto = Some((path, line));
             }
             editor.hover_box = None;
         }
         Some(_) if clicked => editor.hover_box = None,
-        Some((hover, word)) => {
-            if here.is_some_and(|b| b.word == word) {
+        Some((hover, problems, word)) => {
+            if here.is_some_and(|b| b.word == word && b.hover == hover && b.problems == problems) {
                 return;
             }
             if editor.hover_box.is_some() || still >= delay {
                 editor.hover_box = Some(HoverBox {
                     path: path.to_string(),
                     hover,
+                    problems,
                     word,
                     rect: None,
                 });
@@ -1039,10 +1071,27 @@ pub fn window_body(
     let compose_error = state.editor.compose_error.clone();
     let font_id = egui::TextStyle::Monospace.resolve(ui.style());
     let squiggle_line = error.as_ref().map(|(_, e)| e.line);
+    // The type check's underlines (Q59), in chars of the text they were
+    // found in; the frame a keystroke lands they may be a char off.
+    let typed: Vec<(usize, usize)> = state
+        .editor
+        .index
+        .diags(path)
+        .iter()
+        .map(|d| (d.start, d.end))
+        .collect();
     let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
         let text = buf.as_str();
-        let squiggle = squiggle_line.map(|l| line_range(text, l));
-        let mut job = highlight(text, font_id.clone(), squiggle);
+        let mut squiggles: Vec<std::ops::Range<usize>> = squiggle_line
+            .map(|l| line_range(text, l))
+            .into_iter()
+            .collect();
+        if !typed.is_empty() {
+            let bytes: Vec<usize> = text.char_indices().map(|(b, _)| b).collect();
+            let byte = |c: usize| bytes.get(c).copied().unwrap_or(text.len());
+            squiggles.extend(typed.iter().map(|&(a, b)| byte(a)..byte(b)));
+        }
+        let mut job = highlight(text, font_id.clone(), &squiggles);
         job.wrap.max_width = wrap_width;
         let galley: Arc<egui::Galley> = ui.fonts_mut(|f| f.layout_job(job));
         galley
@@ -1130,14 +1179,25 @@ pub fn window_body(
                 }),
             };
         }
-        // Resting on a name shows its signature and docstring (Q57).
+        // Resting on a name shows its signature and docstring (Q57), and
+        // on underlined code what the type check says (Q59).
         let under = response.hover_pos().and_then(|pos| {
             let at = char_under(&output.galley, pos - output.galley_pos)?;
-            let h = state.editor.index.hover(path, &doc.text, at)?;
-            Some((
-                h,
-                word_rect(&output.galley, output.galley_pos, &doc.text, at)?,
-            ))
+            let h = state.editor.index.hover(path, &doc.text, at);
+            let hit: Vec<&crate::check::Diag> = state
+                .editor
+                .index
+                .diags(path)
+                .iter()
+                .filter(|d| d.start <= at && at < d.end)
+                .collect();
+            let rect = match (&h, hit.first()) {
+                (Some(_), _) => word_rect(&output.galley, output.galley_pos, &doc.text, at)?,
+                (None, Some(d)) => span_rect(&output.galley, output.galley_pos, d.start, d.end),
+                (None, None) => return None,
+            };
+            let problems = hit.iter().map(|d| d.message.clone()).collect();
+            Some((h, problems, rect))
         });
         hover_box(ui, state, path, &response, under);
     }
@@ -1163,7 +1223,9 @@ pub fn window_body(
             .interactable(true)
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style())
-                    .show(ui, |ui| hover_ui(ui, &b.hover, hover_font))
+                    .show(ui, |ui| {
+                        hover_ui(ui, &b.problems, b.hover.as_ref(), hover_font)
+                    })
                     .inner
             });
         if let Some(target) = shown.inner {
@@ -1679,7 +1741,7 @@ mod tests {
     }
 
     fn spans(text: &str) -> Vec<(String, egui::Color32)> {
-        highlight(text, egui::FontId::monospace(12.0), None)
+        highlight(text, egui::FontId::monospace(12.0), &[])
             .sections
             .iter()
             .map(|s| {
@@ -1723,7 +1785,11 @@ mod tests {
     #[test]
     fn highlight_covers_every_byte_once_and_squiggles_the_range() {
         let text = "move_to(closest(ore).expect())\n# comment\nwhile True:\n    x = x + 1\n";
-        let job = highlight(text, egui::FontId::monospace(12.0), Some(8..15));
+        let job = highlight(
+            text,
+            egui::FontId::monospace(12.0),
+            std::slice::from_ref(&(8..15)),
+        );
         let mut pos = 0;
         for s in &job.sections {
             assert_eq!(s.byte_range.start.0, pos, "gap or overlap at {pos}");
