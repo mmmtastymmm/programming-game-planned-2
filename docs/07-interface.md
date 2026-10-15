@@ -117,6 +117,10 @@ hash; a peer with a different renderer sees the same match.
   shows its signature as written, its docstring and where it is defined;
   a name that resolves to nothing shows nothing. Programs and the editor,
   below.
+- **A hover goes to the definition (Q58).** A name defined in a file of
+  the tree carries a link in its box, and a command-click on the name
+  does the same: the file's window opens in front and shows the line.
+  Programs and the editor, below.
 
 ## The screen
 
@@ -206,6 +210,14 @@ The two meet only through `Deploy`.
   silence. A file that stops parsing while it is typed keeps its last
   outline, so its hovers go on working. Hovers read only the tree, never
   the match, and change nothing a peer sees.
+- **Going to a definition** (Q58). A box for a name defined in a file
+  ends in a link to that file and line, and the box stays open while the
+  pointer travels from the name into it, so the link can be reached; a
+  command-click on the name (`Ctrl` off macOS) goes there without the
+  box. Going there opens the file's window — expanded and in front if it
+  was already open — scrolls the line into view, briefly lights it, and
+  puts the cursor at its start. A builtin's box has no link: its text is
+  in `docs.toml`, not in the tree.
 - Highlighting, completion and the editor's keys are the build's choices
   and not rules; they change nothing a peer sees.
 

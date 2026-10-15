@@ -58,7 +58,40 @@ pub struct Editor {
     /// Every file's outline, for what resting the pointer on a name shows
     /// (Q57).
     pub index: crate::hover::Index,
+    /// The hover box showing, if any.
+    pub hover_box: Option<HoverBox>,
+    /// A definition to open, asked for from a hover box or by
+    /// command-click (Q58); the windows take it on the next frame.
+    pub goto: Option<(String, u32)>,
+    /// A line a window is bringing into view.
+    pub reveal: Option<Reveal>,
 }
+
+/// The hover box on screen (Q57). It stays while the pointer travels from
+/// the name into it, so its link can be clicked (Q58).
+#[derive(Debug, Clone)]
+pub struct HoverBox {
+    pub path: String,
+    pub hover: crate::hover::Hover,
+    /// The name's rect on screen: the box sits under it, or over it near
+    /// the bottom of the screen.
+    pub word: egui::Rect,
+    /// Where the box was drawn last frame.
+    pub rect: Option<egui::Rect>,
+}
+
+/// A line a file's window brings into view (Q58): scrolled to and given
+/// the cursor on its first frame, then lit for [`FLASH_SECS`].
+#[derive(Debug, Clone)]
+pub struct Reveal {
+    pub path: String,
+    pub line: u32,
+    /// When the window first showed it; `None` until then.
+    pub since: Option<f64>,
+}
+
+/// How long a revealed line stays lit.
+const FLASH_SECS: f64 = 1.2;
 
 /// The fixed files a tree always holds (Q41), besides the robots.
 fn interrupt_paths() -> Vec<String> {
@@ -809,8 +842,13 @@ fn char_under(galley: &egui::Galley, local: egui::Vec2) -> Option<usize> {
 }
 
 /// A hover's box: the signature highlighted as code, the docstring, and
-/// where the name is defined.
-fn hover_ui(ui: &mut egui::Ui, h: &crate::hover::Hover, font: egui::FontId) {
+/// where the name is defined — for a file, a link that goes there (Q58),
+/// returned when clicked.
+fn hover_ui(
+    ui: &mut egui::Ui,
+    h: &crate::hover::Hover,
+    font: egui::FontId,
+) -> Option<(String, u32)> {
     ui.set_max_width(560.0);
     let mut job = highlight(&h.signature, font, None);
     job.wrap.max_width = 560.0;
@@ -820,7 +858,119 @@ fn hover_ui(ui: &mut egui::Ui, h: &crate::hover::Hover, font: egui::FontId) {
         ui.label(doc);
     }
     ui.separator();
-    ui.label(egui::RichText::new(h.origin.label()).small().weak());
+    match &h.origin {
+        crate::hover::Origin::File { path, line } => {
+            let link = egui::RichText::new(format!("go to {}", h.origin.label())).small();
+            let key = if cfg!(target_os = "macos") {
+                "⌘"
+            } else {
+                "Ctrl"
+            };
+            ui.link(link)
+                .on_hover_text(format!("or {key}-click the name"))
+                .clicked()
+                .then(|| (path.clone(), *line))
+        }
+        o => {
+            ui.label(egui::RichText::new(o.label()).small().weak());
+            None
+        }
+    }
+}
+
+/// The screen rect of 1-based `line`'s first row, across the text box.
+fn line_rect(
+    galley: &egui::Galley,
+    galley_pos: egui::Pos2,
+    across: egui::Rect,
+    text: &str,
+    line: u32,
+) -> egui::Rect {
+    let start = line_range(text, line).start;
+    let at = text.get(..start).map_or(0, |t| t.chars().count());
+    let row = galley.pos_from_cursor(egui::text::CCursor::new(at));
+    egui::Rect::from_x_y_ranges(
+        across.x_range(),
+        (galley_pos.y + row.min.y)..=(galley_pos.y + row.max.y),
+    )
+}
+
+/// The screen rect of the identifier under char `at`.
+fn word_rect(
+    galley: &egui::Galley,
+    galley_pos: egui::Pos2,
+    text: &str,
+    at: usize,
+) -> Option<egui::Rect> {
+    let w = crate::hover::word_at(text, at)?;
+    let a = galley.pos_from_cursor(egui::text::CCursor::new(w.start));
+    let b = galley.pos_from_cursor(egui::text::CCursor::new(w.end));
+    Some(
+        egui::Rect::from_min_max(a.min, egui::pos2(b.min.x, a.max.y))
+            .translate(galley_pos.to_vec2()),
+    )
+}
+
+/// Whether the hover box shows, after the pointer moved over `path`'s
+/// text (Q57, Q58). A name under a still pointer opens it after egui's
+/// tooltip delay, and with a box already open another name takes it at
+/// once. The box stays while the pointer is over it or between it and
+/// its name, so its link can be reached. A click on the text closes it,
+/// and a command-click on a name defined in a file goes there.
+fn hover_box(
+    ui: &egui::Ui,
+    state: &mut ViewState,
+    path: &str,
+    response: &egui::Response,
+    under: Option<(crate::hover::Hover, egui::Rect)>,
+) {
+    let delay = ui.style().interaction.tooltip_delay;
+    let (still, clicked, command, pointer) = ui.input(|i| {
+        let still = i.pointer.time_since_last_movement();
+        (
+            still,
+            i.pointer.time_since_last_click() < still + 0.1,
+            i.modifiers.command,
+            i.pointer.hover_pos(),
+        )
+    });
+    let editor = &mut state.editor;
+    let here = editor.hover_box.as_ref().filter(|b| b.path == path);
+    match under {
+        Some((h, _)) if response.clicked() && command => {
+            if let crate::hover::Origin::File { path, line } = h.origin {
+                editor.goto = Some((path, line));
+            }
+            editor.hover_box = None;
+        }
+        Some(_) if clicked => editor.hover_box = None,
+        Some((hover, word)) => {
+            if here.is_some_and(|b| b.word == word) {
+                return;
+            }
+            if editor.hover_box.is_some() || still >= delay {
+                editor.hover_box = Some(HoverBox {
+                    path: path.to_string(),
+                    hover,
+                    word,
+                    rect: None,
+                });
+            } else {
+                ui.ctx().request_repaint_after_secs(delay - still);
+            }
+        }
+        None => {
+            let keep = here.is_some_and(|b| {
+                pointer.is_some_and(|p| {
+                    b.rect
+                        .is_some_and(|r| r.expand(4.0).contains(p) || r.union(b.word).contains(p))
+                })
+            });
+            if here.is_some() && !keep {
+                editor.hover_box = None;
+            }
+        }
+    }
 }
 
 /// One file's window (`docs/07`, Q41): the text, what it reaches and the
@@ -850,27 +1000,105 @@ pub fn window_body(
     };
     let mut changed = false;
     let hover_font = egui::TextStyle::Monospace.resolve(ui.style());
+    let now = ui.input(|i| i.time);
+    let reveal = state
+        .editor
+        .reveal
+        .as_ref()
+        .filter(|r| r.path == path)
+        .map(|r| (r.line, r.since));
     if let Some(doc) = state.editor.files.get_mut(path) {
-        let output = egui::ScrollArea::vertical()
+        let mut output = egui::ScrollArea::vertical()
             .max_height((ui.available_height() - 150.0).max(80.0))
             .show(ui, |ui| {
-                egui::TextEdit::multiline(&mut doc.text)
+                let output = egui::TextEdit::multiline(&mut doc.text)
                     .code_editor()
                     .desired_rows(rows)
                     .desired_width(f32::INFINITY)
                     .layouter(&mut layouter)
-                    .show(ui)
+                    .show(ui);
+                // A definition gone to (Q58): scrolled into view once, then
+                // lit, fading.
+                if let Some((line, since)) = reveal {
+                    let across = output.response.response.rect;
+                    let rect =
+                        line_rect(&output.galley, output.galley_pos, across, &doc.text, line);
+                    if since.is_none() {
+                        ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                    }
+                    let left = 1.0 - since.map_or(0.0, |s| (now - s) / FLASH_SECS);
+                    if left > 0.0 {
+                        let alpha = (left.min(1.0) * 70.0) as u8;
+                        let lit = egui::Color32::from_rgba_unmultiplied(255, 214, 90, alpha);
+                        ui.painter().rect_filled(rect, 2.0, lit);
+                        ui.ctx().request_repaint();
+                    }
+                }
+                output
             })
             .inner;
-        let response = output.response.response;
+        let response = output.response.response.clone();
         changed = response.changed();
+        if let Some((line, since)) = reveal {
+            if since.is_none() {
+                // The cursor goes to the line, so typing starts there.
+                let start = line_range(&doc.text, line).start;
+                let at = doc.text.get(..start).map_or(0, |t| t.chars().count());
+                let cursor = egui::text::CCursorRange::one(egui::text::CCursor::new(at));
+                output.state.cursor.set_char_range(Some(cursor));
+                output.state.clone().store(ui.ctx(), response.id);
+                response.request_focus();
+            }
+            state.editor.reveal = match since {
+                Some(s) if now - s >= FLASH_SECS => None,
+                _ => Some(Reveal {
+                    path: path.to_string(),
+                    line,
+                    since: since.or(Some(now)),
+                }),
+            };
+        }
         // Resting on a name shows its signature and docstring (Q57).
-        let hovered = response
-            .hover_pos()
-            .and_then(|pos| char_under(&output.galley, pos - output.galley_pos))
-            .and_then(|at| state.editor.index.hover(path, &doc.text, at));
-        if let Some(h) = hovered {
-            response.on_hover_ui_at_pointer(|ui| hover_ui(ui, &h, hover_font));
+        let under = response.hover_pos().and_then(|pos| {
+            let at = char_under(&output.galley, pos - output.galley_pos)?;
+            let h = state.editor.index.hover(path, &doc.text, at)?;
+            Some((
+                h,
+                word_rect(&output.galley, output.galley_pos, &doc.text, at)?,
+            ))
+        });
+        hover_box(ui, state, path, &response, under);
+    }
+    // The box itself, over everything, while it is this file's.
+    if let Some(b) = state.editor.hover_box.clone().filter(|b| b.path == path) {
+        let screen = ui.ctx().viewport_rect();
+        let height = b.rect.map_or(160.0, |r| r.height());
+        let (pos, pivot) = if b.word.bottom() + 2.0 + height <= screen.bottom() {
+            (
+                b.word.left_bottom() + egui::vec2(0.0, 2.0),
+                egui::Align2::LEFT_TOP,
+            )
+        } else {
+            (
+                b.word.left_top() - egui::vec2(0.0, 2.0),
+                egui::Align2::LEFT_BOTTOM,
+            )
+        };
+        let shown = egui::Area::new(egui::Id::new(("hover", path)))
+            .order(egui::Order::Tooltip)
+            .fixed_pos(pos)
+            .pivot(pivot)
+            .interactable(true)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style())
+                    .show(ui, |ui| hover_ui(ui, &b.hover, hover_font))
+                    .inner
+            });
+        if let Some(target) = shown.inner {
+            state.editor.goto = Some(target);
+            state.editor.hover_box = None;
+        } else if let Some(open) = state.editor.hover_box.as_mut() {
+            open.rect = Some(shown.response.rect);
         }
     }
     if changed {
