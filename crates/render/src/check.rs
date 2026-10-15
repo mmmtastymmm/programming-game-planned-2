@@ -1,4 +1,4 @@
-//! The editor's type check (`docs/07`, Q59): a red underline wherever the
+//! The editor's type check (`docs/07`, Q61): a red underline wherever the
 //! annotations (Q56) and the builtins' signatures say a value cannot fit.
 //! It underlines only what is certainly wrong, so a value whose type it
 //! cannot work out passes, and so does a union with any member that fits.

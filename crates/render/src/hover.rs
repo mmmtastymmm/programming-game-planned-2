@@ -326,7 +326,7 @@ pub struct Index {
     files: BTreeMap<String, FileEntry>,
     docs: BuiltinDocs,
     builtins: crate::check::Builtins,
-    /// The type check's underlines (Q59) for each file that parses.
+    /// The type check's underlines (Q61) for each file that parses.
     diags: BTreeMap<String, Vec<crate::check::Diag>>,
 }
 

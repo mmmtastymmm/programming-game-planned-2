@@ -7,23 +7,29 @@ nothing persists when the match ends.
 
 ## Decided
 
-- **Progression is inside a match, and it is building printers (Q42,
-  replacing Q30's conversion and Q31's fixed count).** A team's bots build
-  printers for ore, each one dearer than the last by how many printers and
-  printer sites the team has, and each one standing raises the team's cap
-  by `bots_per_printer`, which its printers fill by themselves. No printer
-  changes hands. A printer defends itself, dealing `defence_damage` each
-  tick to every adjacent bot of another team (Q30), so taking one down is
-  a fight. There is no progression between matches and none is planned;
-  the ladder of opponents (Q29) is the only thing that carries from one
-  match to the next, and it carries nothing but the player's own programs.
+- **Progression is inside a match, and it is building printers and powering
+  them (Q42, replacing Q30's conversion and Q31's fixed count; Q59 added
+  power).** A team's bots build printers for ore, each one dearer than the
+  last by how many printers and printer sites the team has, and each one
+  standing raises the team's cap by `bots_per_printer`, which its printers
+  fill by themselves. No printer changes hands. A printer defends itself,
+  dealing `defence_damage` each tick to every adjacent bot of another team
+  (Q30), so taking one down is a fight. Power (Q59) is the second axis:
+  each printer supplies some, solar panels wired back to a printer add
+  more, and a team prints no bot it cannot power, so a team grows by
+  printers and panels together. There is no progression between matches and
+  none is planned; the ladder of opponents (Q29) is the only thing that
+  carries from one match to the next, and it carries nothing but the
+  player's own programs.
 
 ## Inside a match
 
-A team's reach is measured in printers. Each one it holds is
-`bots_per_printer` more bots its printers will print (Q24). There is one
-way up, and every way down is damage or deconstruction, from a rival or
-from the team itself:
+A team's reach is measured in printers and the power to run what they
+print. Each printer it holds raises its cap by `bots_per_printer` bots
+(Q24), and its printers print up to that cap only as far as its power
+covers the bots (Q59), so the bots a team runs are the lesser of the two. A
+printer is the one way to raise the cap, and every way to lose one is
+damage or deconstruction, from a rival or from the team itself:
 
 | Way | Costs | Ruled in |
 |---|---|---|
@@ -38,6 +44,14 @@ team that loses printers pays less for the next one, so a beaten-down team
 can rebuild faster than it was knocked down — the comeback is the rule's,
 on purpose. A team far ahead pays more for each printer than it did for the
 last, so a lead costs more to extend than to hold.
+
+**Power fills the cap; it never raises it.** A printer supplies power for
+some of the bots its cap allows but not all — data keeps it so (`02`,
+Power) — and solar panels wired back to a printer supply the rest. A team
+whose power falls short of its cap runs fewer bots than its printers allow,
+and a panel is then the way to more of them without a printer; past the
+cap, power buys nothing. Losing a printer lowers the cap, its own supply,
+and every panel wired only through it.
 
 **The last printer is not replaceable.** A team that ends a tick with no
 printer is out (`04`), whatever site it was building, so a replacement must

@@ -352,7 +352,7 @@ def nearest(points: list[tuple[num, num]], limit: num = 10) -> tuple[num, num] |
   | `tuple[A, B, …]`, `tuple[T, ...]` | a tuple of these elements in order, or of any length all `T`; `...` exists only here |
   | `A \| B` | either; `T \| None` is the optional `T` |
   | a class, or `module.Class` | an instance of the player's own class |
-  | `Machine`, `Tile`, `Sound` | the game's records: a machine's attributes (`me()`, a sighting, a tile's `building`), a tile's, a sound's (`02`) |
+  | `Machine`, `Tile`, `Sound`, `Power` | the game's records: a machine's attributes (`me()`, a sighting, a tile's `building`), a tile's, a sound's, and a team's power from `power()` (`02`; `Power` as Q59 added) |
   | `'T'`, a string | the type expression written inside it, as Python allows |
 
   The names are read as written, not looked up: an annotation naming a

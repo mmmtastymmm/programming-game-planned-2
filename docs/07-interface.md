@@ -27,18 +27,19 @@ hash; a peer with a different renderer sees the same match.
   replay its seek (Q55). A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
-- **The starter tree carries a library (Q53).** `data/starter`, the
-  default programs directory, holds `lib/` beside the fixed folders:
-  ordinary player files, written in the game's language with a docstring
-  and type annotations (`01`, Q56) on every function — `geo` (positions, directions, distances), `sense`
-  (tiles, machines and ore the team knows of), `act` (actions that return
-  `True` or `False` instead of raising), `nav` (`go_to` and `approach`,
-  which search for a route when `move_to` is boxed in or pacing), `share`
-  (splitting a list of jobs between bots by rank) and `jobs` (the starter
-  bot's build, paint and patrol steps). `robots/bot.py` imports `jobs`
-  and is the loop alone. The player may read, edit, replace or delete any
-  of it; none of it is a game module (`02`), and nothing in the sim knows
-  it exists.
+- **The starter tree carries a library (Q53, as Q59 amended).**
+  `data/starter`, the default programs directory, holds `lib/` beside the
+  fixed folders: ordinary player files, written in the game's language
+  with a docstring and type annotations (`01`, Q56) on every function —
+  `geo` (positions, directions, distances), `sense` (tiles, machines and
+  ore the team knows of), `act` (actions that return `True` or `False`
+  instead of raising), `nav` (`go_to` and `approach`, which search for a
+  route when `move_to` is boxed in or pacing), `share` (splitting a list
+  of jobs between bots by rank) and `jobs` (the starter bot's build,
+  paint, wire and patrol steps — the wire step, carrying out the team's
+  wire plans, as Q59 added). `robots/bot.py` imports `jobs` and is the loop
+  alone. The player may read, edit, replace or delete any of it; none of
+  it is a game module (`02`), and nothing in the sim knows it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
   screen as first ruled; Q41 moved the dock into the tree; Q55 added the
   debugger's and the version windows).** One window per open file, one each
@@ -48,26 +49,31 @@ hash; a peer with a different renderer sees the same match.
   player; the tree panel opens each but the version windows, which open
   from a file window, the inspector or the debugger's stack; the layout is
   remembered in `windows.toml` beside the programs.
-- **A start screen, an end screen, and the replay always saved (Q36, as
-  Q55 amended).** The map, the cards, the programs directory and play,
+- **A start screen, an end screen, and the replay always saved (Q36, as Q55
+  and Q60 amended).** The map, the cards, the programs directory and play,
   host, join or open a replay are picked in the game; the end names the
   winner or the draw, the tick, the hash and the replay's path; the replay
   is written as `replays/<map>-<tick>-<hash>-<team>.ron` inside the
   programs directory whenever a match ends or desyncs, `<team>` the
-  saver's; every option is also a command-line flag, which skips the
-  screen.
+  saver's, and records the version of the game that wrote it; a replay from
+  another version opens with a warning that it may play back differently,
+  and plays anyway (Q60); every option is also a command-line flag, which
+  skips the screen.
 - **The mark tools are a strip, a tool stays armed, a drag marks, and a
-  plan previews (Q37, amended by Q44, Q49, Q50, Q51 and Q54).** Rows of
-  building models, paint colors and overlay labels each ending in a clear,
-  `B`/`P`/`O` and `1`–`9` to pick, `Esc` to disarm; a drag marks every tile
-  it crosses once, and a `Shift`+drag fills the rectangle between its
-  corners on release; *clear* withdraws the team's plan of its kind where
-  one stands, and plans the slot emptied elsewhere; the player's own plans
-  show as a smaller version of their effect — see-through, but for a paint
-  plan's opaque square — and the armed tool as the same ghost under the
-  cursor or over the rectangle, only on tiles it can plan — paint and
-  overlays on ground the team has seen — and never on a tile already
-  carrying exactly that plan.
+  plan previews (Q37, amended by Q44, Q49, Q50, Q51, Q54 and Q59).** Rows
+  of building models, paint colors and overlay labels each ending in a
+  clear, and a wire tool with its own clear (Q59), `B`/`P`/`O`/`C` and
+  `1`–`9` to pick, `Esc` to disarm; a drag marks every tile it crosses
+  once, and a `Shift`+drag fills the rectangle between its corners on
+  release; *clear* withdraws the team's plan of its kind where one stands,
+  and plans the slot emptied elsewhere; the player's own plans show as a
+  smaller version of their effect — see-through, but for a paint plan's
+  opaque square — and the armed tool as the same ghost under the cursor or
+  over the rectangle, only on tiles it can plan — paint, overlays and wires
+  on ground the team has seen, and a new wire plan only where it would
+  change the tile — and never on a tile already carrying exactly that plan;
+  a clear on a tile holding the team's wire plan withdraws it, as any clear
+  does.
 - **A stall is a banner with a resign; a desync freezes the match with
   the report and the replay saved (Q38).** The banner names the peer, the
   tick and the wait; everything else keeps working. A desync's banner
@@ -98,6 +104,17 @@ hash; a peer with a different renderer sees the same match.
   reads upright from the camera, so it redraws rather than spins; the
   chevron, the trim and the light around it keep the heading, the paint
   and the team readable from above.
+- **Power shows on the map and in the inspector (Q59, amending Q37).** A
+  wire is a line across its tile in its team's color, drawn for every team
+  whose wire the player's team sees or remembers, joining it to the same
+  team's wires and buildings beside it; the mark strip has a wire tool and
+  its clear, on `C`; a bot the power step left dark, and a building whose
+  model supplies power but which is off its team's grid — a panel waiting
+  for its wire — carries a small mark over it — its lights keep their
+  team's color, so friend and foe still read at a glance; a solar panel is
+  a low tilted plate in the neutral body color with a lamp in its team's
+  color; and the inspector shows the player's own team's supply, demand and
+  spare, which no other team's renderer sees.
 - **A program is debugged on a fork (Q55, amending Q15, Q32, Q36, Q39
   and Q41).** Line breakpoints are the editor's; a hit opens a private copy of
   the sim at that point, where the player steps by line, over a call, by
@@ -121,7 +138,7 @@ hash; a peer with a different renderer sees the same match.
   the tree carries a link in its box, and a command-click on the name
   does the same: the file's window opens in front and shows the line.
   Programs and the editor, below.
-- **What the types say cannot fit is underlined (Q59).** The editor reads
+- **What the types say cannot fit is underlined (Q61).** The editor reads
   the annotations (`01`, Q56) and the builtins' signatures and underlines
   in red only what is certainly wrong — a call with the wrong arguments,
   a value its annotation rules out, an operator the language lacks, an
@@ -138,8 +155,8 @@ floats over it (Q39, Q41):
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end, and on a replay its seek; nothing else | Q6, Q12, `06`, Q41, Q55 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools, the log, and the debugger while a fork is open | Q41, Q55 |
 | **one per open file** | the file being edited and its gutter breakpoints, the versions it is deployed as and those the team's machines run, each opening a version window, the deploy and export buttons, and while a fork is open *try in the fork* and *take it*; the faults naming this file | Q33, Q34, Q39, Q41, Q55 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change | Q34, Q43, Q45, Q55 |
-| **tools** | the mark strip and resign | Q37 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change; the player's own team's power — supply, demand and spare — and the selected bot's `powered` or building's `on_grid` | Q34, Q43, Q45, Q55, Q59 |
+| **tools** | the mark strip, its wire tool among it, and resign | Q37, Q59 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 | **debugger** | while a fork is open: its tick, state and controls, why the last step stopped, the hit list, the selected machine's stack, locals, globals, action, budget and interrupts | Q55 |
 | **one per version window** | one version of a file — one content hash (`06`) — that a machine runs or a replay ran, read-only, apart from the tree; its breakpoints | Q55 |
@@ -157,24 +174,24 @@ text, edited in place. A deployment's **running version** is the sim's
 (`02`): the bundle the deployment slot holds, identified by its hash (Q13).
 The two meet only through `Deploy`.
 
-- **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`, one
-  per deployment (Q42) — and `interrupts/` with `on_fault.py` and
-  `on_dying.py`; both folders, every deployment's file and both interrupt
-  files always exist and cannot be renamed, moved or deleted, and the
-  player cannot add a file to either folder. Everything outside them is the
-  player's: files and folders they add, rename, move and delete, shared by
-  every robot. A file's name is `[a-z_][a-z0-9_]*.py` (`01`) and its stem
-  is unique among the files outside `robots/`, since folders are
-  organisational only and the language has no packages; a collision is a
-  load error shown in the tree. A robot file is its bundle's `main.py`,
-  never a module, so `lib/printer.py` beside `robots/printer.py` is no
-  collision. A file found in `robots/` for no deployment — `robots/1.py`
-  from a tree written before Q42 — composes nothing, is marked as an error
-  in the tree and its window, and the player may delete it; the match
-  starts without it. A file that calls a builtin Q42 removed — `print` or
-  `convert` — without defining, importing or assigning that name itself is
-  marked the same way at that line, since such a call loads but faults
-  every time it runs.
+- **The tree** holds `robots/` — `bot.py`, `printer.py`, `depot.py`,
+  `solar.py`, one per deployment (Q42, Q59) — and `interrupts/` with
+  `on_fault.py` and `on_dying.py`; both folders, every deployment's file
+  and both interrupt files always exist and cannot be renamed, moved or
+  deleted, and the player cannot add a file to either folder. Everything
+  outside them is the player's: files and folders they add, rename, move
+  and delete, shared by every robot. A file's name is `[a-z_][a-z0-9_]*.py`
+  (`01`) and its stem is unique among the files outside `robots/`, since
+  folders are organisational only and the language has no packages; a
+  collision is a load error shown in the tree. A robot file is its bundle's
+  `main.py`, never a module, so `lib/printer.py` beside `robots/printer.py`
+  is no collision. A file found in `robots/` for no deployment —
+  `robots/1.py` from a tree written before Q42 — composes nothing, is
+  marked as an error in the tree and its window, and the player may delete
+  it; the match starts without it. A file that calls a builtin Q42 removed
+  — `print` or `convert` — without defining, importing or assigning that
+  name itself is marked the same way at that line, since such a call loads
+  but faults every time it runs.
 - **Composition.** Deployment `d`'s bundle is `robots/d.py` as `main.py`,
   plus every interrupt file and every player file by its bare name. A hook
   binds from `robots/d.py` if it defines one, else from the interrupt file
@@ -224,7 +241,7 @@ The two meet only through `Deploy`.
   was already open — scrolls the line into view, briefly lights it, and
   puts the cursor at its start. A builtin's box has no link: its text is
   in `docs.toml`, not in the tree.
-- **Type underlines** (Q59). The editor checks every file of the tree
+- **Type underlines** (Q61). The editor checks every file of the tree
   that parses against the annotations it and the files it imports carry
   (`01`, Q56) and the signatures in `docs.toml`, and underlines in red,
   with the reason in the hover box above anything else the box shows:
@@ -274,18 +291,32 @@ clears only when those machines fault again or die.
 ## Machines on the map
 
 - **Body:** a bot is an atlas cube in its `color`, or the neutral body
-  color while it is `None`; a printer, a depot and a site are their own
-  shapes in the neutral body color (Q43).
+  color while it is `None`; a printer, a depot, a solar panel and a site
+  are their own shapes in the neutral body color (Q43, Q59) — the panel a
+  low tilted plate with a lamp at its foot.
 - **Team:** a bot's lights glow in its team's color (Q45), and so do a
   printer's — its panel light, side markers and status light, made larger
-  (Q48) — and a depot's lamp where its braces cross (Q47); a printer's
-  trim — its bands and the rails of its top — is painted in it (Q48); a
-  site, which has no lights, is outlined in it (Q43).
+  (Q48) — and a depot's lamp where its braces cross (Q47); a printer's trim
+  — its bands and the rails of its top — is painted in it (Q48); a solar
+  panel's lamp glows in it (Q59); a site, which has no lights, is outlined
+  in it (Q43). Power never dims them.
 - **Number:** a bot's entity id, its last three digits, in fixed seven
   segments on its top face, lit in its team's color in the quarter turn
   that reads upright from the camera (Q46). The player's own team is green unless changed,
   each other team's from the list in data unless changed, so friend and
   foe read at a glance and three teams stay three.
+- **Power** (Q59): a bot the power step left unpowered, and a building
+  whose model supplies power but which is off its team's grid, carries a
+  small mark over it — a struck-through bolt — while the snapshot says so;
+  a team short of power shows it on its newest bots.
+- **Wires** (Q59): every tile carrying a team's wire shows a short bar
+  across its centre in that team's color, and from the centre a thin line
+  to the centre of each adjacent tile carrying the same team's wire or one
+  of its buildings — not a site, which conducts nothing (`02`, Power) — so
+  a lone wire still shows; drawn on the ground above paint and under
+  machines, two teams' wires on one tile side by side. The player's own
+  wires the snapshot marks off the grid (`06`, The snapshot) are drawn
+  dimmed.
 - **Health:** a bar over the machine for a few seconds after any change.
 - **Fault:** the mark above.
 - **Fog:** as Q21 rules — a machine on a remembered tile is drawn as last
@@ -294,10 +325,12 @@ clears only when those machines fault again or die.
 ## Marks
 
 The tools window is a strip (Q37): a row of the building models a plan may
-name (`printer` among them, Q42), a row of the eight paint colors, a row of
-the overlay labels in data (Q10, Q26, Q27), each row ending in a *clear* —
-the plan to empty that slot. `B`, `P` and `O` pick a row and `1`–`9` an
-entry; a click arms a tool, `Esc` or a second click disarms it.
+name (`printer` and `solar` among them, Q42, Q59), a row of the eight paint
+colors, a row of the overlay labels in data (Q10, Q26, Q27), each row
+ending in a *clear* — the plan to empty that slot — and a row holding the
+**wire** tool and its *clear* (Q59). `B`, `P`, `O` and `C` — for cable,
+since `W` pans the camera — pick a row and `1`–`9` an entry; a click arms a
+tool, `Esc` or a second click disarms it.
 
 With a tool armed, a left click on a tile is a `Mark` of that kind and
 value; a left drag marks every tile the cursor crosses, once per drag,
@@ -311,20 +344,23 @@ With none armed, a click selects and a drag pans. The renderer submits
 and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.
 
-A tile carrying the player's team's plan shows it as a smaller,
-see-through version of its effect (Q50) — for paint, a solid square of
-the new color (Q54) inset from the tile's edge, with any paint already
-there showing round it; a
-smaller overlay marker under its label (Q51); a scaled-down translucent
-ghost of the building, a printer for a printer plan; a clear plan hatches
-the slot — and the armed tool shows the same ghost under the cursor, or
-over a `Shift`+drag's rectangle, on the tiles it can plan and that do not
-already carry exactly that plan (Q51): paint and overlays go only on
-ground the team has seen (`03`, Q49), so a single mark elsewhere is
-refused with the reason and a stroke marks the rest and says how many it
-skipped. Only the player's team's plans are drawn, since plans are private
-(`03`), and the snapshot carries that team's plan values per tile for it:
-a read, in no hash.
+A tile carrying the player's team's plan shows it as a smaller, see-through
+version of its effect (Q50) — for paint, a solid square of the new color
+(Q54) inset from the tile's edge, with any paint already there showing
+round it; a smaller overlay marker under its label (Q51); a scaled-down
+translucent ghost of the building, a printer for a printer plan; a
+see-through line across the tile in the team's color for a wire plan (Q59);
+a clear plan hatches the slot — and the armed tool shows the same ghost
+under the cursor, or over a `Shift`+drag's rectangle, on the tiles it can
+plan and that do not already carry exactly that plan (Q51): paint, overlays
+and wires go only on ground the team has seen (`03`, Q49, Q59) — a new wire
+plan, too, only where the tile lacks the team's wire, and a clear that
+plans a removal only where it has one, while a clear on a tile holding the
+team's wire plan withdraws that plan as any clear does — so a single mark
+elsewhere is refused with the reason and a stroke marks the rest and says
+how many it skipped. Only the player's team's plans are drawn, since plans
+are private (`03`), and the snapshot carries that team's plan values per
+tile for it: a read, in no hash.
 
 ## The match
 
@@ -345,14 +381,23 @@ team is drawn in that team's view and can be debugged (Debugging), the
 playback standing for the match; one that does not is drawn in the first
 team's view and can only be watched.
 
+**A replay from another version** (Q60) — one whose recorded version is
+not this build's, or that records none, being older than Q60 — opens with
+a warning naming the version that wrote it: the rules may have changed
+since, so it may not play back as it was played. It plays anyway; nothing
+of the old rules is kept. Whatever the version, when the playback reaches
+the replay's last tick it compares its state hash with the one the
+replay recorded, and a difference is reported in the time bar: this build
+played it back differently.
+
 **After the last** the end screen names the winner or the draw (`04`), the
 ending tick, the final hash and the replay's path; *again* returns to the
 start, *quit* leaves. **The replay is always saved** when a match ends or
-desyncs: `(map, command log)` and the saver's team (Q55), in
-`crates/replay`'s RON, as `replays/<map>-<tick>-<hash>-<team>.ron` inside
-the programs directory, named by the tick and hash so two peers that agree
-write names that differ only in the team, and two peers sharing one
-directory keep both.
+desyncs: `(map, command log)`, the saver's team (Q55), and the game's
+version and the final state hash (Q60), in `crates/replay`'s RON, as
+`replays/<map>-<tick>-<hash>-<team>.ron` inside the programs directory,
+named by the tick and hash so two peers that agree write names that differ
+only in the team, and two peers sharing one directory keep both.
 
 **Stalled** (Q38) — past `stall_report_ticks`, `06` — a banner over the
 map names the peer awaited, the tick and the seconds waited, with a resign

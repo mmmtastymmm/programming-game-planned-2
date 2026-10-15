@@ -74,7 +74,7 @@ pub struct HoverBox {
     pub path: String,
     /// What the name under the pointer is, if it names something.
     pub hover: Option<crate::hover::Hover>,
-    /// What the type check says of the code under the pointer (Q59).
+    /// What the type check says of the code under the pointer (Q61).
     pub problems: Vec<String>,
     /// The rect the box belongs to on screen — the name's, or else the
     /// underlined code's — which it sits under, or over near the bottom
@@ -843,7 +843,7 @@ fn char_under(galley: &egui::Galley, local: egui::Vec2) -> Option<usize> {
         })
 }
 
-/// A hover's box: what the type check says of the code (Q59); then the
+/// A hover's box: what the type check says of the code (Q61); then the
 /// signature highlighted as code, the docstring, and where the name is
 /// defined — for a file, a link that goes there (Q58), returned when
 /// clicked.
@@ -854,7 +854,7 @@ fn hover_ui(
     font: egui::FontId,
 ) -> Option<(String, u32)> {
     ui.set_max_width(560.0);
-    // What the type check says comes first (Q59).
+    // What the type check says comes first (Q61).
     for p in problems {
         ui.label(egui::RichText::new(p).color(HL_ERROR));
     }
@@ -1071,7 +1071,7 @@ pub fn window_body(
     let compose_error = state.editor.compose_error.clone();
     let font_id = egui::TextStyle::Monospace.resolve(ui.style());
     let squiggle_line = error.as_ref().map(|(_, e)| e.line);
-    // The type check's underlines (Q59), in chars of the text they were
+    // The type check's underlines (Q61), in chars of the text they were
     // found in; the frame a keystroke lands they may be a char off.
     let typed: Vec<(usize, usize)> = state
         .editor
@@ -1180,7 +1180,7 @@ pub fn window_body(
             };
         }
         // Resting on a name shows its signature and docstring (Q57), and
-        // on underlined code what the type check says (Q59).
+        // on underlined code what the type check says (Q61).
         let under = response.hover_pos().and_then(|pos| {
             let at = char_under(&output.galley, pos - output.galley_pos)?;
             let h = state.editor.index.hover(path, &doc.text, at);
