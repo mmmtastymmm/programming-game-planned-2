@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-15: 8 opened, 4 fixed — 4 open.**
+**Status 2026-10-15: 9 opened, 4 fixed — 5 open.**
 
 ## Open
 
@@ -87,3 +87,12 @@ model, no power step and no `powered` attribute, printing ignores power,
 and the renderer draws none of it. The work is [T31](TASKS.md) and
 [T32](TASKS.md); this entry closes with the commit that finishes
 whichever lands last.
+
+**P9 — The code lags Q60: a replay records no version**
+
+Q60 ruled that a saved replay records the game version that wrote it and
+its final state hash, that a replay from another version opens with a
+warning, and that a playback whose final hash differs says so; `06` and
+`07` state it as current. The replay file holds neither field and the
+renderer warns of nothing, so an old replay plays back silently
+differently. The work is [T33](TASKS.md).

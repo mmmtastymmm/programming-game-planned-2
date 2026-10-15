@@ -146,11 +146,12 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   `power_supply` in data; no building draws. A team's grid is its wires and
   its buildings, sites excluded, joined to one of its printers; bots draw
   anywhere. Each tick, oldest first, a bot is powered while the supply
-  covers it, and an unpowered bot's main flow and its action wait — never a
-  handler. A printer prints only with spare power for the new bot. Wires
-  are laid and removed by the team's own bots alone, for a little ore, on
-  ground; a wire plan is the fourth plan kind. The **solar panel** is a
-  building that supplies power. Power, below; the renderer's side is
+  covers it, and an unpowered bot's main flow and the action main flow
+  began wait — never a handler, nor an action a hook began. A printer
+  prints only with spare power for the new bot. Wires are laid and removed
+  by the team's own bots alone, for a little ore, on ground; a wire plan is
+  the fourth plan kind. The **solar panel** is a building that supplies
+  power. Power, below; the renderer's side is
   [07-interface](07-interface.md)'s.
 
 ## A machine
@@ -474,8 +475,9 @@ supply below what `bots_per_printer` bots draw, so that panels matter.
   adjacent conductors. A building is **on the grid** — its `on_grid`
   attribute — when its tile is; a printer always is. Bots need no grid.
 - **Supply** is the sum of `power_supply` over the team's buildings on the
-  grid whose health is above zero. A building off the grid supplies
-  nothing.
+  grid — a `dying` one included until its `death` removes it, as Q24's cap
+  counts a printer — so a team that stands has a printer that supplies. A
+  building off the grid supplies nothing.
 - **Who is powered.** The team's bots are taken in ascending entity id,
   oldest first, and each is powered — its `powered` attribute — while the
   summed draw so far, its own included, is within the supply; the first
@@ -493,9 +495,10 @@ supply below what `bots_per_printer` bots draw, so that panels matter.
   be attacked, and dies as any other does.
 - **When it is decided.** The power step sets `powered` and `on_grid`, and
   they hold until the next. The match is built with that step's power half
-  already run at tick 0, so every machine has both from the first slice. A
-  machine made in step 3 — a printed bot, a completed building — has them
-  from the same tick's power step, before its first slice.
+  already run at tick 0, so every bot has its `powered` and every building
+  its `on_grid` from the first slice. A machine made in step 3 — a printed
+  bot, a completed building — has them from the same tick's power step,
+  before its first slice.
 - **What a program reads.** The power step keeps each team's supply,
   demand and spare — the spare as it stands after that step's prints
   began — as team state, in the hash (`06`), and `power()` (Senses)

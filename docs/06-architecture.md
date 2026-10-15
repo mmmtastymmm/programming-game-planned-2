@@ -215,7 +215,8 @@ loop:
    3 and 4 left it with no printer, by deconstruction or death (`04`) — has
    its machines removed, its plans and its wires (Q59) cleared and its log
    closed, in team order.
-6. **Power and printing**: in team order, each team's grid is traced, its
+6. **Power and printing**: in team order, every team's — an out team's
+   too, whose figures are then all zero — grid is traced, its
    supply summed and its bots powered, oldest first, which holds until the
    next tick's step 6 (Q59; `02`, Power) — the match is built with this
    half already run at tick 0; then its printers that are ready and above
@@ -259,8 +260,10 @@ A **command** is:
   they enter the log like any peer's. `(map, command log)` is a replay, and
   the log's bytes are hashed into the replay's identity as the map's are,
   each length-prefixed as rule 7 hashes a bundle. A saved replay also
-  records the saver's team (Q55), for the debugger; it is outside the
-  identity, so two peers' files of one match are one replay.
+  records the saver's team (Q55), for the debugger, and the version of the
+  game that wrote it and its final state hash (Q60), so a later build can
+  say it plays back differently; all three are outside the identity, so two
+  peers' files of one match are one replay.
 - **Encoding** on the wire and on disk is one canonical byte layout per
   kind, length-prefixed like the bundle hash (`01`), so that the log hashes
   identically everywhere. `net` owns the layout; it is spec once written and

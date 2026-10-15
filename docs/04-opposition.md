@@ -31,8 +31,8 @@ it senses and remembers is Q7 and Q21 there, what it stands on is
 
 A **team** is a number, from the map's team list (`03`), and everything
 that has a team has exactly one. A team owns its machines, its deployments,
-its cap (Q24), its plans (Q27) and its memory (Q21); it shares nothing with
-another team but the world.
+its cap (Q24), its plans (Q27), its memory (Q21), its wires and its power
+(Q59); it shares nothing with another team but the world.
 
 Every team is the same kind of thing. There is no flag on a team that says
 "the opposition": what makes a team the opposition is only **who submits
@@ -79,12 +79,12 @@ a command log that grows until the match ends.
 printer's `death` epilogue ran, or it was deconstructed (Q28), with no
 other printer standing (Q42). A printer site, however near complete, bots
 and ore do not keep it in the match, and nothing it once held is anyone
-else's. An out team's machines are removed, its plans cleared and its
-command log closed in the tick's out-teams step (`06`, step 5), after damage
-and before printing, whatever put it out: further commands from it are
-dropped in `sim.step` on their tick and recorded nowhere (`06`), since a
-peer cannot know at submission that the team will be out. `Resign` (Q10)
-puts a team out at once on its agreed tick.
+else's. An out team's machines are removed, its plans and its wires cleared
+and its command log closed in the tick's out-teams step (`06`, step 5),
+after damage and before power and printing, whatever put it out: further
+commands from it are dropped in `sim.step` on their tick and recorded
+nowhere (`06`), since a peer cannot know at submission that the team will
+be out. `Resign` (Q10) puts a team out at once on its agreed tick.
 
 **A match ends** on the first tick at which at most one team is not out.
 That team **wins**; if none is — two teams' last printers removed, by

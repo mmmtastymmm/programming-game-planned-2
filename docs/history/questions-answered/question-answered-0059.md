@@ -1,19 +1,22 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q59 — How does power work: solar panels, wires to a printer, and bots that stop when a team is short (amending Q10, Q27, Q37, Q42 and Q49)
+# Q59 — How does power work: solar panels, wires to a printer, and bots that stop when a team is short (amending Q10, Q27, Q37, Q42, Q49, Q53 and Q56)
 
 ## Ruling
 
-*Ruling (2026-10-15):* **power is a team's flow, tick by tick: printers
-and solar panels supply it, bots draw it, a building supplies only when
-wired back to one of the team's printers, and when the draw outruns the
-supply the newest bots stop.** Made under a new number because every
-ruling it amends is a closed record: [Q10](question-answered-0010.md) and
+*Ruling (2026-10-15):* **power is a team's flow, tick by tick: printers and
+solar panels supply it, bots draw it, a building supplies only when wired
+back to one of the team's printers, and when the draw outruns the supply
+the newest bots stop.** Made under a new number because every ruling it
+amends is a closed record: [Q10](question-answered-0010.md) and
 [Q27](question-answered-0027.md) on the plans a player may mark,
 [Q37](question-answered-0037.md) on the mark strip,
-[Q42](question-answered-0042.md) on deployments and printing, and
+[Q42](question-answered-0042.md) on deployments and printing,
 [Q49](question-answered-0049.md) on where paint and overlays may be
-planned, which now covers wires.
+planned, which now covers wires, [Q53](question-answered-0053.md) on the
+starter library, which gains a wire step, and
+[Q56](question-answered-0056.md) on the game's record types, which gain
+`Power`.
 
 ### The rules
 
@@ -32,8 +35,9 @@ and reaches no hash.
    conductor joined to a tile of one of its printers through adjacent
    conductors. A building is **on the grid** when its tile is, so a
    printer always is. Bots need no grid.
-3. **Supply** is the sum of `power_supply` over the team's buildings on
-   the grid whose health is above zero.
+3. **Supply** is the sum of `power_supply` over the team's buildings on the
+   grid, a `dying` one included until its `death` removes it, as Q24's cap
+   counts a printer, so a team that stands has a printer that supplies.
 4. **Who is powered.** The team's bots are taken in ascending entity id,
    oldest first, and each is powered while the draw so far, its own
    included, is within the supply; the first that does not fit and every
@@ -70,21 +74,22 @@ and reaches no hash.
 10. **What a program reads, and where it runs.** Every bot has the
     attribute `powered`, and every building `on_grid`; a tile's record
     carries `wires`; `power()` returns the supply, demand and spare the
-    last power step kept, as team state; `wires()` lists the tiles
-    carrying the team's wire. The tick's step 6 becomes *power and
-    printing*: each team's grid is traced and its bots powered, then its
-    printers begin prints and its figures are kept. The match is built
-    with that step's power half run at tick 0, so every figure and
-    attribute exists from the first slice. The tiles' wires, the new
-    attributes and each team's figures are in the state hash and the
+    last power step kept, as team state, in a record typed `Power`
+    (amending Q56); `wires()` lists the tiles carrying the team's wire. The
+    tick's step 6 becomes *power and printing*: each team's grid is traced
+    and its bots powered, then its printers begin prints and its figures
+    are kept. Every team takes part, an out one with all-zero figures. The
+    match is built with that step's power half run at tick 0, so every
+    figure and attribute exists from the first slice. The tiles' wires, the
+    new attributes and each team's figures are in the state hash and the
     snapshot, with each of the team's own wire tiles marked on or off its
     grid.
 11. **On the map** (amending Q37): a wire is a bar across its tile in its
     team's color with a line to each of the team's wires and buildings
-    beside it; the mark strip gains a wire tool with its *clear*, on `C`;
-    a dark bot and an off-grid building carry a small mark, their lights
-    keeping their team's color; and the inspector shows the player's own
-    team's supply, demand and spare.
+    beside it; the mark strip gains a wire tool with its *clear*, on `C`; a
+    dark bot, and a building that supplies power but is off the grid, carry
+    a small mark, their lights keeping their team's color; and the
+    inspector shows the player's own team's supply, demand and spare.
 
 ### Consequences
 
@@ -101,9 +106,9 @@ and reaches no hash.
   from a printer, and losing the printer at the root drops what hangs from
   it.
 - **No sabotage of wires.** Rivals cannot cut a line; they cut power by
-  attacking panels and printers, which have health. A line can still be
-  cut off by the team's own `unwire` or by a building on its route being
-  destroyed.
+  attacking panels and printers, which have health, and an out team's wires
+  are cleared with it. A line can still be cut off by the team's own
+  `unwire` or by a building on its route being destroyed.
 - **A shortfall is visible and ordered.** The newest bots stop first, so
   a team's oldest keep running, and a program can read who is powered and
   why.
@@ -117,16 +122,19 @@ and reaches no hash.
   Q59 Decided entries, A machine's deployments, the kind tree and table,
   the attributes, the senses, the actions, Printing, a new Power section
   and what it leaves open. [03-world.md](../../03-world.md) — the Q49
-  bullet, the tile's fields and its slots.
-  [01-language/execution.md](../../01-language/execution.md) — a dark
-  tick's budget in Metering. [06-architecture.md](../../06-architecture.md)
-  — the Q10 entry, validation at submission, the tick's steps 2, 3, 5 and
-  6, the snapshot and the state hash.
-  [07-interface.md](../../07-interface.md) — the Q37 entry and a new Q59
-  entry, the screen's inspector and tools, the program tree, Machines on
-  the map and Marks. [05-progression.md](../../05-progression.md) — power
-  beside printers. [00-overview.md](../../00-overview.md) — the Decided
-  listing. [QUESTIONS.md](../../QUESTIONS.md) — the status block.
+  bullet, the tile's fields and its slots, and the map's first prints.
+  [04-opposition.md](../../04-opposition.md) — what a team owns, and an out
+  team's wires. [01-language.md](../../01-language.md) — doorway invariant
+  3; [execution](../../01-language/execution.md) — a dark tick in Metering;
+  [syntax](../../01-language/syntax.md) — the `Power` record.
+  [06-architecture.md](../../06-architecture.md) — the Q10 entry,
+  validation at submission, the tick's steps 2, 3, 5 and 6, the snapshot
+  and the state hash. [07-interface.md](../../07-interface.md) — the Q37
+  and Q53 entries and a new Q59 entry, the screen's inspector and tools,
+  the program tree, Machines on the map and Marks.
+  [05-progression.md](../../05-progression.md) — power beside printers.
+  [00-overview.md](../../00-overview.md) — the Decided listing.
+  [QUESTIONS.md](../../QUESTIONS.md) — the status block.
 - **Task:** [T31](../../TASKS.md) — power in the sim: the grid, supply,
   powered bots, wires and their actions, the solar panel, the senses, the
   snapshot, the data and its load check, the cost rows, the starter's
@@ -194,4 +202,8 @@ not caught up; that a wire plan could ask for what a tile already had and
 never be carried out; that a dark tick's budget, the first tick's figures
 and `power()`'s spare were undefined; that dark lights hid a building's
 team; that `W` already panned the camera; and that the starter library laid
-no wire.
+no wire. The round after found the wire clear unable to withdraw a plan, an
+out team's figures read two ways, a `dying` last printer leaving a team
+dark in the very ticks it must rebuild, `04` and `01`'s doorway not caught
+up, the starter's hover text and docstrings left stale, and no name for the
+`power()` record, which this ruling then gave.

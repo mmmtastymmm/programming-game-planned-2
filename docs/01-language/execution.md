@@ -112,11 +112,12 @@ machine runs over and over; one that wants memory across runs writes a
 
 ## Metering
 
-Main flow does not run to completion inside a tick; it runs until it has spent
-the machine's **tick budget** and then yields, resuming from the same operation
-boundary next tick with every variable intact. This is the one resumption the
-language has (doorway invariant 3) and the one divergence a Python programmer
-has to learn rather than avoid.
+Main flow does not run to completion inside a tick; it runs until it has
+spent the machine's **tick budget** and then yields, resuming from the same
+operation boundary next tick with every variable intact — or, for a bot
+left unpowered (`docs/02`, Power, Q59), on the first tick its team powers
+it again. This is the one resumption the language has (doorway invariant 3)
+and the one divergence a Python programmer has to learn rather than avoid.
 
 - **An operation** is one evaluated expression node or one executed statement:
   every name, literal, call, subscript, attribute and operator, and the

@@ -32,7 +32,8 @@ because a single workgroup happens to keep its order.
   anything below 1 changes nothing, and the sort it biases was already
   correct.
 - `NoIndirectDrawing` on the camera. On this Mac (Metal) nothing 3D drew at
-  all.
+  all, and nothing was logged, so it is no way to make see-through instance
+  order deterministic either (I4).
 
 **Where it applies now.** `Palette::hatch_quad`, `hover_quad` and
 `select_quad` are copies of `mark_quad` for exactly this reason, and a paint

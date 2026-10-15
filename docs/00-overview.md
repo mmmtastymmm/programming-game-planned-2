@@ -78,11 +78,11 @@ pass.
   replay is `(map, timed command log)` — the map being a data file, `docs/03`
   — and determinism rule 7 is load-bearing:
   which byte-exact program version a machine runs is part of the state hash.
-- **The language's rulings live in [01-language](01-language.md)** — Q5
-  and Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
-  interrupts), Q14 and Q19 (numbers), Q41's hook sources and Q52 (free
-  docstrings) are the Decided entries of the parts that elaborate them, and
-  they are not repeated here.
+- **The language's rulings live in [01-language](01-language.md)** — Q5 and
+  Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
+  interrupts), Q14 and Q19 (numbers), Q41's hook sources, Q52 (free
+  docstrings) and Q56 (type annotations) are the Decided entries of the
+  parts that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and
   Q21 (sensing and memory), Q9 (production), Q22 and Q23 (the economy,
   which `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
@@ -107,8 +107,10 @@ pass.
   tree, amending Q33 and Q39), Q44 (the rectangle mark and the withdrawing
   clear, amending Q37), Q45, Q47 and Q48 (a team shown by lights and trim),
   Q46 (a bot's id on its top), Q50, Q51 and Q54 (plan previews), Q53 (the
-  starter library), Q55 (the debugger and what-if) and Q59 (power on the
-  map) are its Decided entries, and they are not repeated here.
+  starter library), Q55 (the debugger and what-if), Q57 and Q58 (a name's
+  hover and going to its definition), Q59 (power on the map) and Q60 (a
+  replay's version) are its Decided entries, and they are not repeated
+  here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
   **progression's in [05-progression](05-progression.md)** — Q42 and Q59
@@ -126,7 +128,7 @@ inserted without renumbering:
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
 | `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | — |
-| `05` | Progression — building printers inside a match; nothing between matches | — |
+| `05` | Progression — building printers and powering them inside a match; nothing between matches | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 | `07` | Interface — the screen, the editor, how a fault reaches the player, how a machine on the map reads | — |
 

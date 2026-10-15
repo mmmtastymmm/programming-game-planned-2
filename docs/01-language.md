@@ -41,12 +41,14 @@ repeated here.
 3. **Nothing resumes across an interrupt.** A `fault` restarts main flow, a
    `redeploy` swaps it, `dying` and `death` end it. The only resumption the
    language has is metering: main flow or a hook paused at an operation
-   boundary when the tick's budget runs out continues from that boundary next
-   tick, in the same program, with the same state. A debugging fork (Q55,
-   `docs/06` Forks) may also stop a machine at any boundary, resume it there,
-   and set a variable while it is stopped; that is a tool acting on a private
-   copy of the world, never the program or the match, and the language's
-   semantics are the same whether or not a fork ever stopped it.
+   boundary when the tick's budget runs out continues from that boundary
+   next tick, in the same program, with the same state — or, for a bot's
+   main flow held by a dark tick (Q59, `docs/02` Power), on the first tick
+   its team powers it again, as metering's pause is. A debugging fork (Q55,
+   `docs/06` Forks) may also stop a machine at any boundary, resume it
+   there, and set a variable while it is stopped; that is a tool acting on
+   a private copy of the world, never the program or the match, and the
+   language's semantics are the same whether or not a fork ever stopped it.
 4. **Every limit and every cost is spec, and its value is data.** Each limit —
    call depth, budgets, collection sizes — is named in
    [execution](01-language/execution.md) with what exhausting it does; each

@@ -27,18 +27,18 @@ hash; a peer with a different renderer sees the same match.
   replay its seek (Q55). A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
-- **The starter tree carries a library (Q53).** `data/starter`, the
-  default programs directory, holds `lib/` beside the fixed folders:
-  ordinary player files, written in the game's language with a docstring
-  on every function — `geo` (positions, directions, distances), `sense`
-  (tiles, machines and ore the team knows of), `act` (actions that return
-  `True` or `False` instead of raising), `nav` (`go_to` and `approach`,
-  which search for a route when `move_to` is boxed in or pacing), `share`
-  (splitting a list of jobs between bots by rank) and `jobs` (the starter
-  bot's build, paint and patrol steps). `robots/bot.py` imports `jobs`
-  and is the loop alone. The player may read, edit, replace or delete any
-  of it; none of it is a game module (`02`), and nothing in the sim knows
-  it exists.
+- **The starter tree carries a library (Q53).** `data/starter`, the default
+  programs directory, holds `lib/` beside the fixed folders: ordinary
+  player files, written in the game's language with a docstring on every
+  function — `geo` (positions, directions, distances), `sense` (tiles,
+  machines and ore the team knows of), `act` (actions that return `True` or
+  `False` instead of raising), `nav` (`go_to` and `approach`, which search
+  for a route when `move_to` is boxed in or pacing), `share` (splitting a
+  list of jobs between bots by rank) and `jobs` (the starter bot's build,
+  paint, wire and patrol steps — the wire step, carrying out the team's
+  wire plans, as Q59 added). `robots/bot.py` imports `jobs` and is the loop
+  alone. The player may read, edit, replace or delete any of it; none of it
+  is a game module (`02`), and nothing in the sim knows it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
   screen as first ruled; Q41 moved the dock into the tree; Q55 added the
   debugger's and the version windows).** One window per open file, one each
@@ -48,14 +48,16 @@ hash; a peer with a different renderer sees the same match.
   player; the tree panel opens each but the version windows, which open
   from a file window, the inspector or the debugger's stack; the layout is
   remembered in `windows.toml` beside the programs.
-- **A start screen, an end screen, and the replay always saved (Q36, as
-  Q55 amended).** The map, the cards, the programs directory and play,
+- **A start screen, an end screen, and the replay always saved (Q36, as Q55
+  and Q60 amended).** The map, the cards, the programs directory and play,
   host, join or open a replay are picked in the game; the end names the
   winner or the draw, the tick, the hash and the replay's path; the replay
   is written as `replays/<map>-<tick>-<hash>-<team>.ron` inside the
   programs directory whenever a match ends or desyncs, `<team>` the
-  saver's; every option is also a command-line flag, which skips the
-  screen.
+  saver's, and records the version of the game that wrote it; a replay from
+  another version opens with a warning that it may play back differently,
+  and plays anyway (Q60); every option is also a command-line flag, which
+  skips the screen.
 - **The mark tools are a strip, a tool stays armed, a drag marks, and a
   plan previews (Q37, amended by Q44, Q49, Q50, Q51, Q54 and Q59).** Rows
   of building models, paint colors and overlay labels each ending in a
@@ -67,8 +69,10 @@ hash; a peer with a different renderer sees the same match.
   smaller version of their effect — see-through, but for a paint plan's
   opaque square — and the armed tool as the same ghost under the cursor or
   over the rectangle, only on tiles it can plan — paint, overlays and wires
-  on ground the team has seen, and a wire only where it would change the
-  tile — and never on a tile already carrying exactly that plan.
+  on ground the team has seen, and a new wire plan only where it would
+  change the tile — and never on a tile already carrying exactly that plan;
+  a clear on a tile holding the team's wire plan withdraws it, as any clear
+  does.
 - **A stall is a banner with a resign; a desync freezes the match with
   the report and the replay saved (Q38).** The banner names the peer, the
   tick and the wait; everything else keeps working. A desync's banner
@@ -103,12 +107,13 @@ hash; a peer with a different renderer sees the same match.
   wire is a line across its tile in its team's color, drawn for every team
   whose wire the player's team sees or remembers, joining it to the same
   team's wires and buildings beside it; the mark strip has a wire tool and
-  its clear, on `C`; a bot the power step left dark, and a building off its
-  team's grid, carries a small mark over it — its lights keep their team's
-  color, so friend and foe still read at a glance; a solar panel is a low
-  tilted plate in the neutral body color with a lamp in its team's color;
-  and the inspector shows the player's own team's supply, demand and spare,
-  which no other team's renderer sees.
+  its clear, on `C`; a bot the power step left dark, and a building whose
+  model supplies power but which is off its team's grid — a panel waiting
+  for its wire — carries a small mark over it — its lights keep their
+  team's color, so friend and foe still read at a glance; a solar panel is
+  a low tilted plate in the neutral body color with a lamp in its team's
+  color; and the inspector shows the player's own team's supply, demand and
+  spare, which no other team's renderer sees.
 - **A program is debugged on a fork (Q55, amending Q15, Q32, Q36, Q39
   and Q41).** Line breakpoints are the editor's; a hit opens a private copy of
   the sim at that point, where the player steps by line, over a call, by
@@ -268,9 +273,9 @@ clears only when those machines fault again or die.
   each other team's from the list in data unless changed, so friend and
   foe read at a glance and three teams stay three.
 - **Power** (Q59): a bot the power step left unpowered, and a building
-  off its team's grid, carries a small mark over it — a struck-through
-  bolt — while the snapshot says so; a team short of power shows it on
-  its newest bots.
+  whose model supplies power but which is off its team's grid, carries a
+  small mark over it — a struck-through bolt — while the snapshot says so;
+  a team short of power shows it on its newest bots.
 - **Wires** (Q59): every tile carrying a team's wire shows a short bar
   across its centre in that team's color, and from the centre a thin line
   to the centre of each adjacent tile carrying the same team's wire or one
@@ -315,12 +320,14 @@ see-through line across the tile in the team's color for a wire plan (Q59);
 a clear plan hatches the slot — and the armed tool shows the same ghost
 under the cursor, or over a `Shift`+drag's rectangle, on the tiles it can
 plan and that do not already carry exactly that plan (Q51): paint, overlays
-and wires go only on ground the team has seen (`03`, Q49, Q59) — a wire
-plan, too, only where the tile lacks the team's wire, its clear only where
-it has one — so a single mark elsewhere is refused with the reason and a
-stroke marks the rest and says how many it skipped. Only the player's
-team's plans are drawn, since plans are private (`03`), and the snapshot
-carries that team's plan values per tile for it: a read, in no hash.
+and wires go only on ground the team has seen (`03`, Q49, Q59) — a new wire
+plan, too, only where the tile lacks the team's wire, and a clear that
+plans a removal only where it has one, while a clear on a tile holding the
+team's wire plan withdraws that plan as any clear does — so a single mark
+elsewhere is refused with the reason and a stroke marks the rest and says
+how many it skipped. Only the player's team's plans are drawn, since plans
+are private (`03`), and the snapshot carries that team's plan values per
+tile for it: a read, in no hash.
 
 ## The match
 
@@ -341,14 +348,23 @@ team is drawn in that team's view and can be debugged (Debugging), the
 playback standing for the match; one that does not is drawn in the first
 team's view and can only be watched.
 
+**A replay from another version** (Q60) — one whose recorded version is
+not this build's, or that records none, being older than Q60 — opens with
+a warning naming the version that wrote it: the rules may have changed
+since, so it may not play back as it was played. It plays anyway; nothing
+of the old rules is kept. Whatever the version, when the playback reaches
+the replay's last tick it compares its state hash with the one the
+replay recorded, and a difference is reported in the time bar: this build
+played it back differently.
+
 **After the last** the end screen names the winner or the draw (`04`), the
 ending tick, the final hash and the replay's path; *again* returns to the
 start, *quit* leaves. **The replay is always saved** when a match ends or
-desyncs: `(map, command log)` and the saver's team (Q55), in
-`crates/replay`'s RON, as `replays/<map>-<tick>-<hash>-<team>.ron` inside
-the programs directory, named by the tick and hash so two peers that agree
-write names that differ only in the team, and two peers sharing one
-directory keep both.
+desyncs: `(map, command log)`, the saver's team (Q55), and the game's
+version and the final state hash (Q60), in `crates/replay`'s RON, as
+`replays/<map>-<tick>-<hash>-<team>.ron` inside the programs directory,
+named by the tick and hash so two peers that agree write names that differ
+only in the team, and two peers sharing one directory keep both.
 
 **Stalled** (Q38) — past `stall_report_ticks`, `06` — a banner over the
 map names the peer awaited, the tick and the seconds waited, with a resign

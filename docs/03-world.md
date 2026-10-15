@@ -64,14 +64,15 @@ and private. All of it is world state, in the hash.
 
 A tile's `terrain` never changes. Its `paint`, `overlay`, `wires` and
 building change only by a bot's action — a team's wire only by its own
-bots' `wire` and `unwire` (`02`), never by another team's — and **a slot is
-emptied before it is filled**: a bot `paint`s only a tile whose paint is
-`None`, `overlay`s only one whose overlay is `None`, and `build`s only one
-with no building; `unpaint`, `unoverlay` and `deconstruct` (`02`) empty
-them, and a plan with a value does the emptying first. A tile is never
-destroyed, so the second cause of `death` that `02` reserves for this doc
-**does not occur**: a machine dies of damage or not at all. Deposits change
-amount and nothing else.
+bots' `wire` and `unwire` (`02`), never by another team's, or cleared with
+its team when the team is out (`06`, step 5) — and **a slot is emptied
+before it is filled**: a bot `paint`s only a tile whose paint is `None`,
+`overlay`s only one whose overlay is `None`, and `build`s only one with no
+building; `unpaint`, `unoverlay` and `deconstruct` (`02`) empty them, and a
+plan with a value does the emptying first. A tile is never destroyed, so
+the second cause of `death` that `02` reserves for this doc **does not
+occur**: a machine dies of damage or not at all. Deposits change amount and
+nothing else.
 
 ## Terrain
 
@@ -161,8 +162,8 @@ A map fixes:
   deployment — every other printer the team will have, its bots build
   (`02`); and
 - nothing else — no bots, no ore held, no memory. The printers begin the
-  first prints in tick 1's print step (`02`, Printing), whatever the
-  opening program set (Q9) holds; the bots run the `bot` bundle once it
+  first prints in tick 1's power and print step (`02`, Printing), whatever
+  the opening program set (Q9) holds; the bots run the `bot` bundle once it
   arrives.
 
 A map is **valid** only if every starting tile is buildable, no two are the
