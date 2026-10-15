@@ -27,18 +27,19 @@ hash; a peer with a different renderer sees the same match.
   replay its seek (Q55). A hook
   binds from the robot's file if it defines one, else from the interrupt
   file (`01`).
-- **The starter tree carries a library (Q53).** `data/starter`, the default
-  programs directory, holds `lib/` beside the fixed folders: ordinary
-  player files, written in the game's language with a docstring on every
-  function — `geo` (positions, directions, distances), `sense` (tiles,
-  machines and ore the team knows of), `act` (actions that return `True` or
-  `False` instead of raising), `nav` (`go_to` and `approach`, which search
-  for a route when `move_to` is boxed in or pacing), `share` (splitting a
-  list of jobs between bots by rank) and `jobs` (the starter bot's build,
+- **The starter tree carries a library (Q53, as Q59 amended).**
+  `data/starter`, the default programs directory, holds `lib/` beside the
+  fixed folders: ordinary player files, written in the game's language
+  with a docstring and type annotations (`01`, Q56) on every function —
+  `geo` (positions, directions, distances), `sense` (tiles, machines and
+  ore the team knows of), `act` (actions that return `True` or `False`
+  instead of raising), `nav` (`go_to` and `approach`, which search for a
+  route when `move_to` is boxed in or pacing), `share` (splitting a list
+  of jobs between bots by rank) and `jobs` (the starter bot's build,
   paint, wire and patrol steps — the wire step, carrying out the team's
   wire plans, as Q59 added). `robots/bot.py` imports `jobs` and is the loop
-  alone. The player may read, edit, replace or delete any of it; none of it
-  is a game module (`02`), and nothing in the sim knows it exists.
+  alone. The player may read, edit, replace or delete any of it; none of
+  it is a game module (`02`), and nothing in the sim knows it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
   screen as first ruled; Q41 moved the dock into the tree; Q55 added the
   debugger's and the version windows).** One window per open file, one each

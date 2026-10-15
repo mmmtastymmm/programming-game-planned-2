@@ -23,18 +23,20 @@ from geo import DIRS, OFFSETS, at, same, adjacent, neighbors
 from act import try_move, try_move_to
 
 # How far beyond the box round the start and the goal a route may wander.
-MARGIN = 4
+MARGIN: int = 4
 # The most tiles one search looks at before it gives up.
-SEARCH_LIMIT = 150
+SEARCH_LIMIT: int = 150
 # How many recent tiles to remember; standing on one again means pacing.
-TRAIL = 6
+TRAIL: int = 6
 
 # The route being followed. A function cannot rebind a module's name, but it
 # can change a dict the name holds, so the state lives here.
-route = {"aim": None, "steps": [], "trail": []}
+route: dict = {"aim": None, "steps": [], "trail": []}
 
 
-def path(goals, limit=SEARCH_LIMIT):
+def path(
+    goals: list[tuple[int, int]], limit: int = SEARCH_LIMIT
+) -> list[str] | None:
     """The shortest list of directions from here to any tile in goals.
 
     Returns [] when already on a goal, and None when no route is found
@@ -82,7 +84,7 @@ def path(goals, limit=SEARCH_LIMIT):
     return None
 
 
-def trace(came, q):
+def trace(came: dict, q: tuple[int, int]) -> list[str]:
     """The directions that led to q, from path()'s record of where each tile
     was reached from."""
     dirs = []
@@ -94,14 +96,14 @@ def trace(came, q):
     return dirs
 
 
-def forget():
+def forget() -> None:
     """Drop the route being followed, so the next call starts fresh."""
     route["aim"] = None
     route["steps"] = []
     route["trail"] = []
 
 
-def follow(goals, aim):
+def follow(goals: list[tuple[int, int]], aim: tuple[int, int]) -> bool | None:
     """One step toward standing on any tile in goals, heading for aim.
 
     Does not check whether the bot is already on a goal; go_to and approach
@@ -139,7 +141,7 @@ def follow(goals, aim):
     return False
 
 
-def go_to(p):
+def go_to(p: tuple[int, int]) -> bool | None:
     """One step toward standing on p; True once there.
 
     False after a step, None when no route was found (the bot waits a tick,
@@ -151,7 +153,7 @@ def go_to(p):
     return follow([p], p)
 
 
-def step_off():
+def step_off() -> bool:
     """Move to any free neighboring tile, or wait a tick if there is none."""
     for d in DIRS:
         if try_move(d):
@@ -160,7 +162,7 @@ def step_off():
     return False
 
 
-def approach(p):
+def approach(p: tuple[int, int]) -> bool | None:
     """One step toward standing beside p; True once beside it.
 
     For working on a tile: pick, drop, build, paint and the rest reach only

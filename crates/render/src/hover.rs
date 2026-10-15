@@ -192,7 +192,17 @@ fn header(lines: &[&str], line: u32) -> String {
                 None => match c {
                     '\'' | '"' => quote = Some(c),
                     '(' | '[' | '{' => depth = depth.saturating_add(1),
-                    ')' | ']' | '}' => depth = depth.saturating_sub(1),
+                    ')' | ']' | '}' => {
+                        depth = depth.saturating_sub(1);
+                        // A bracket closed on a line of its own joins
+                        // without the space, or a trailing comma, before it.
+                        if out.ends_with(' ') {
+                            out.pop();
+                            if out.ends_with(',') {
+                                out.pop();
+                            }
+                        }
+                    }
                     ':' if depth == 0 => return out,
                     '#' => break,
                     _ => {}
@@ -625,6 +635,25 @@ mod tests {
     }
 
     #[test]
+    fn a_signature_over_several_lines_joins_onto_one() {
+        let src = [
+            "def path(",
+            "    goals: list[int],",
+            "    limit: int = 3,",
+            ") -> list[str] | None:",
+        ];
+        assert_eq!(
+            header(&src, 1),
+            "def path(goals: list[int], limit: int = 3) -> list[str] | None"
+        );
+        // A comma inside one line is the source's own.
+        assert_eq!(
+            header(&["def f(x=(1,)) -> tuple:"], 1),
+            "def f(x=(1,)) -> tuple"
+        );
+    }
+
+    #[test]
     fn a_word_is_the_identifier_under_the_char() {
         let text = "x = nav.go_to(p2)";
         let w = |at| word_at(text, at);
@@ -757,6 +786,36 @@ mod tests {
             assert!(o.doc.is_some(), "{path} has no module docstring");
             for (name, d) in &o.defs {
                 assert!(d.doc.is_some(), "{path}: {name} has no docstring");
+            }
+        }
+    }
+
+    #[test]
+    fn the_starter_library_annotates_every_function() {
+        // Every parameter and every return, so each hover shows its types
+        // (Q56). `claim` returns an item of whatever list it is given,
+        // which no annotation can say without type variables.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/starter");
+        let tree = sim::script::read_tree_files(&root).expect("starter tree");
+        for (path, text) in tree.iter().filter(|(p, _)| p.starts_with("lib/")) {
+            let stmts = lang::parser::parse_file(path, text).expect("parses");
+            for s in &stmts {
+                let StmtKind::Def {
+                    name,
+                    params,
+                    returns,
+                    ..
+                } = &s.kind
+                else {
+                    continue;
+                };
+                for (p, a) in params.names.iter().zip(&params.annotations) {
+                    assert!(a.is_some(), "{path}: {name}'s {p} has no annotation");
+                }
+                assert!(
+                    returns.is_some() || name == "claim",
+                    "{path}: {name} has no return annotation"
+                );
             }
         }
     }

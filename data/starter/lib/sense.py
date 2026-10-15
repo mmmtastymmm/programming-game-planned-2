@@ -12,10 +12,10 @@ it, and `tiles(...)` leaves it out.
 from geo import dist2
 
 # Wide enough to cover any map: tiles() clips the rectangle to the map.
-FAR = 1000
+FAR: int = 1000
 
 
-def seen_tiles():
+def seen_tiles() -> list[Tile]:
     """Every tile the team sees or remembers, sorted by row then column.
 
     Costs one unit per tile returned, so it grows as the team explores.
@@ -23,7 +23,7 @@ def seen_tiles():
     return tiles(-FAR, -FAR, FAR, FAR)
 
 
-def seen_bounds():
+def seen_bounds() -> tuple[int, int, int, int]:
     """The smallest (x0, y0, x1, y1) box around every tile the team has
     seen."""
     seen = seen_tiles()
@@ -32,12 +32,12 @@ def seen_bounds():
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def known(x, y):
+def known(x: int, y: int) -> bool:
     """True if the team sees or remembers the tile at (x, y)."""
     return tile(x, y) is not None
 
 
-def passable(x, y):
+def passable(x: int, y: int) -> bool:
     """True if a bot could stand on (x, y), as far as the team knows: ground
     with no building on it.
 
@@ -48,7 +48,7 @@ def passable(x, y):
     return t is None or (t.terrain == "ground" and t.building is None)
 
 
-def buildable(x, y):
+def buildable(x: int, y: int) -> bool:
     """True if a building could go on (x, y): ground, no deposit and no
     building.
 
@@ -60,20 +60,20 @@ def buildable(x, y):
     )
 
 
-def has_building(x, y):
+def has_building(x: int, y: int) -> bool:
     """True if (x, y) holds a building or a site, or is unknown."""
     t = tile(x, y)
     return t is None or t.building is not None
 
 
-def nearest(points):
+def nearest(points: list[tuple[int, int]]) -> tuple[int, int] | None:
     """The point in points closest to this machine, or None if there are
     none.
 
     Ties keep the earlier point, so the result never depends on luck.
     """
     here = me().pos
-    best = None
+    best: tuple[int, tuple[int, int]] | None = None
     for p in points:
         d = dist2(p, here)
         if best is None or d < best[0]:
@@ -81,7 +81,7 @@ def nearest(points):
     return None if best is None else best[1]
 
 
-def machines(model=None, team=None):
+def machines(model: str | None = None, team: int | None = None) -> list[Machine]:
     """The machines the team sees, nearest first.
 
     model: only this model ("bot", "printer", "depot" or "site").
@@ -97,7 +97,7 @@ def machines(model=None, team=None):
     return found
 
 
-def ore_sources():
+def ore_sources() -> list[tuple[int, int]]:
     """Every place a bot can pick ore: deposits with ore left, and the
     team's depots holding some. Costs a pass over every seen tile."""
     found = []

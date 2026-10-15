@@ -11,7 +11,7 @@ nothing better to do.
 """
 
 
-def try_move(d):
+def try_move(d: str) -> bool:
     """Step one tile in direction d ("n", "e", "s" or "w")."""
     try:
         move(d)
@@ -20,7 +20,7 @@ def try_move(d):
         return False
 
 
-def try_move_to(x, y):
+def try_move_to(x: int, y: int) -> bool:
     """Take move_to's one greedy step toward (x, y)."""
     try:
         move_to(x, y)
@@ -29,7 +29,7 @@ def try_move_to(x, y):
         return False
 
 
-def try_pick(kind):
+def try_pick(kind: str) -> bool:
     """Pick up kind ("ore") from an adjacent deposit or depot."""
     try:
         pick(kind)
@@ -38,7 +38,7 @@ def try_pick(kind):
         return False
 
 
-def try_drop(kind):
+def try_drop(kind: str) -> bool:
     """Drop kind into an adjacent building or site with room for it."""
     try:
         drop(kind)
@@ -47,7 +47,7 @@ def try_drop(kind):
         return False
 
 
-def try_build(model, x, y):
+def try_build(model: str, x: int, y: int) -> bool:
     """Place a site for model at (x, y), which must be adjacent."""
     try:
         build(model, x, y)
@@ -56,7 +56,7 @@ def try_build(model, x, y):
         return False
 
 
-def try_deconstruct(x, y):
+def try_deconstruct(x: int, y: int) -> bool:
     """Take down the adjacent building or site at (x, y)."""
     try:
         deconstruct(x, y)
@@ -65,7 +65,7 @@ def try_deconstruct(x, y):
         return False
 
 
-def try_paint(x, y):
+def try_paint(x: int, y: int) -> bool:
     """Carry out the team's paint plan on the adjacent tile (x, y)."""
     try:
         paint(x, y)
@@ -74,7 +74,7 @@ def try_paint(x, y):
         return False
 
 
-def try_unpaint(x, y):
+def try_unpaint(x: int, y: int) -> bool:
     """Remove the paint from the adjacent tile (x, y)."""
     try:
         unpaint(x, y)
@@ -83,7 +83,7 @@ def try_unpaint(x, y):
         return False
 
 
-def try_overlay(x, y):
+def try_overlay(x: int, y: int) -> bool:
     """Carry out the team's overlay plan on the adjacent tile (x, y)."""
     try:
         overlay(x, y)
@@ -92,7 +92,7 @@ def try_overlay(x, y):
         return False
 
 
-def try_unoverlay(x, y):
+def try_unoverlay(x: int, y: int) -> bool:
     """Remove the overlay from the adjacent tile (x, y)."""
     try:
         unoverlay(x, y)
