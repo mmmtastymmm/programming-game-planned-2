@@ -1,6 +1,6 @@
 *Closed record — see [../README.md](../README.md). Not spec.*
 
-# Q56 — How does power work: solar panels, wires to a printer, and machines that stop when a team is short (amending Q10, Q27, Q37, Q42 and Q45)
+# Q58 — How does power work: solar panels, wires to a printer, and machines that stop when a team is short (amending Q10, Q27, Q37, Q42 and Q45)
 
 ## Ruling
 
@@ -104,14 +104,14 @@ and reaches no hash.
 ## Outcome
 
 - **Docs:** [02-machines.md](../../02-machines.md) — the Q22, Q42 and new
-  Q56 Decided entries, A machine's deployments, the kind tree and table,
+  Q58 Decided entries, A machine's deployments, the kind tree and table,
   the attributes, the senses, the actions, Printing, a new Power section
   and what it leaves open. [03-world.md](../../03-world.md) — the Q49
   bullet, the tile's fields and its slots.
   [06-architecture.md](../../06-architecture.md) — the Q10 entry, the
   tick's step 6 and the state hash.
   [07-interface.md](../../07-interface.md) — the Q37 and Q43 entries and a
-  new Q56 entry, the program tree, Machines on the map, the inspector and
+  new Q58 entry, the program tree, Machines on the map, the inspector and
   Marks. [05-progression.md](../../05-progression.md) — power beside
   printers. [00-overview.md](../../00-overview.md) — the Decided listing.
   [QUESTIONS.md](../../QUESTIONS.md) — the status block.
@@ -120,7 +120,7 @@ and reaches no hash.
   the data, the cost rows, the starter programs and the fixtures.
 - **Task:** [T32](../../TASKS.md) — power in the renderer: wires, the wire
   tool, dark lights, the panel's art and the inspector's figures.
-- **Problem:** [P8](../../PROBLEMS.md) — the docs state Q56 as current
+- **Problem:** [P8](../../PROBLEMS.md) — the docs state Q58 as current
   until T31 and T32 land.
 
 ## Worksheet

@@ -22,14 +22,14 @@ Rulings this doc owns, moved here from the overview when it was written.
   the map sets the starting speed. The renderer interpolates between
   completed ticks.
 - **The player may mark the map, and everything the player does enters one
-  ordered command log (Q10, as amended by Q26, Q27, Q28 and Q56).** Besides
+  ordered command log (Q10, as amended by Q26, Q27, Q28 and Q58).** Besides
   `Deploy`, the log carries `Mark` and `Unmark`, which place and withdraw
   plans that only a bot makes real, `SetSpeed` (Q6) and `Resign`, which
   removes the sender's team on the agreed tick. A mark changes what a
   program can read about a tile and never what a machine does: the player
   authors programs and marks the map, and never commands a machine. Every
   command carries its sender and its tick; one that cannot apply is
-  dropped. A plan is of four kinds — paint, overlay, building and, as Q56
+  dropped. A plan is of four kinds — paint, overlay, building and, as Q58
   added, wire. What a mark is and does is [02-machines](02-machines.md)'s
   and [03-world](03-world.md)'s.
 - **A fixed delay, and a stall for a late peer (Q12).** A command entered
@@ -194,7 +194,7 @@ loop:
    handler runs until its tick budget is spent or it yields at a restart
    (`01`, Metering), with interrupts delivered at its boundaries; an
    unpowered machine's main flow does not run, though a handler does (`02`,
-   Power; Q56). Actions begun in a slice begin in this order, and actions
+   Power; Q58). Actions begun in a slice begin in this order, and actions
    completing on this tick complete in ascending entity id after every
    slice has run.
 3. **Action completions**, in ascending entity id: moves land, transfers
@@ -217,7 +217,7 @@ loop:
    order.
 6. **Power and printing**: in team order, each team's grid is traced, its
    supply summed and its machines powered, oldest first, which holds until
-   the next tick's step 6 (Q56; `02`, Power); then its printers that are
+   the next tick's step 6 (Q58; `02`, Power); then its printers that are
    ready, powered and above zero health begin prints by turns until its
    bots and prints in progress reach its cap or its spare power runs out
    (Q42; `02`, Printing).
@@ -298,7 +298,7 @@ The hash is FNV-1a 64-bit over a canonical encoding of the world after step
 deployments, the version of each bundle, its cap, its print turn (Q42), its
 plans by tile in row-then-column order, its memory table by tile; every
 tile in row-then-column order — terrain, deposit, paint, overlay, its
-wires' teams in order (Q56); the next entity id; every machine in ascending
+wires' teams in order (Q58); the next entity id; every machine in ascending
 entity id — every attribute, whether it is `dying`, its action in progress
 and `progress`, a site's construction ticks and the model it becomes, its
 store capacity, which for a site is its price, fixed at placement (Q42),

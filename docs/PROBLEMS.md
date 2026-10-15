@@ -88,9 +88,9 @@ a `while` loop runs cheaper than ruled — the starter's and the Fool's robots
 among them. Found in review of Q55, whose statement rule would otherwise be
 built on the lagging charge. The work is [T30](TASKS.md).
 
-**P8 — The code lags Q56: no power, wires or solar panels**
+**P8 — The code lags Q58: no power, wires or solar panels**
 
-Q56 ruled that power is a team's flow, supplied by printers and solar
+Q58 ruled that power is a team's flow, supplied by printers and solar
 panels wired back to a printer and drawn by bots and some buildings, with
 the newest machines stopping when the team is short; `02`, `03`, `06` and
 `07` state it as current. None of it exists: the sim has no wires, no

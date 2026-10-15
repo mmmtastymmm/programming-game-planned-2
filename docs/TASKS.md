@@ -153,7 +153,7 @@ rule anchors a `while`'s beginnings on this charge. Fixes
 
 **T31 — Power in `sim`: the grid, powered machines, wires and the solar panel** `⚠HASH`
 
-Q56, ruled in `02`'s Power section, `03`'s tile and `06`'s tick. The data:
+Q58, ruled in `02`'s Power section, `03`'s tile and `06`'s tick. The data:
 `power_supply` and `power_draw` on every model, the bot's `wire_cost`,
 `wire_ticks` and `unwire_ticks`, and a `solar` model with its cost, build
 and deconstruct ticks, health and ranges. The tile's per-team `wires`, on
@@ -176,7 +176,7 @@ and the PR says why. Fixes [P8](PROBLEMS.md) with [T32](TASKS.md).
 
 **T32 — Power in `render`: wires, the wire tool, dark lights, the panel**
 
-Q56, ruled in `07`'s Decided entry, Machines on the map, the inspector and
+Q58, ruled in `07`'s Decided entry, Machines on the map, the inspector and
 Marks. Wires drawn as lines in their team's color joining wired neighbours
 and buildings, two teams side by side, the player's own off-grid wires
 dimmed; the strip's wire row and `W`, its plan's see-through line and its

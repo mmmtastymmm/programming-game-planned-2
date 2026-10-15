@@ -87,7 +87,7 @@ pass.
   Q21 (sensing and memory), Q9 (production), Q22 and Q23 (the economy,
   which `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
   (combat), Q30 (a printer's defence), Q42 (building printers, printing and
-  the deployments), Q43 (a bot's color) and Q56 (power, wires and the solar
+  the deployments), Q43 (a bot's color) and Q58 (power, wires and the solar
   panel) are its Decided entries, and they are not repeated here; Q31 and
   Q40, which Q42 withdrew, have none.
 - **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint and
@@ -106,7 +106,7 @@ pass.
   tree, amending Q33 and Q39), Q44 (the rectangle mark and the withdrawing
   clear, amending Q37), Q45, Q47 and Q48 (a team shown by lights and trim),
   Q46 (a bot's id on its top), Q50, Q51 and Q54 (plan previews), Q53 (the
-  starter library), Q55 (the debugger and what-if) and Q56 (power on the
+  starter library), Q55 (the debugger and what-if) and Q58 (power on the
   map) are its Decided entries, and they are not repeated here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and

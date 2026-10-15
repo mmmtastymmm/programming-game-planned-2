@@ -17,7 +17,7 @@ terrain that regrows. Everything below is this doc's own, and none of it
 overrides those.
 
 - **Paint, overlays and wires are planned only on ground the team has seen
-  (Q49, as Q56 extended to wires).** A `Mark` of a paint, an overlay or a
+  (Q49, as Q58 extended to wires).** A `Mark` of a paint, an overlay or a
   wire plan, a value or a clear, applies only on a `ground` tile the
   sending team has seen — visible or remembered — and is dropped on its
   tick otherwise: never on rock or water, and never on a tile still unknown
@@ -47,13 +47,13 @@ Every tile holds exactly:
 | `deposit` | a `dict` of resource kind to amount, or `None`; on any passable tile the map puts one on |
 | `paint` | the tile's one paint, a color from `deployment.colors` in data or `None`; influences nothing |
 | `overlay` | the tile's one overlay, a label from `mark.overlays` in data or `None`; influences bots through the programs that read it |
-| `wires` | the set of teams with a wire on the tile, empty on anything but `ground`; each team's wire carries that team's power (Q56, `02` Power) |
-| `plans` | **per team**, four plans — paint, overlay, building, wire (Q56) — each `None` or a value (a color, a label, a model, `True` for a wire; or a plan to clear); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint, overlay and wire only on ground the team has seen (Q49, Q56) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
+| `wires` | the set of teams with a wire on the tile, empty on anything but `ground`; each team's wire carries that team's power (Q58, `02` Power) |
+| `plans` | **per team**, four plans — paint, overlay, building, wire (Q58) — each `None` or a value (a color, a label, a model, `True` for a wire; or a plan to clear); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint, overlay and wire only on ground the team has seen (Q49, Q58) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
 
 **Paint and overlay are the tile's, not a team's** (Q28): every team's bots
 see them in a sighting and remember them in a snapshot (Q21), and a program
-on any team reads them. **A wire is its team's** (Q56), and each team has
+on any team reads them. **A wire is its team's** (Q58), and each team has
 its own on a tile, so one team's wire never blocks another's; every team
 sees and remembers every wire, as it does paint. **Plans are a team's**,
 and private. All of it is world state, in the hash.
