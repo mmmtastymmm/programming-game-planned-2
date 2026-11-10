@@ -3,8 +3,46 @@
 
 use crate::command::TeamId;
 use crate::map::TilePos;
-use crate::world::{EntityId, World};
-use std::collections::BTreeSet;
+use crate::world::{EntityId, Model, World};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Everything a team's sight depends on: every machine's id, position,
+/// model (its vision range) and team. Terrain, the other input, never
+/// changes after the map loads.
+type Basis = Vec<(EntityId, TilePos, Model, TeamId)>;
+
+/// The tiles each team sees now, kept between queries while the basis
+/// they were computed from stands. Sightings are a function of the world
+/// and no part of it (`docs/06`, The state hash), so this is neither
+/// hashed nor snapshotted; it is checked against the world on every use,
+/// so any path that moves, places or removes a machine invalidates it
+/// without having to know it exists. Without it every `see()` recomputed
+/// its team's whole field of view, which at a thousand bots a team was
+/// nearly all of a tick (I8).
+#[derive(Default)]
+pub struct SightCache {
+    basis: Basis,
+    pub(crate) teams: BTreeMap<TeamId, BTreeSet<TilePos>>,
+}
+
+fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamId)> + '_ {
+    world
+        .machines
+        .values()
+        .map(|m| (m.id, m.pos, m.model, m.team))
+}
+
+/// Make `world.sight.teams[team]` the tiles `team` sees now.
+pub fn ensure_sight(world: &mut World, team: TeamId) {
+    if !world.sight.basis.iter().copied().eq(basis(world)) {
+        world.sight.basis = basis(world).collect();
+        world.sight.teams.clear();
+    }
+    if !world.sight.teams.contains_key(&team) {
+        let visible = team_visible_tiles(world, team);
+        world.sight.teams.insert(team, visible);
+    }
+}
 
 /// The tiles Bresenham's ray from `a` to `b` passes through, `a` and `b`
 /// excluded, with `docs/03`'s fixings so the walk is single-valued.
@@ -74,38 +112,28 @@ pub fn team_visible_tiles(world: &World, team: TeamId) -> BTreeSet<TilePos> {
     out
 }
 
-/// Every machine any of `team`'s machines sees now, each once.
-pub fn team_sees(world: &World, team: TeamId) -> BTreeSet<EntityId> {
-    let mut out = BTreeSet::new();
-    for seer in world.machines.values().filter(|m| m.team == team) {
-        let vision = world.data.model(seer.model.name()).vision;
-        for target in world.machines.values() {
-            if out.contains(&target.id) {
-                continue;
-            }
-            if seer.pos.dist2(target.pos) <= vision.saturating_mul(vision)
-                && clear(world, seer.pos, target.pos)
-            {
-                out.insert(target.id);
-            }
-        }
-    }
-    out
-}
-
-/// Whether `team` can see the machine `target` now.
-pub fn team_can_see(world: &World, team: TeamId, target: EntityId) -> bool {
-    let Some(t) = world.machines.get(&target) else {
-        return false;
-    };
+/// Every machine any of `team`'s machines sees now, each once: the
+/// machines standing on a tile the team sees, since a machine is seen by
+/// exactly the test that sees its tile (`sees_tile`).
+pub fn team_sees(world: &mut World, team: TeamId) -> BTreeSet<EntityId> {
+    ensure_sight(world, team);
+    let visible = &world.sight.teams[&team];
     world
         .machines
         .values()
-        .filter(|m| m.team == team)
-        .any(|seer| {
-            let vision = world.data.model(seer.model.name()).vision;
-            seer.pos.dist2(t.pos) <= vision.saturating_mul(vision) && clear(world, seer.pos, t.pos)
-        })
+        .filter(|m| visible.contains(&m.pos))
+        .map(|m| m.id)
+        .collect()
+}
+
+/// Whether `team` can see the machine `target` now.
+pub fn team_can_see(world: &mut World, team: TeamId, target: EntityId) -> bool {
+    ensure_sight(world, team);
+    let visible = &world.sight.teams[&team];
+    world
+        .machines
+        .get(&target)
+        .is_some_and(|t| visible.contains(&t.pos))
 }
 
 /// The previous tick's sounds any of `team`'s machines hears, each once,
@@ -131,6 +159,81 @@ pub fn team_hears(world: &World, team: TeamId) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::Data;
+    use crate::map::Map;
+    use crate::tick::Sim;
+
+    /// The definition, seer by seer and target by target: what `team_sees`
+    /// computed before the sight cache, kept as its oracle.
+    fn team_sees_by_definition(world: &World, team: TeamId) -> BTreeSet<EntityId> {
+        let mut out = BTreeSet::new();
+        for seer in world.machines.values().filter(|m| m.team == team) {
+            let vision = world.data.model(seer.model.name()).vision;
+            for target in world.machines.values() {
+                if seer.pos.dist2(target.pos) <= vision.saturating_mul(vision)
+                    && clear(world, seer.pos, target.pos)
+                {
+                    out.insert(target.id);
+                }
+            }
+        }
+        out
+    }
+
+    const MAP: &str = r#"
+name = "sight"
+speed = 10
+width = 12
+height = 8
+terrain = """
+............
+....##......
+.o..##......
+............
+............
+......o.....
+..~~........
+............
+"""
+[deposit_default]
+cap = 50
+regrowth = 1
+amount = 50
+[[team]]
+start = [-5, 2]
+[[team]]
+start = [4, -2]
+"#;
+
+    #[test]
+    fn the_sight_cache_agrees_with_the_definition_and_notices_every_change() {
+        let data = Data::load().unwrap();
+        let mut s = Sim::new(Map::parse(MAP, &data).unwrap());
+        let w = &mut s.world;
+        let (t0, t1) = (TeamId(0), TeamId(1));
+        // Bots of both teams, some behind the rock from the other side.
+        let b = w.place(Model::Bot, t0, TilePos::new(-3, 2), Some("bot".into()));
+        w.place(Model::Bot, t1, TilePos::new(1, 2), Some("bot".into()));
+        w.place(Model::Bot, t1, TilePos::new(-2, -2), Some("bot".into()));
+        for team in [t0, t1] {
+            assert_eq!(team_sees(w, team), team_sees_by_definition(w, team));
+        }
+        // A move changes the basis, so the cached set is dropped.
+        w.machines.get_mut(&b).unwrap().pos = TilePos::new(-1, 2);
+        assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
+        assert_eq!(team_sees(w, t1), team_sees_by_definition(w, t1));
+        // So does a new machine, and a removed one.
+        let c = w.place(Model::Bot, t0, TilePos::new(3, -3), Some("bot".into()));
+        assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
+        assert!(team_can_see(w, t0, c));
+        w.machines.remove(&c);
+        assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
+        assert!(!team_can_see(w, t0, c));
+        for target in w.machines.keys().copied().collect::<Vec<_>>() {
+            let by_definition = team_sees_by_definition(w, t1).contains(&target);
+            assert_eq!(team_can_see(w, t1, target), by_definition, "{target:?}");
+        }
+    }
 
     #[test]
     fn the_ray_is_the_docs_walk() {

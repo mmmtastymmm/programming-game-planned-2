@@ -12,7 +12,12 @@
 //! cargo bench -p replay --bench scale -- 50 500 5000  # chosen bot counts
 //! cargo bench -p replay --bench scale -- --teams 8 1000
 //! cargo bench -p replay --bench scale -- --hash-every 0 2000   # step only
+//! cargo bench -p replay --bench scale -- --side 98 --program wait 500
 //! ```
+//!
+//! `--side` fixes the map's side instead of sizing it to the bots, and
+//! `--program wait` deploys a bot that only waits, so the sim's own
+//! per-machine work can be told from the interpreter's.
 //!
 //! Columns: `step ms` and `hash ms` are per call; `ticks/s` is the window's
 //! wall-clock rate with hashing as configured; `bot-ticks/s` is that times
@@ -86,17 +91,20 @@ struct Row {
     moved: usize,
 }
 
-fn bench(teams: usize, n: usize, hash_every: u64) -> Row {
+fn bench(teams: usize, n: usize, hash_every: u64, side: Option<i32>, program: &str) -> Row {
     // Room to patrol: about four tiles per bot, never smaller than the first map.
-    let side = ((4 * n) as f64).sqrt().ceil() as i32 + 8;
-    let side = side.max(24);
+    let side_for = ((4 * n) as f64).sqrt().ceil() as i32 + 8;
+    let side = side.map_or(side_for.max(24), |s| s);
     let data = Data::load().expect("data");
     let text = map_text(side, teams);
     let map = Map::parse(&text, &data).unwrap_or_else(|e| panic!("bench map: {e}"));
     let mut sim = Sim::new(map);
 
     // Every team runs the starter tree, deployed in the opening set.
-    let tree = sim::script::read_tree(&data_dir().join("starter")).expect("starter tree");
+    let mut tree = sim::script::read_tree(&data_dir().join("starter")).expect("starter tree");
+    if program == "wait" {
+        tree.insert("bot".into(), sim::bundle_of("while True:\n    wait(1)\n"));
+    }
     let mut opening = Vec::new();
     for t in 0..teams {
         for (deployment, bundle) in &tree {
@@ -195,6 +203,8 @@ fn bench(teams: usize, n: usize, hash_every: u64) -> Row {
 fn main() {
     let mut teams = 2usize;
     let mut hash_every = 1u64;
+    let mut side: Option<i32> = None;
+    let mut program = String::from("starter");
     let mut counts: Vec<usize> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -211,6 +221,14 @@ fn main() {
                     .and_then(|v| v.parse().ok())
                     .expect("--hash-every <ticks>")
             }
+            "--side" => {
+                side = Some(
+                    args.next()
+                        .and_then(|v| v.parse().ok())
+                        .expect("--side <n>"),
+                )
+            }
+            "--program" => program = args.next().expect("--program starter|wait"),
             "--bench" => {}
             s => counts.push(s.parse().unwrap_or_else(|_| panic!("not a bot count: {s}"))),
         }
@@ -232,7 +250,7 @@ fn main() {
         "moved"
     );
     for n in counts {
-        let r = bench(teams, n, hash_every);
+        let r = bench(teams, n, hash_every, side, &program);
         let wall = (r.step + r.hash).as_secs_f64();
         let hash_ms = if r.hashes == 0 {
             f64::NAN

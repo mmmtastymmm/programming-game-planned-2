@@ -15,17 +15,15 @@ Plans come from the mark tools in the game (B, P and O): `plans(kind)`
 reads them as (x, y, value) tuples, value None for a plan to clear.
 """
 
-from geo import same, dist2
-from sense import seen_tiles, has_building, buildable, nearest, machines, ore_sources
-from act import try_pick, try_drop, try_build, try_deconstruct
+from geo import DIRS, same, step
+from sense import known, passable, has_building, buildable, nearest, machines, ore_sources
+from act import try_move, try_pick, try_drop, try_build, try_deconstruct
 from act import try_paint, try_unpaint, try_overlay, try_unoverlay
-from nav import approach, go_to
+from nav import approach
 
 # Ore a bot carries at most (data/machines.toml).
 CAPACITY: int = 10
-# How far inside the seen edge the patrol loop runs.
-INSET: int = 2
-# Steps a patrol leg may take before the bot gives up on that corner.
+# Steps a patrol leg may take before the bot turns anyway.
 LEG_STEPS: int = 40
 
 
@@ -116,32 +114,30 @@ def mark_step() -> bool:
 # Patrolling
 
 
-def corners() -> list[tuple[int, int]]:
-    """The patrol loop: the corners of the seen part of the map, inset."""
-    seen = seen_tiles()
-    x0 = min([t.x for t in seen])
-    x1 = max([t.x for t in seen])
-    y0 = min([t.y for t in seen])
-    y1 = max([t.y for t in seen])
-    if x1 - x0 > 2 * INSET:
-        x0 += INSET
-        x1 -= INSET
-    if y1 - y0 > 2 * INSET:
-        y0 += INSET
-        y1 -= INSET
-    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-
-
 def patrol_step(leg: int, steps: int) -> tuple[int, int]:
-    """One step round the loop, which uncovers the map as it goes.
+    """One step of the patrol, which uncovers the map as it goes.
 
-    leg is the corner (0 to 3) being walked to and steps how many steps
-    this leg has taken; returns both for the next call. A leg ends near its
-    corner, or after LEG_STEPS steps, or when no route is found.
+    leg is the direction being walked (an index into DIRS) and steps how
+    many steps this leg has taken; returns both for the next call. The bot
+    walks straight until the leg has taken LEG_STEPS steps, or the tile
+    ahead is off the map, rock, water or a building, or another bot is in
+    the way; then it turns right and starts the next leg. Walking to each
+    edge in turn and turning rounds the map, so the loop grows with the map
+    and the patrol costs the same on any: one tile looked at and one step.
+    It used to measure the part of the map the team had seen first, which
+    cost a unit per seen tile every step and on a big map was most of the
+    tick budget.
+
+    A tile next to the bot that the team does not know is off the map: a
+    bot always sees the tiles around it.
     """
-    target = corners()[leg]
-    if dist2(target, me().pos) <= 2 or steps >= LEG_STEPS:
-        return (leg + 1) % 4, 0
-    if go_to(target) is None:
+    d = DIRS[leg]
+    ahead = step(me().pos, d)
+    if (
+        steps >= LEG_STEPS
+        or not known(ahead[0], ahead[1])
+        or not passable(ahead[0], ahead[1])
+        or not try_move(d)
+    ):
         return (leg + 1) % 4, 0
     return leg, steps + 1
