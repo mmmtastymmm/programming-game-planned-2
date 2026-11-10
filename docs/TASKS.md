@@ -198,18 +198,6 @@ the time bar. Tests: a replay round-trips its version and final hash, and
 a replay whose recorded final hash is altered reports the difference.
 Fixes [P9](PROBLEMS.md).
 
-**T34 — The language fixtures see every cost change**
-
-From [I5](history/inbox-triaged/inbox-triaged-0005.md). The
-`crates/lang/tests/golden` transcripts record calls, events and each
-tick's slice result, so a cost change that moves nothing to another tick
-— T30's extra `op.statement` per `while` pass — leaves them unchanged.
-Each transcript gains, per tick, the budget the slice spent and the
-deficit it left, so any cost change moves the transcript and its hash.
-The fixtures' hashes change once, and the PR says why;
-`scripts/lib/rust-gates.mjs` gains a mutation that changes one cost
-constant and asserts the language gate goes red.
-
 ## M12 — Scale
 
 **T38 — The vision pass visits only what a team sees or just stopped seeing**
