@@ -97,11 +97,20 @@ impl CommandLog {
         self.by_tick.get(&tick).cloned().unwrap_or_default()
     }
 
-    /// The lowest tick above `after` that carries any command (Q32).
-    pub fn next_tick_with_a_command(&self, after: u64) -> Option<u64> {
+    /// The lowest tick above `after` that carries a command from a team
+    /// not in `scripted` (Q32, as Q55 amends it): a paused driver runs to
+    /// a player's next command, and a scripted team's log, written in
+    /// advance, is no reason to run. The log records senders only and
+    /// cannot tell a scripted one, so the driver, which loaded the scripts,
+    /// passes them.
+    pub fn next_tick_with_a_player_command(
+        &self,
+        after: u64,
+        scripted: &BTreeSet<TeamId>,
+    ) -> Option<u64> {
         self.by_tick
             .range(after.saturating_add(1)..)
-            .find(|(_, v)| !v.is_empty())
+            .find(|(_, v)| v.iter().any(|c| !scripted.contains(&c.sender)))
             .map(|(t, _)| *t)
     }
 
@@ -358,8 +367,27 @@ mod tests {
         assert!(!log.have_all_sets(4));
         log.submit_set(TeamId(0), 4, vec![]);
         assert!(log.have_all_sets(4));
-        assert_eq!(log.next_tick_with_a_command(0), Some(3));
-        assert_eq!(log.next_tick_with_a_command(3), None);
+        let none = BTreeSet::new();
+        assert_eq!(log.next_tick_with_a_player_command(0, &none), Some(3));
+        assert_eq!(log.next_tick_with_a_player_command(3, &none), None);
+    }
+
+    #[test]
+    fn a_scripted_teams_command_is_no_tick_to_run_to() {
+        let mut log = CommandLog::new([TeamId(0), TeamId(1)]);
+        log.push(cmd(3, 1, CommandKind::SetSpeed(2)));
+        log.push(cmd(5, 1, CommandKind::Resign));
+        log.push(cmd(5, 0, CommandKind::SetSpeed(4)));
+        log.push(cmd(9, 1, CommandKind::SetSpeed(1)));
+        let scripted: BTreeSet<TeamId> = [TeamId(1)].into_iter().collect();
+        // Tick 3 is the script's alone; tick 5 has the player's too.
+        assert_eq!(log.next_tick_with_a_player_command(0, &scripted), Some(5));
+        assert_eq!(log.next_tick_with_a_player_command(5, &scripted), None);
+        // With nothing scripted, every command counts.
+        assert_eq!(
+            log.next_tick_with_a_player_command(0, &BTreeSet::new()),
+            Some(3)
+        );
     }
 
     #[test]
