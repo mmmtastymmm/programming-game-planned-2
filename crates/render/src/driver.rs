@@ -367,9 +367,16 @@ impl Driver {
         self.tick.saturating_add(self.delay).max(open)
     }
 
-    /// The player's own state hash, for the display.
+    /// The player's own state hash, for the display: the one stored when
+    /// the tick ran. The hash walks every machine's execution state, so
+    /// computing it again each frame cost more than the tick (I6); only
+    /// before the first tick, or once the stored one has aged out, is it
+    /// computed here.
     pub fn state_hash(&self) -> u64 {
-        self.sim.state_hash()
+        self.own_hashes
+            .get(&self.tick)
+            .copied()
+            .unwrap_or_else(|| self.sim.state_hash())
     }
 
     /// Every local peer's set for every tick through `tick` is in hand by

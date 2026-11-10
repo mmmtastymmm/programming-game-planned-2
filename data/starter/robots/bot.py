@@ -5,8 +5,8 @@
 #      plan to clear it.
 #   2. Paint. Carry out the team's paint and overlay plans: a color or a
 #      label, or a clear.
-#   3. Patrol. Walk a loop around the part of the map the team has seen,
-#      which uncovers more of it as it goes.
+#   3. Patrol. Walk straight until the map's edge or something in the way,
+#      turn, and go on, which uncovers the map as it goes.
 #
 # Place plans with the mark tools in the game (B, P, O) and the bots act on
 # them. The jobs are in lib/jobs.py, built from the rest of lib/:
@@ -20,7 +20,7 @@
 
 from jobs import build_step, mark_step, patrol_step
 
-# Each bot starts the loop at a different corner, so they spread out.
+# Each bot sets off in a different direction, so they spread out.
 leg = me().id % 4
 steps = 0
 while True:

@@ -155,7 +155,6 @@ check("claim none", share.claim([]), None)
 check("claim", share.claim(["a"]), "a")
 check("mine", len(share.mine(list(range(r[1])))), 1)
 
-check("corners", len(jobs.corners()), 4)
 check("mark_jobs", jobs.mark_jobs(), [])
 check("mark_step", jobs.mark_step(), False)
 check("build_step", jobs.build_step(), False)

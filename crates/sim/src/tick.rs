@@ -716,22 +716,25 @@ impl Sim {
     fn vision_pass(&mut self) {
         let teams: Vec<TeamId> = self.world.teams.keys().copied().collect();
         let tick = self.world.tick;
+        // The building on each tile, the least id first where two stand
+        // on one (none can), looked up per tile rather than searched for:
+        // the search was every machine for every visible tile (I8).
+        let mut buildings: BTreeMap<TilePos, MachineRecord> = BTreeMap::new();
+        for m in self.world.machines.values().filter(|m| m.is_building()) {
+            buildings
+                .entry(m.pos)
+                .or_insert_with(|| MachineRecord::of(m));
+        }
         for team in teams {
             if self.world.teams[&team].out {
                 continue;
             }
-            let visible = sense::team_visible_tiles(&self.world, team);
+            sense::ensure_sight(&mut self.world, team);
             let positions = self.world.map.positions();
             for p in positions {
                 let idx = self.world.tile_index(p).expect("in bounds");
-                if visible.contains(&p) {
+                if self.world.sight.teams[&team].contains(&p) {
                     let tile = &self.world.tiles[idx];
-                    let building = self
-                        .world
-                        .machines
-                        .values()
-                        .find(|m| m.pos == p && m.is_building())
-                        .map(MachineRecord::of);
                     let mem = TileMemory {
                         state: TileState::Visible,
                         seen_at: tick,
@@ -739,7 +742,7 @@ impl Sim {
                         deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
                         paint: tile.paint.clone(),
                         overlay: tile.overlay.clone(),
-                        building,
+                        building: buildings.get(&p).cloned(),
                     };
                     self.world.teams.get_mut(&team).expect("team").memory[idx] = mem;
                 } else {

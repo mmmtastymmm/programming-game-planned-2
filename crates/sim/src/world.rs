@@ -350,6 +350,9 @@ pub struct World {
     pub next_host_object: u64,
     /// The program a deployment with no bundle runs.
     pub empty_program: Program,
+    /// The tiles each team sees now, kept between queries
+    /// (`sense::SightCache`); derived, never hashed.
+    pub sight: crate::sense::SightCache,
 }
 
 impl World {
@@ -389,6 +392,7 @@ impl World {
             speed,
             next_host_object: 0x8000_0000_0000_0000,
             empty_program,
+            sight: crate::sense::SightCache::default(),
         };
         let team_starts: Vec<Vec<TilePos>> = world.map.teams.clone();
         for (i, starts) in team_starts.iter().enumerate() {
