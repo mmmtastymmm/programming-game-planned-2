@@ -651,6 +651,16 @@ impl Machine {
         std::mem::take(&mut self.events)
     }
 
+    /// Cost units spent this tick so far (T34: the fixtures record it).
+    pub fn spent(&self) -> u64 {
+        self.spent
+    }
+
+    /// Cost units the next tick starts in the red by.
+    pub fn deficit(&self) -> u64 {
+        self.deficit
+    }
+
     pub fn is_dead(&self) -> bool {
         self.dead
     }

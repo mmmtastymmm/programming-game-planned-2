@@ -130,6 +130,11 @@ export function runRustGates(repo) {
       expect: "transcript drift in `showcase`", files: [`${langGolden}/showcase.transcript.txt`],
       mutate: (d) => writeFileSync(join(d, langGolden, "showcase.transcript.txt"),
         readFileSync(join(d, langGolden, "showcase.transcript.txt"), "utf8") + "seeded line\n") },
+    // A cost change that moves no call or event to another tick: the
+    // transcript's per-tick budget and deficit are what see it (I5, T34).
+    { name: "language fixture: a cost constant changed", check: "lang-golden",
+      expect: "transcript drift in `showcase`", files: ["data/language/costs.toml"],
+      mutate: (d) => edit(join(d, "data/language/costs.toml"), /^statement = 1$/m, "statement = 2") },
     { name: "language fixture: a transcript gone missing", check: "lang-golden",
       expect: "no stored transcript for `interrupts`", files: [`${langGolden}/interrupts.transcript.txt`],
       mutate: (d) => unlinkSync(join(d, langGolden, "interrupts.transcript.txt")) },
