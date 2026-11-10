@@ -224,3 +224,26 @@ deficit it left, so any cost change moves the transcript and its hash.
 The fixtures' hashes change once, and the PR says why;
 `scripts/lib/rust-gates.mjs` gains a mutation that changes one cost
 constant and asserts the language gate goes red.
+
+## M12 — Scale
+
+**T38 — The vision pass visits only what a team sees or just stopped seeing**
+
+From [I9](history/inbox-triaged/inbox-triaged-0009.md). Step 8 walks every
+position on the map for every team that is in, so a hundred teams on a
+208 by 208 map rewrite 4.3 million tile memories a tick whatever they see.
+Only a tile the team sees now, or saw at the last pass, can change: the
+pass visits the team's visible set and the tiles whose memory still says
+`Visible`, and leaves the rest untouched, which is what the full walk
+wrote to them. The tiles a team saw at the last pass are kept on the team
+beside its memory, so no scan finds them. The sight cache stops comparing
+every machine on every query: the world carries a generation counter that
+every placement, removal, move, conversion and team change bumps, and the
+cache holds the generation it was built at, so the check is one
+comparison; the sites that move or change a machine are few and named,
+and the existing cache test, which holds the cache to the seer-by-seer
+definition across a move, a placement and a removal, gains a conversion
+and a team going out. Each team's memory is written as before, and
+sightings are no part of the hash, so no replay hash moves. The scaling
+benchmark at 10,000 waiting bots on a hundred teams, 219 ms a tick
+before, says what it is after.
