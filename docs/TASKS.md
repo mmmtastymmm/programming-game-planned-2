@@ -119,21 +119,6 @@ as tried; refused in a live PvP match.
 
 [P5](PROBLEMS.md) closes with whichever of T26, T27 and T28 lands last.
 
-**T29 — A paused driver wakes only for a player's command**
-
-Q55 rule 13, amending Q32, in `06`'s Decided entry and The driver. At speed
-`0`, `render`'s driver runs to the next tick carrying a player's command,
-through a `net` query that skips a scripted team's commands — `06`'s
-pseudocode names it `next_tick_with_a_player_command(tick, scripted)`.
-`net`'s log records only senders and cannot tell a scripted one; the driver
-can, having loaded the scripts, so it passes the query the scripted teams.
-Its `local_peers` is no such test: in single-player it also holds every
-team neither the player's nor scripted. No replay hash changes — the sim's
-ticks are the same. The existing paused test, with the Fool loaded, is
-unaffected, since the Fool's script has nothing after tick 0; a new test
-loads a script with an entry after the pause and asserts the driver stops
-short of it. Fixes [P6](PROBLEMS.md).
-
 ## M10 — Power
 
 **T31 — Power in `sim`: the grid, powered bots, wires and the solar panel** `⚠HASH`

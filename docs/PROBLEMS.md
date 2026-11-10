@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-10-15: 9 opened, 4 fixed — 5 open.**
+**Status 2026-11-10: 9 opened, 5 fixed — 4 open.**
 
 ## Open
 
@@ -64,18 +64,6 @@ mid-slice, the renderer has no breakpoints, debugger window or replay
 entry, and a replay records no team. The work is [T26](TASKS.md),
 [T27](TASKS.md) and [T28](TASKS.md); this entry closes with the commit
 that finishes whichever of them lands last.
-
-**P6 — A pause runs on to a scripted team's next command**
-
-Q55 amended Q32 so a paused driver runs only to the next tick carrying a
-player's command, a scripted team's not counting. `render`'s driver still
-takes the next tick carrying any command, through `net`'s
-`next_tick_with_a_command`, and the driver puts a scripted team's whole
-script into the log when it is built, a script being a command log written
-in advance (`04`). So a pause in PvE, a player's or a
-debugger's, runs on without the clock to the script's next entry. It is
-latent today only because the Fool's script has nothing after tick 0. The
-work is [T29](TASKS.md).
 
 **P8 — The code lags Q59: no power, wires or solar panels**
 
