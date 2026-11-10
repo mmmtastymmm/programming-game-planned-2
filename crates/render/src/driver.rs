@@ -87,6 +87,10 @@ pub struct Driver {
     /// Peers whose sets are local — the player and every scripted team —
     /// and therefore always in hand.
     local_peers: BTreeSet<TeamId>,
+    /// The teams the driver loaded scripts for, whose commands a pause
+    /// does not run to (Q55 rule 13). `local_peers` is no such test: in
+    /// single-player it also holds every team that is nobody's.
+    scripted_teams: BTreeSet<TeamId>,
     accumulated: f64,
     /// Real seconds spent waiting on a missing set.
     stalled: f64,
@@ -254,6 +258,7 @@ impl Driver {
         let mut local_peers: BTreeSet<TeamId> = BTreeSet::new();
         local_peers.insert(player);
         let mut scripted = Vec::new();
+        let mut scripted_teams: BTreeSet<TeamId> = BTreeSet::new();
         for (i, dir) in opposition.iter().enumerate() {
             let team = TeamId(i as u32 + 1);
             if !teams.contains(&team) || team == player {
@@ -266,6 +271,7 @@ impl Driver {
             let script = sim::script::Script::load(dir)?;
             scripted.extend(script.resolve(team, map.teams[team.0 as usize][0]));
             local_peers.insert(team);
+            scripted_teams.insert(team);
         }
         let remote_peers: BTreeSet<TeamId> = match &exchange {
             Some(x) => x.peers().into_iter().collect(),
@@ -314,6 +320,7 @@ impl Driver {
             stall_report_ticks: data.net.stall_report_ticks,
             player,
             local_peers,
+            scripted_teams,
             accumulated: 0.0,
             stalled: 0.0,
             stall: None,
@@ -552,8 +559,13 @@ impl Driver {
         self.snapshots.since += dt;
         if self.speed == 0 {
             // Paused: run exactly the ticks up to the next one that carries
-            // a command, without the clock (Q32).
-            let Some(target) = self.log.next_tick_with_a_command(self.tick) else {
+            // a player's command, without the clock (Q32); a scripted
+            // team's commands, in the log since the match began, are no
+            // reason to run (Q55).
+            let Some(target) = self
+                .log
+                .next_tick_with_a_player_command(self.tick, &self.scripted_teams)
+            else {
                 return;
             };
             let all_ready = (self.tick.saturating_add(1)..=target).all(|t| self.ready(t));
@@ -712,6 +724,59 @@ mod tests {
         assert_eq!(d.speed, 20);
         d.advance(0.5);
         assert_eq!(d.tick, 28);
+    }
+
+    #[test]
+    fn a_paused_driver_stops_short_of_a_scripted_teams_next_command() {
+        // A script with an entry after the pause: a depot plan at tick 0,
+        // as the Fool's, and another at tick 30. No deploys, so no bundles.
+        let dir = std::env::temp_dir().join(format!("pg2-late-script-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mark = |tick: u64, x: i32, y: i32| {
+            format!(
+                "[[command]]\ntick = {tick}\nkind = \"Mark\"\nat = [{x}, {y}]\nplan = \"building\"\nvalue = \"depot\"\n"
+            )
+        };
+        let script = format!("name = \"late\"\n{}{}", mark(0, 1, 0), mark(30, 1, 1));
+        std::fs::write(dir.join("script.toml"), script).unwrap();
+        let map = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/maps/first.toml"
+        ))
+        .unwrap();
+        let mut d = Driver::new(
+            &map,
+            &[&dir],
+            vec![CommandKind::Deploy {
+                deployment: "printer".into(),
+                bundle: bundle_of("while True:\n    wait(5)\n"),
+            }],
+        )
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            d.log
+                .commands()
+                .any(|c| c.tick == 30 && c.sender == TeamId(1)),
+            "the script's late entry is in the log from the start"
+        );
+        d.advance(0.5);
+        d.submit(CommandKind::SetSpeed(0)).unwrap();
+        d.advance(1.0);
+        assert_eq!((d.speed, d.tick), (0, 15));
+        // Paused: the script's tick-30 entry is in the log, and the driver
+        // does not run to it (P6).
+        d.advance(5.0);
+        assert_eq!(d.tick, 15, "ran on to a scripted team's command");
+        // A player's command: the driver runs exactly to its tick.
+        let agreed = d.submit(CommandKind::SetSpeed(20)).unwrap();
+        assert_eq!(agreed, 18);
+        d.advance(0.001);
+        assert_eq!(
+            d.tick, 18,
+            "stopped at the player's command, not the script's"
+        );
     }
 
     #[test]
