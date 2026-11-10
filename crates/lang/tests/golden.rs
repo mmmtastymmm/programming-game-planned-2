@@ -10,7 +10,9 @@
 //!
 //! A PR that regenerates a fixture must explain why (CLAUDE.md). The
 //! transcript itself is stored too, so a drift shows *what* changed and not
-//! only that something did.
+//! only that something did. Each tick's line carries the budget the slice
+//! spent and the deficit it left, so a cost change that moves no call or
+//! event to another tick still moves the transcript (I5, T34).
 //!
 //! Three fixtures:
 //! - `showcase` — one program through most of the language, two files.
@@ -161,9 +163,13 @@ fn run(
             ),
             None => String::new(),
         };
+        // The budget the slice spent and the deficit it left (T34): a cost
+        // change that moves nothing to another tick still moves these.
         host.lines.push(format!(
-            "tick {tick}: {slice:?} mode={}{record}",
-            m.mode_name()
+            "tick {tick}: {slice:?} mode={} spent={} deficit={}{record}",
+            m.mode_name(),
+            m.spent(),
+            m.deficit()
         ));
         h = fnv_lines(h, &host.lines);
         hashes.push(h);
