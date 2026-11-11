@@ -395,6 +395,9 @@ mod tests {
         assert_eq!(path, dir.join("replays").join(name));
         let back = replay::Replay::from_ron(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(back.run().last().copied(), Some(m.driver.state_hash()));
+        // The file on disk carries the version and the final hash (Q60).
+        assert_eq!(back.version.as_deref(), Some(replay::GAME_VERSION));
+        assert_eq!(back.final_hash, Some(m.driver.state_hash()));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

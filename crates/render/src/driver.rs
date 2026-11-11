@@ -626,12 +626,17 @@ impl Driver {
 
     /// The match so far as a replay (Q36): the map's bytes, every command
     /// in the log, and the ticks run. The headless driver reproduces this
-    /// peer's hash stream from it.
+    /// peer's hash stream from it. It records the version of this build
+    /// and this peer's hash at its last tick (Q60), so a later build can
+    /// say it plays the file back differently.
     pub fn replay(&self) -> replay::Replay {
+        let (ticks, hash) = self.replay_point();
         replay::Replay {
             map: self.map_text.clone(),
             commands: self.log.commands().cloned().collect(),
-            ticks: self.replay_point().0,
+            ticks,
+            version: Some(replay::GAME_VERSION.to_string()),
+            final_hash: Some(hash),
         }
     }
 
@@ -1054,6 +1059,12 @@ mod tests {
         let hashes = back.run();
         assert_eq!(hashes.len() as u64, d.tick);
         assert_eq!(hashes.last().copied(), Some(d.state_hash()));
+        // It records this build's version and the hash it ended on (Q60),
+        // so opening it here warns of nothing and its playback agrees.
+        assert_eq!(back.version.as_deref(), Some(replay::GAME_VERSION));
+        assert_eq!(back.final_hash, Some(d.state_hash()));
+        assert_eq!(back.version_warning(), None);
+        assert_eq!(back.final_hash_report(d.state_hash()), None);
     }
 
     #[test]
