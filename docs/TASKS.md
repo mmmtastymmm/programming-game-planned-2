@@ -104,7 +104,12 @@ tick 1 and keeping them spread over the replay, halving them and doubling
 the interval when full, seeking by restoring one or by running on from
 where it stands, without watches, and standing for the match when the
 debugger forks from it; the saver's team in the file and its name
-`<map>-<tick>-<hash>-<team>.ron`, outside the replay's identity; version
+`<map>-<tick>-<hash>-<team>.ron`, outside the replay's identity; the
+warning `crates/replay` builds for a replay whose version is not this
+build's or that records none, shown when it opens, and its report of a
+final hash that differs from the recorded one, shown in the time bar when
+the playback reaches the replay's last tick (Q60,
+[T33](history/tasks-completed/task-completed-0033.md)); version
 windows for the team's own deployed versions. The `debug_*` constants in
 `data/interface.toml`.
 
@@ -118,6 +123,7 @@ last try sent, offered only while the tree still holds every file of them
 as tried; refused in a live PvP match.
 
 [P5](PROBLEMS.md) closes with whichever of T26, T27 and T28 lands last.
+[P9](PROBLEMS.md) closes with T27.
 
 ## M10 — Power
 
@@ -182,21 +188,6 @@ supplies power but is off the grid, its lights unchanged; the solar panel's art,
 the inspector's supply, demand and spare for the player's own team, and
 the selected bot's `powered` or building's `on_grid`. [P8](PROBLEMS.md)
 closes with whichever of T31 and T32 lands last.
-
-## M11 — Replays and fixtures
-
-**T33 — A replay records the version that wrote it**
-
-Q60, ruled in `07`'s Q36 entry and The match and `06`'s command log. In
-`crates/replay`'s RON, the game's version string and the final state hash
-beside the saver's team, outside the replay's identity; `render` writes
-both when a match ends or desyncs. Opening a replay whose version is not
-this build's, or that records none, shows a warning naming the version
-that wrote it and plays anyway; when the playback reaches the replay's
-last tick, a state hash that differs from the recorded one is reported in
-the time bar. Tests: a replay round-trips its version and final hash, and
-a replay whose recorded final hash is altered reports the difference.
-Fixes [P9](PROBLEMS.md).
 
 ## M12 — Scale
 

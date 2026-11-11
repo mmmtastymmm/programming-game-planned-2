@@ -76,11 +76,16 @@ and the renderer draws none of it. The work is [T31](TASKS.md) and
 [T32](TASKS.md); this entry closes with the commit that finishes
 whichever lands last.
 
-**P9 — The code lags Q60: a replay records no version**
+**P9 — The code lags Q60: nothing shows a replay's version warning**
 
 Q60 ruled that a saved replay records the game version that wrote it and
 its final state hash, that a replay from another version opens with a
 warning, and that a playback whose final hash differs says so; `06` and
-`07` state it as current. The replay file holds neither field and the
-renderer warns of nothing, so an old replay plays back silently
-differently. The work is [T33](TASKS.md).
+`07` state it as current.
+[T33](history/tasks-completed/task-completed-0033.md) put both fields in
+the file, has `render` write them, and has `crates/replay` build the
+warning and the report of a differing final hash. Neither is shown,
+because the renderer cannot open a replay at all, so there is still no
+screen an old replay could warn on. The work left is in
+[T27](TASKS.md), which opens replays; this entry closes with the commit
+that finishes it.
