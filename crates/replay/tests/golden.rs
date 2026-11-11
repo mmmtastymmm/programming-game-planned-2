@@ -130,10 +130,14 @@ fn golden_replay() -> Replay {
         },
     ));
 
+    // Built in code, not saved from a match, so it records no version and
+    // no final hash (Q60): the stored hash stream is what it is held to.
     Replay {
         map: map_text,
         commands,
         ticks: 400,
+        version: None,
+        final_hash: None,
     }
 }
 

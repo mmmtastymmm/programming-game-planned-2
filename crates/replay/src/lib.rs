@@ -11,6 +11,10 @@ use sim::{Command, Data, Map, Sim, TeamId};
 /// the allocator for the moon.
 pub const MAX_REPLAY_TICKS: u64 = 10_000_000;
 
+/// The version of the game a build writes into the replays it saves (Q60):
+/// the workspace's, which every crate shares.
+pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// A complete description of a match: the map's bytes and every command,
 /// in agreed order. Serializable, since it is what a desync report attaches.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,6 +23,16 @@ pub struct Replay {
     pub commands: Vec<Command>,
     /// Ticks to run, or until the match ends.
     pub ticks: u64,
+    /// The version of the game that wrote the file (Q60), outside the
+    /// replay's identity. None in a file older than Q60, and in a replay
+    /// built in code rather than saved from a match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The state hash at the last tick as the writer computed it (Q60),
+    /// outside the replay's identity: what a playback compares its own
+    /// with, since a build's rules can change while its version does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_hash: Option<u64>,
 }
 
 /// What a run produced: the per-tick hash stream and the finished sim.
@@ -40,6 +54,33 @@ impl Replay {
         h.write_u64(bytes.len() as u64);
         h.write_bytes(&bytes);
         h.finish()
+    }
+
+    /// What opening this replay warns of (Q60, `docs/07`, The match): its
+    /// recorded version is not this build's, or it records none. It plays
+    /// anyway, on this build's rules; nothing of the old ones is kept.
+    pub fn version_warning(&self) -> Option<String> {
+        let wrote = match self.version.as_deref() {
+            Some(v) if v == GAME_VERSION => return None,
+            Some(v) => format!("version {v}"),
+            None => "a version older than any that records itself".to_string(),
+        };
+        Some(format!(
+            "this replay was written by {wrote}, and this is version {GAME_VERSION}: the rules may have changed since, so it may not play back as it was played"
+        ))
+    }
+
+    /// What a playback that reached the last tick on `played` reports
+    /// (Q60): nothing if that is the hash the replay recorded, or if it
+    /// recorded none, and otherwise that this build played it back
+    /// differently, whatever the version.
+    pub fn final_hash_report(&self, played: u64) -> Option<String> {
+        match self.final_hash {
+            Some(recorded) if recorded != played => Some(format!(
+                "this build played the replay back differently: it recorded the final hash {recorded:016x}, and the playback ended on {played:016x}"
+            )),
+            _ => None,
+        }
     }
 
     /// The commands as a log every team is a peer of.
@@ -114,5 +155,102 @@ impl Replay {
 
     pub fn from_ron(text: &str) -> Result<Replay, ron::error::SpannedError> {
         ron::from_str(text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn replay() -> Replay {
+        let map = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/maps/first.toml"
+        ))
+        .expect("the first map");
+        Replay {
+            map,
+            commands: Vec::new(),
+            ticks: 20,
+            version: None,
+            final_hash: None,
+        }
+    }
+
+    #[test]
+    fn a_replay_round_trips_its_version_and_final_hash_outside_its_identity() {
+        let bare = replay();
+        let played = *bare.run().last().expect("ticks ran");
+        let saved = Replay {
+            version: Some(GAME_VERSION.to_string()),
+            final_hash: Some(played),
+            ..bare.clone()
+        };
+        let text = saved.to_ron();
+        assert!(
+            text.contains("version:") && text.contains("final_hash:"),
+            "{text}"
+        );
+        let back = Replay::from_ron(&text).expect("parses");
+        assert_eq!(back, saved);
+        assert_eq!(back.version.as_deref(), Some(GAME_VERSION));
+        assert_eq!(back.final_hash, Some(played));
+        // Two peers' files of one match are one replay (`docs/06`).
+        assert_eq!(back.identity(), bare.identity());
+        assert_eq!(back.version_warning(), None);
+        assert_eq!(back.final_hash_report(played), None);
+    }
+
+    #[test]
+    fn a_replay_older_than_q60_parses_and_warns_that_it_records_no_version() {
+        // A file written before the fields existed holds neither.
+        let text = replay().to_ron();
+        assert!(
+            !text.contains("version:") && !text.contains("final_hash:"),
+            "{text}"
+        );
+        let back = Replay::from_ron(&text).expect("an old file still parses");
+        assert_eq!((back.version.clone(), back.final_hash), (None, None));
+        let warning = back.version_warning().expect("no version is a warning");
+        assert!(
+            warning.contains("older than any that records itself"),
+            "{warning}"
+        );
+        // Nothing recorded, so nothing to differ from.
+        assert_eq!(back.final_hash_report(1), None);
+    }
+
+    #[test]
+    fn a_replay_from_another_version_warns_naming_it_and_still_plays() {
+        let other = Replay {
+            version: Some("0.0.0-other".to_string()),
+            ..replay()
+        };
+        let warning = other
+            .version_warning()
+            .expect("another version is a warning");
+        assert!(warning.contains("version 0.0.0-other"), "{warning}");
+        assert!(warning.contains(GAME_VERSION), "{warning}");
+        assert_eq!(other.run().len(), 20, "it plays anyway");
+    }
+
+    #[test]
+    fn a_replay_whose_recorded_final_hash_is_altered_reports_the_difference() {
+        let bare = replay();
+        let played = *bare.run().last().expect("ticks ran");
+        let altered = Replay {
+            version: Some(GAME_VERSION.to_string()),
+            final_hash: Some(played ^ 1),
+            ..bare
+        };
+        // The version is this build's, so only the hash can tell.
+        assert_eq!(altered.version_warning(), None);
+        let played_again = *altered.run().last().expect("ticks ran");
+        assert_eq!(played_again, played, "the fields are no input to the run");
+        let report = altered
+            .final_hash_report(played_again)
+            .expect("a differing final hash is reported");
+        assert!(report.contains(&format!("{:016x}", played ^ 1)), "{report}");
+        assert!(report.contains(&format!("{played:016x}")), "{report}");
     }
 }
