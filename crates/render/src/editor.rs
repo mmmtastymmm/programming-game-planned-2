@@ -13,6 +13,7 @@ use crate::debugger;
 use crate::driver::Driver;
 use crate::input::submit;
 use crate::view;
+use crate::whatif::{self, Ask};
 use bevy_egui::egui;
 use lang::errors::LoadError;
 use lang::{Limits, Program};
@@ -1364,6 +1365,7 @@ pub fn window_body(
     let mut deploy_now = false;
     let mut deploy_all = false;
     let mut export_now = false;
+    let mut what_if = None;
     // A replay sends no command (`docs/07`, The match): no deploy.
     let live = !d.is_replay();
     ui.horizontal(|ui| {
@@ -1374,6 +1376,7 @@ pub fn window_body(
         if live && ui.button("deploy all changed (Shift+D)").clicked() {
             deploy_all = true;
         }
+        what_if = whatif::buttons(ui, d, state, path);
         if ui.button("export").clicked() {
             export_now = true;
         }
@@ -1393,6 +1396,15 @@ pub fn window_body(
     }
     if deploy_all {
         deploy_changed(d, state);
+    }
+    match what_if {
+        Some(Ask::Try) => {
+            whatif::try_file(d, state, path);
+        }
+        Some(Ask::Take) => {
+            whatif::take_file(d, state, path);
+        }
+        None => {}
     }
     if export_now {
         export(state);

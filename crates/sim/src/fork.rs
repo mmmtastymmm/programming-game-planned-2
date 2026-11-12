@@ -1283,22 +1283,46 @@ impl Fork {
         Ok(())
     }
 
-    /// Put a what-if deploy in the log for the fork's next tick, checked
-    /// as a submission is (`docs/06`, What-if).
-    pub fn what_if(&mut self, deployment: &str, bundle: &Bundle) -> Result<(), String> {
+    /// Whether a what-if deploy may be made where the fork stands
+    /// (`docs/06`, What-if), or the reason it may not: what
+    /// [`Fork::what_if`] refuses before it reads the bundle.
+    pub fn can_what_if(&self) -> Result<(), String> {
+        self.branch_point().map(|_| ())
+    }
+
+    /// Everything [`Fork::what_if`] would refuse of this deploy, where
+    /// the fork stands and of the bundle, changing nothing: so that
+    /// several can be sent all or none.
+    pub fn check_what_if(&self, deployment: &str, bundle: &Bundle) -> Result<(), String> {
         let here = self.branch_point()?;
-        let what = What::Deploy {
-            deployment: deployment.to_string(),
-            bundle: bundle.clone(),
-        };
         let next = here.tick().saturating_add(1);
         let kind = CommandKind::Deploy {
             deployment: deployment.to_string(),
             bundle: bundle.clone(),
         };
-        self.sim.validate(&Command::new(next, self.team, 0, kind))?;
+        self.sim.validate(&Command::new(next, self.team, 0, kind))
+    }
+
+    /// Put a what-if deploy in the log for the fork's next tick, checked
+    /// as a submission is (`docs/06`, What-if).
+    pub fn what_if(&mut self, deployment: &str, bundle: &Bundle) -> Result<(), String> {
+        self.check_what_if(deployment, bundle)?;
+        let here = self.branch_point()?;
+        let what = What::Deploy {
+            deployment: deployment.to_string(),
+            bundle: bundle.clone(),
+        };
         self.branch(here, what);
         Ok(())
+    }
+
+    /// The version of the bundle the fork's team holds in `deployment`
+    /// where the fork stands: inside a tick, what its step 1 left there,
+    /// which a snapshot drawn mid-tick does not yet show.
+    pub fn deployed(&self, deployment: &str) -> Option<u64> {
+        let team = self.sim.world.teams.get(&self.team)?;
+        let slot = team.deployments.get(deployment)?;
+        slot.bundle.as_ref().map(|b| b.version)
     }
 
     /// The fork's state against the match's log as it stands now

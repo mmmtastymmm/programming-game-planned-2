@@ -744,6 +744,42 @@ impl Driver {
         s.arrived(None, false, &line);
         Ok(())
     }
+
+    /// Whether a what-if may be sent where the fork stands, or why not:
+    /// what [`Driver::fork_try`] refuses before it reads a bundle.
+    pub fn can_try(&self) -> Result<(), String> {
+        let s = self.debug.session.as_ref().ok_or("no fork is open")?;
+        if s.running {
+            return Err("pause the run to try".into());
+        }
+        s.fork.can_what_if()
+    }
+
+    /// The version of the bundle the open fork's team holds in a
+    /// deployment where the fork stands: from the fork, since a snapshot
+    /// drawn inside a tick still shows the tick before.
+    pub fn fork_deployed(&self, deployment: &str) -> Option<u64> {
+        self.debug.session.as_ref()?.fork.deployed(deployment)
+    }
+
+    /// *Try in the fork* (`docs/07`, What-if): put these deploys in the
+    /// fork's log for its next tick, all of them or none. The match's log
+    /// takes nothing, and the fork is diverged from then on. The fork
+    /// refuses what `docs/06` does: a stop in step 4, a live PvP match, a
+    /// bundle that does not load.
+    pub fn fork_try(&mut self, deploys: &[(String, Bundle)]) -> Result<(), String> {
+        self.can_try()?;
+        let line = line_of(&self.engine, &self.log, self.tick);
+        let s = self.debug.session.as_mut().ok_or("no fork is open")?;
+        for (deployment, bundle) in deploys {
+            s.fork.check_what_if(deployment, bundle)?;
+        }
+        for (deployment, bundle) in deploys {
+            s.fork.what_if(deployment, bundle)?;
+        }
+        s.arrived(None, false, &line);
+        Ok(())
+    }
 }
 
 /// Where a fork stands, for the banner and the debugger window.

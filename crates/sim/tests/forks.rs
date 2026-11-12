@@ -637,6 +637,8 @@ fn a_step_stops_at_a_death_in_step_4_and_nothing_is_changed_there() {
     assert_eq!(fork.can_edit(id).unwrap_err(), message);
     let tried = bundle_of("wait(1)\n");
     assert_eq!(fork.what_if("bot", &tried).unwrap_err(), message);
+    assert_eq!(fork.can_what_if().unwrap_err(), message);
+    assert_eq!(fork.check_what_if("bot", &tried).unwrap_err(), message);
     assert!(!fork.flags(&log).diverged);
     let stop = fork
         .step(Step::Continue, Some(id), &[], LIMIT, &log)
@@ -1046,6 +1048,8 @@ fn a_fork_of_a_live_pvp_match_stops_at_the_live_tick_and_takes_no_entry() {
     assert_eq!(fork.can_edit(id).unwrap_err(), message);
     let tried = bundle_of("wait(1)\n");
     assert_eq!(fork.what_if("printer", &tried).unwrap_err(), message);
+    assert_eq!(fork.can_what_if().unwrap_err(), message);
+    assert_eq!(fork.check_what_if("printer", &tried).unwrap_err(), message);
     assert_eq!(global(&fork, id, "x").as_deref(), Some("1"));
     assert!(fork.flags(&log).faithful(), "never ahead, never diverged");
     // It goes no further, by any step, and stops nowhere new.
@@ -1085,19 +1089,39 @@ fn a_what_if_deploy_is_checked_as_a_submission_is_and_applies_next_tick() {
     tick(&mut fork, &log);
     tick(&mut fork, &log);
     let tried = bundle_of("log('tried')\nwait(1000)\n");
+    assert_eq!(fork.can_what_if(), Ok(()));
     let refused = fork.what_if("nope", &tried).unwrap_err();
     assert!(refused.contains("no deployment `nope`"), "{refused}");
+    assert_eq!(fork.check_what_if("nope", &tried).unwrap_err(), refused);
     // A bundle that fails to load is refused naming the error.
-    let refused = fork.what_if("printer", &bundle_of("x = (\n")).unwrap_err();
+    let broken = bundle_of("x = (\n");
+    let refused = fork.what_if("printer", &broken).unwrap_err();
     assert!(refused.contains("main.py"), "{refused}");
+    assert_eq!(fork.check_what_if("printer", &broken).unwrap_err(), refused);
     assert!(
         !fork.flags(&log).diverged,
         "a refused what-if enters no log"
     );
+    // A check sends nothing.
+    let before = fork.deployed("printer");
+    assert!(before.is_some() && fork.deployed("depot").is_none());
+    assert_eq!(fork.deployed("nope"), None);
+    assert_eq!(fork.check_what_if("printer", &tried), Ok(()));
+    assert!(!fork.flags(&log).diverged, "a check enters no log");
     fork.what_if("printer", &tried).unwrap();
     assert!(fork.flags(&log).diverged);
     assert!(logged(&fork, id).is_empty(), "agreed for the next tick");
+    assert_eq!(fork.deployed("printer"), before, "not before its tick");
+    // The tick's step 1 puts it in the slot: a step into the tick finds
+    // it there, while the snapshot drawn there is still the last tick's.
+    let stop = fork.step(Step::Line, Some(id), &[], LIMIT, &log).unwrap();
+    assert!(matches!(stop.position, Position::Slice { tick: 3, .. }));
+    let version = fork.deployed("printer");
+    assert!(version.is_some() && version != before);
+    let own = |s: &sim::Snapshot| s.teams[0].deployments["printer"];
+    assert_eq!(own(&fork.snapshot()), before);
     assert_eq!(tick(&mut fork, &log), end(3));
+    assert_eq!(own(&fork.snapshot()), version);
     assert_eq!(logged(&fork, id), ["tried"]);
     // The match's later deploy to the deployment replaces the tried one.
     tick(&mut fork, &log);
