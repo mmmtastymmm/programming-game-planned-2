@@ -549,6 +549,8 @@ pub struct Fork {
     /// How many of the log's entries the world stands after.
     applied: usize,
     saved: BTreeMap<u64, Saved>,
+    /// The interval and count [`Fork::keep_every`] set, if it was called.
+    every: Option<(u64, usize)>,
     stops: Vec<Stop>,
     /// The snapshot of the last completed tick, kept while the fork may
     /// stop inside the next.
@@ -582,6 +584,7 @@ impl Fork {
             log: Vec::new(),
             applied: 0,
             saved: BTreeMap::new(),
+            every: None,
             stops: Vec::new(),
             base: None,
         }
@@ -908,6 +911,7 @@ impl Fork {
                         self.sim.close_tick(&mut report);
                         self.settle(Position::End { tick });
                         self.base = None;
+                        self.keep_due();
                         ctl.edit_at = self.edit_at();
                         if let Some(arrival) = self.at_end(ctl, present, report) {
                             return arrival;
@@ -1153,6 +1157,42 @@ impl Fork {
     /// The ticks the fork holds a saved state of.
     pub fn kept(&self) -> Vec<u64> {
         self.saved.keys().copied().collect()
+    }
+
+    /// The fork's saved states, to read: a playback stands for the match,
+    /// so the debugger's fork of one opens from these and goes *back* on
+    /// them as it would on the match's.
+    pub fn states(&self) -> &BTreeMap<u64, Saved> {
+        &self.saved
+    }
+
+    /// From here on, save the fork's state at the end of every tick that
+    /// is a multiple of `interval` as the fork runs through it, whatever
+    /// the step, and keep the last `count` states it holds (`docs/07`,
+    /// Saved states: a fork saves its own on the match's terms). A fork
+    /// never told this saves only when [`Fork::keep`] is called.
+    pub fn keep_every(&mut self, interval: u64, count: usize) {
+        self.every = Some((interval.max(1), count.max(1)));
+    }
+
+    /// The fork stands at the end of a tick it just ran: save it if
+    /// [`Fork::keep_every`] asks for this tick.
+    fn keep_due(&mut self) {
+        let Some((interval, count)) = self.every else {
+            return;
+        };
+        let tick = self.sim.world.tick;
+        if !tick.is_multiple_of(interval) {
+            return;
+        }
+        self.saved.entry(tick).or_insert_with(|| Saved {
+            world: self.sim.world.copy(),
+            ended: self.sim.ended,
+            entries: self.applied,
+        });
+        while self.saved.len() > count {
+            self.saved.pop_first();
+        }
     }
 
     /// Return to the previous stop, from the latest usable saved state

@@ -816,6 +816,47 @@ fn a_new_branch_discards_the_later_entries_and_the_saved_states_after_it() {
     assert_eq!(logged(&fork, id), ["7"]);
 }
 
+#[test]
+fn a_fork_told_to_keep_every_few_ticks_saves_them_on_any_step_and_keeps_the_last() {
+    // A fork never told saves only when asked.
+    let (mut plain, log, _) = printer_fork(EACH_TICK);
+    plain.step(Step::Continue, None, &[], 9, &log).unwrap();
+    assert_eq!(plain.position(), end(9));
+    assert!(plain.states().is_empty());
+
+    let (mut fork, log, id) = printer_fork(EACH_TICK);
+    fork.keep_every(2, 3);
+    tick(&mut fork, &log);
+    assert_eq!(fork.keep(), Ok(1));
+    // One step through eight tick ends: it saves at each multiple of two
+    // on its way, not only where it stops, and the oldest go, the one
+    // kept by hand first.
+    let stop = fork.step(Step::Continue, None, &[], 8, &log).unwrap();
+    assert_eq!((stop.cause, stop.position), (Cause::StepLimit, end(9)));
+    assert_eq!(fork.kept(), [4, 6, 8]);
+    let ticks: Vec<u64> = fork.states().values().map(Saved::tick).collect();
+    assert_eq!(ticks, [4, 6, 8]);
+    // A state saved on the way is the fork's world there: restored, it
+    // hashes as a fork that ran there does.
+    let hash = fork.state_hash();
+    fork.seek(8, &log);
+    plain.seek(8, &log);
+    assert_eq!(fork.state_hash(), plain.state_hash());
+    fork.seek(9, &log);
+    assert_eq!(fork.state_hash(), hash);
+
+    // A state saved after an edit holds the edit, and counts it: a run on
+    // from it applies the edit no second time and loses it no more.
+    fork.edit(id, x_of_main(), "5").unwrap();
+    assert_eq!(fork.kept(), [4, 6, 8], "none is after the edit");
+    fork.step(Step::Continue, None, &[], 4, &log).unwrap();
+    assert_eq!(fork.kept(), [8, 10, 12]);
+    fork.seek(12, &log);
+    assert_eq!(global(&fork, id, "x").as_deref(), Some("5"));
+    fork.seek(13, &log);
+    assert_eq!(logged(&fork, id), ["5"]);
+}
+
 /// The state of tick `tick` of `log`, with a site of team 1's put in it by
 /// fiat: a state the match never reached, so a fork restored from it
 /// shows the site and one that re-ran from the map does not.
