@@ -288,6 +288,16 @@ impl Machine {
         self.trace
     }
 
+    /// The interrupt the boundary the machine stands at delivers, if it
+    /// delivers one: the next thing its slice does. `None` where the slice
+    /// ends first, at a restart's boundary, and for a dead machine.
+    pub fn delivering(&self) -> Option<Interrupt> {
+        if self.dead || self.slice_end.is_some() {
+            return None;
+        }
+        self.deliverable()
+    }
+
     /// Whether a slice of this machine is stopped at a boundary.
     pub fn is_stopped(&self) -> bool {
         self.stopped

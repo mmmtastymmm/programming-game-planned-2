@@ -56,9 +56,9 @@ fn run(sim: &mut Sim, opening: Vec<Command>, n: u64) {
     for (i, c) in cmds.iter_mut().enumerate() {
         c.seq = i as u32;
     }
-    sim.step(&cmds);
+    sim.step(&cmds, &[]);
     for _ in 1..n {
-        sim.step(&[]);
+        sim.step(&[], &[]);
     }
 }
 
@@ -279,7 +279,7 @@ fn ore_is_picked_dropped_into_a_site_and_the_site_becomes_a_depot() {
     // into it afterwards.
     let mut appeared_at = None;
     for _ in 0..200 {
-        s.step(&[]);
+        s.step(&[], &[]);
         if let Some(depot) = s.world.machines.values().find(|m| m.model == Model::Depot) {
             assert_eq!(depot.pos, TilePos::new(-2, 2));
             assert_eq!(depot.deployment.as_deref(), Some("depot"));
@@ -421,7 +421,7 @@ fn losing_the_last_printer_ends_the_match_whatever_sites_remain() {
     );
     let mut ended = None;
     for _ in 0..5 {
-        let report = s.step(&[]);
+        let report = s.step(&[], &[]);
         if report.ended.is_some() {
             ended = report.ended;
             break;
@@ -510,7 +510,7 @@ fn a_redeploy_cancels_the_action_and_the_new_program_runs() {
     assert_eq!(s.world.machines[&id].busy(), Some("wait"));
     let mut redeploy = deploy(0, "bot", "log('new program')\nmove('e')\nwait(1000)\n");
     redeploy.tick = 33;
-    s.step(&[redeploy]);
+    s.step(&[redeploy], &[]);
     let m = &s.world.machines[&id];
     assert_eq!(
         m.log.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
@@ -559,7 +559,7 @@ fn line_of_sight_vision_and_memory() {
     // Resign team 0: its printer goes, and its memory stays as it was.
     let mut resign = Command::new(2, TeamId(0), 0, CommandKind::Resign);
     resign.tick = 2;
-    let report = s.step(&[resign]);
+    let report = s.step(&[resign], &[]);
     assert!(s.world.teams[&TeamId(0)].out);
     assert_eq!(report.ended, Some(Some(TeamId(1))));
 }
@@ -577,7 +577,7 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
             value: Some("depot".into()),
         },
     );
-    let report = s.step(std::slice::from_ref(&mark));
+    let report = s.step(std::slice::from_ref(&mark), &[]);
     assert!(report.dropped.is_empty());
     assert!(s.world.plans(TeamId(0), TilePos::new(0, 0)).is_some());
     // Validation refuses what can never apply.
@@ -619,7 +619,7 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
         },
     );
     assert!(s.validate(&broken).is_err());
-    let report = s.step(&[broken]);
+    let report = s.step(&[broken], &[]);
     assert_eq!(report.dropped.len(), 1);
     let _ = mark;
 }
@@ -693,7 +693,7 @@ fn the_opening_set_applies_before_tick_ones_commands() {
     let want = sim::tick::load_bundle(&bundle_of("wait(2)\n"), &s.world.limits)
         .unwrap()
         .version;
-    s.step(&[opening, newer]);
+    s.step(&[opening, newer], &[]);
     let slot = &s.world.teams[&TeamId(0)].deployments["bot"];
     assert_eq!(slot.bundle.as_ref().map(|b| b.version), Some(want));
 }
@@ -751,7 +751,7 @@ fn the_snapshot_carries_each_teams_own_plans_and_no_one_elses() {
     let mut sim = sim();
     // One tick first: paint and overlay go only on ground the team has
     // seen (Q49), and its first sight lands in tick 1.
-    sim.step(&[]);
+    sim.step(&[], &[]);
     let at = TilePos::new(0, 0);
     let mark = |team, plan, value: Option<&str>| {
         Command::new(
@@ -768,10 +768,13 @@ fn the_snapshot_carries_each_teams_own_plans_and_no_one_elses() {
     let before = sim.state_hash();
     let empty = sim.snapshot();
     assert!(empty.teams.iter().all(|t| t.plans.is_empty()));
-    sim.step(&[
-        mark(0, PlanKind::Paint, Some("red")),
-        mark(0, PlanKind::Overlay, None),
-    ]);
+    sim.step(
+        &[
+            mark(0, PlanKind::Paint, Some("red")),
+            mark(0, PlanKind::Overlay, None),
+        ],
+        &[],
+    );
     assert_ne!(sim.state_hash(), before, "a plan is world state");
     let snap = sim.snapshot();
     let mine = &snap.teams.iter().find(|t| t.id == TeamId(0)).unwrap().plans;
@@ -794,7 +797,7 @@ fn bot_logs(s: &mut Sim, opening: Vec<Command>, n: u64) -> Vec<String> {
         c.seq = i as u32;
     }
     for t in 0..n {
-        s.step(if t == 0 { &cmds } else { &[] });
+        s.step(if t == 0 { &cmds } else { &[] }, &[]);
         for m in s.world.machines.values() {
             if m.team == TeamId(0) && m.model == Model::Bot {
                 out.extend(m.log.iter().map(|l| l.text.clone()));
@@ -844,7 +847,7 @@ fn set_color_takes_a_paint_color_or_none_and_buildings_have_no_color() {
                    try:\n    set_color('red')\nexcept ValueError:\n    log('refused')\nwait(1000)\n";
     let mut cmds = vec![deploy(0, "bot", bot), deploy(0, "printer", printer)];
     cmds[1].seq = 1;
-    s.step(&cmds);
+    s.step(&cmds, &[]);
     let p = printer_of(&s, 0);
     assert_eq!(
         p.log.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
@@ -964,13 +967,16 @@ fn paint_and_overlay_plans_go_only_on_ground_the_team_has_seen() {
             },
         )
     };
-    let report = s.step(&[
-        mark(0, ground, PlanKind::Paint, "red"),
-        mark(1, rock, PlanKind::Paint, "red"),
-        mark(2, rock, PlanKind::Overlay, "a"),
-        mark(3, far, PlanKind::Paint, "red"),
-        mark(4, far, PlanKind::Building, "depot"),
-    ]);
+    let report = s.step(
+        &[
+            mark(0, ground, PlanKind::Paint, "red"),
+            mark(1, rock, PlanKind::Paint, "red"),
+            mark(2, rock, PlanKind::Overlay, "a"),
+            mark(3, far, PlanKind::Paint, "red"),
+            mark(4, far, PlanKind::Building, "depot"),
+        ],
+        &[],
+    );
     let plans = |p| s.world.plans(team, p).cloned().unwrap_or_default();
     assert!(plans(ground).paint.is_some(), "ground in sight takes paint");
     assert!(
@@ -1084,7 +1090,7 @@ fn the_vision_pass_writes_what_a_walk_of_the_whole_map_writes() {
             resign.tick = tick;
             cmds.push(resign);
         }
-        s.step(&cmds);
+        s.step(&cmds, &[]);
         for (team, before) in teams.iter().zip(&before) {
             let t = &s.world.teams[team];
             let expected = if t.out {

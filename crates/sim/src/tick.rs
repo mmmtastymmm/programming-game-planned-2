@@ -3,6 +3,7 @@
 
 use crate::command::{Bundle, Command, CommandKind, PlanKind, TeamId};
 use crate::data::Data;
+use crate::fork::{Hit, Saved, Watch, WatchIndex, Watcher};
 use crate::hash::Fnv1a;
 use crate::host::GameHost;
 use crate::map::{Map, TilePos, row_then_column};
@@ -12,7 +13,7 @@ use crate::world::{
     TileState, World,
 };
 use lang::data::{COSTS_TOML, LIMITS_TOML};
-use lang::{Costs, Event, Interrupt, Limits, Num, Program, Slice, Value};
+use lang::{Costs, Event, Interrupt, Limits, Num, Program, Slice, Tracer, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
@@ -25,11 +26,16 @@ pub struct StepReport {
     pub dropped: Vec<Command>,
     /// The winner, or `None` for a draw, once the match has ended.
     pub ended: Option<Option<TeamId>>,
+    /// For each machine that began a statement on a watched line this
+    /// tick, the first such beginning and a count of the rest, in position
+    /// order (`docs/06`, Forks, Watches). Read off the run, never part of
+    /// it: no hash covers this.
+    pub hits: Vec<Hit>,
 }
 
 pub struct Sim {
     pub world: World,
-    ended: Option<Option<TeamId>>,
+    pub(crate) ended: Option<Option<TeamId>>,
 }
 
 impl Sim {
@@ -46,6 +52,33 @@ impl Sim {
 
     pub fn ended(&self) -> Option<Option<TeamId>> {
         self.ended
+    }
+
+    /// The match's full state, execution state included, as it stands at
+    /// the end of the tick just completed (`docs/06`, Forks): a copy that
+    /// shares nothing the sim will change. It is a read; a fork is opened
+    /// from it, and nothing restores the match's sim to one.
+    pub fn save(&self) -> Saved {
+        Saved {
+            world: self.world.copy(),
+            ended: self.ended,
+            entries: 0,
+        }
+    }
+
+    /// A sim at tick 0 on this one's map and tables: where a fork's
+    /// re-run from the map starts.
+    pub(crate) fn fresh(&self) -> Sim {
+        let w = &self.world;
+        Sim {
+            world: World::new(
+                w.map.clone(),
+                w.data.clone(),
+                w.costs.clone(),
+                w.limits.clone(),
+            ),
+            ended: None,
+        }
     }
 
     /// The values a `Mark` of `plan` may name, in the data's order: the
@@ -118,11 +151,52 @@ impl Sim {
     }
 
     /// Run one tick with its full command set, in the doc's nine steps.
-    pub fn step(&mut self, commands: &[Command]) -> StepReport {
+    /// `watches` are a team's watched lines (`docs/06`, Forks, Watches):
+    /// they are no commands, charge nothing and change nothing, and the
+    /// report's `hits` is all they produce.
+    pub fn step(&mut self, commands: &[Command], watches: &[Watch]) -> StepReport {
         let mut report = StepReport::default();
         if self.ended.is_some() {
             return report;
         }
+        self.open_tick(commands, &[], &mut report);
+        // 2. Every machine's slice, ascending id.
+        let index = WatchIndex::new(watches);
+        for id in self.slice_ids() {
+            match self.who(id).filter(|who| index.fits(who)) {
+                Some(who) => {
+                    let mut watcher = Watcher::new(&index, who, self.world.tick);
+                    self.run_slice_with(id, Some(&mut watcher), false);
+                    report.hits.extend(watcher.hit());
+                }
+                None => {
+                    self.run_slice_with(id, None, false);
+                }
+            }
+        }
+        // 3. Completions, ascending id.
+        self.completions();
+        // 4. Damage and death.
+        self.damage_apply();
+        let dead: Vec<EntityId> = self.world.dead.iter().copied().collect();
+        for id in dead {
+            self.world.remove(id);
+        }
+        self.world.dead.clear();
+        self.close_tick(&mut report);
+        report
+    }
+
+    /// The tick's opening and its step 1: the commands by tick, sender
+    /// and submission order, then `extra` in the order given — a fork's
+    /// what-if deploys, which the match's sim never has (`docs/06`,
+    /// Forks, What-if).
+    pub(crate) fn open_tick(
+        &mut self,
+        commands: &[Command],
+        extra: &[Command],
+        report: &mut StepReport,
+    ) {
         let w = &mut self.world;
         w.tick = w.tick.checked_add(1).expect("tick counter");
         w.pending_damage.clear();
@@ -140,23 +214,28 @@ impl Sim {
                 .then(a.sender.cmp(&b.sender))
                 .then(a.seq.cmp(&b.seq))
         });
-        for c in ordered {
-            if let Err(()) = self.apply(c, &mut report) {
+        for c in ordered.into_iter().chain(extra) {
+            if let Err(()) = self.apply(c, report) {
                 report.dropped.push(c.clone());
             }
         }
-        // 2. Every machine's slice, ascending id.
-        let ids: Vec<EntityId> = self.world.machines.keys().copied().collect();
-        for id in ids {
-            self.run_slice(id);
-        }
-        // 3. Completions, ascending id.
+    }
+
+    /// The machines step 2 runs, in its order.
+    pub(crate) fn slice_ids(&self) -> Vec<EntityId> {
+        self.world.machines.keys().copied().collect()
+    }
+
+    /// Step 3: completions, ascending id.
+    pub(crate) fn completions(&mut self) {
         let ids: Vec<EntityId> = self.world.machines.keys().copied().collect();
         for id in ids {
             self.complete(id);
         }
-        // 4. Damage and death.
-        self.damage();
+    }
+
+    /// Steps 5 to 8, and whether the match ended.
+    pub(crate) fn close_tick(&mut self, report: &mut StepReport) {
         // 5. Out teams.
         self.out_teams();
         // 6. Printing.
@@ -174,7 +253,6 @@ impl Sim {
             self.ended = Some(standing.first().copied());
             report.ended = self.ended;
         }
-        report
     }
 
     fn apply(&mut self, c: &Command, report: &mut StepReport) -> Result<(), ()> {
@@ -263,26 +341,41 @@ impl Sim {
 
     /// Step 2 for one machine: take its program out of its body, run it
     /// against a host over the world, put it back, act on its events.
-    fn run_slice(&mut self, id: EntityId) {
+    ///
+    /// A `tracer` is shown every boundary the slice passes, and one that
+    /// stops it leaves the slice open: the program goes back in its body
+    /// as it stands, this returns `true`, and a call with `resume` goes on
+    /// from there. Only a fork passes a tracer that stops (`docs/06`,
+    /// Forks); the match's watches never do.
+    pub(crate) fn run_slice_with(
+        &mut self,
+        id: EntityId,
+        tracer: Option<&mut dyn Tracer>,
+        resume: bool,
+    ) -> bool {
         let Some(mut program) = self
             .world
             .machines
             .get_mut(&id)
             .and_then(|m| m.program.take())
         else {
-            return;
+            return false;
         };
         if program.is_dead() {
             self.world.machines.get_mut(&id).expect("machine").program = Some(program);
-            return;
+            return false;
         }
-        program.tick = self.world.tick;
         let slice = {
             let mut host = GameHost {
                 world: &mut self.world,
                 id,
             };
-            program.run_slice(&mut host)
+            if resume {
+                program.resume_slice(&mut host, tracer)
+            } else {
+                program.tick = host.world.tick;
+                program.run_slice_traced(&mut host, tracer)
+            }
         };
         let events = program.take_events();
         if let Some(m) = self.world.machines.get_mut(&id) {
@@ -293,7 +386,18 @@ impl Sim {
                 self.world.dead.insert(id);
             }
         }
-        let _ = slice;
+        slice == Slice::Stopped
+    }
+
+    /// What a watch is matched against: the machine, if it runs a program.
+    pub(crate) fn who(&self, id: EntityId) -> Option<crate::fork::Who> {
+        let m = self.world.machines.get(&id)?;
+        m.program.as_ref()?;
+        Some(crate::fork::Who {
+            id,
+            team: m.team,
+            deployment: m.deployment.clone(),
+        })
     }
 
     /// Step 3 for one machine: count a printer's print down and complete
@@ -604,9 +708,13 @@ impl Sim {
         }
     }
 
-    /// Step 4: attacks and printer defence, summed per target; `dying` and
-    /// `death` raised; `death` epilogues remove machines.
-    fn damage(&mut self) {
+    /// Step 4 up to the removals: attacks and printer defence, summed per
+    /// target; `dying` and `death` raised. It leaves in `world.dead` every
+    /// machine the step removes, in the order it removes them, and returns
+    /// the ones this step's damage killed — the rest died in their own
+    /// slices. The caller removes them; a fork stops between this and a
+    /// removal, at a damage position (`docs/06`, Forks, Positions).
+    pub(crate) fn damage_apply(&mut self) -> BTreeSet<EntityId> {
         let w = &mut self.world;
         let mut hits: BTreeMap<EntityId, Num> = std::mem::take(&mut w.pending_damage);
         // Every printer defends against adjacent bots of another team.
@@ -632,6 +740,7 @@ impl Sim {
             }
         }
         let mut to_deliver: Vec<(EntityId, Interrupt)> = Vec::new();
+        let mut killed = BTreeSet::new();
         for (id, dmg) in hits {
             let Some(m) = w.machines.get(&id) else {
                 continue;
@@ -655,7 +764,9 @@ impl Sim {
                     if let Some(p) = w.machines.get_mut(&id).and_then(|m| m.program.as_mut()) {
                         p.raise(Interrupt::Death);
                     }
-                    w.dead.insert(id);
+                    if w.dead.insert(id) {
+                        killed.insert(id);
+                    }
                 }
                 _ => {
                     if let Some(m) = w.machines.get_mut(&id) {
@@ -663,18 +774,16 @@ impl Sim {
                             Some(p) => p.raise(Interrupt::Dying),
                             // A site has no program: dying is death at once.
                             None => {
-                                w.dead.insert(id);
+                                if w.dead.insert(id) {
+                                    killed.insert(id);
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        let dead: Vec<EntityId> = w.dead.iter().copied().collect();
-        for id in dead {
-            w.remove(id);
-        }
-        w.dead.clear();
+        killed
     }
 
     /// Step 5: every team that resigned or has no printer is out.
@@ -969,7 +1078,3 @@ impl Sim {
         self.world.machines.keys().copied().collect()
     }
 }
-
-/// Unused-import guard for `Slice`, which the run loop discards on purpose.
-#[allow(dead_code)]
-fn _slice(_: Slice) {}

@@ -66,7 +66,7 @@ fn run(bot: &str, ticks: u64) -> Option<u64> {
     let mut reached = None;
     for tick in 0..ticks {
         let commands = if tick == 0 { opening(bot) } else { vec![] };
-        let report = sim.step(&commands);
+        let report = sim.step(&commands, &[]);
         assert!(
             report.dropped.is_empty(),
             "tick {tick}: {:?}",
