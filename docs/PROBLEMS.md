@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-10: 9 opened, 5 fixed — 4 open.**
+**Status 2026-11-12: 9 opened, 6 fixed — 3 open.**
 
 ## Open
 
@@ -61,11 +61,13 @@ mid-tick, step, save and restore, editable variables, what-if, and
 replays opened from the start screen, recording their team.
 [T26](history/tasks-completed/task-completed-0026.md) built the `sim`
 half: the saved state, the watches, the fork and everything it does, and
-a replay's playback on one. Nothing uses it yet: the renderer has no
-breakpoints, debugger window, what-if or replay entry, and a replay
-records no team. The work left is [T27](TASKS.md) and [T28](TASKS.md);
-this entry closes with the commit that finishes whichever of them lands
-last.
+a replay's playback on one.
+[T27](history/tasks-completed/task-completed-0027.md) built the
+renderer's half but what-if: replays opened from the start screen and
+recording their team, breakpoints, version windows, the debugger window
+and its steps, and editable variables. Nothing sends a try into a fork
+or takes one to the match. The work left is [T28](TASKS.md); this entry
+closes with the commit that finishes it.
 
 **P8 — The code lags Q59: no power, wires or solar panels**
 
@@ -77,17 +79,3 @@ model, no power step and no `powered` attribute, printing ignores power,
 and the renderer draws none of it. The work is [T31](TASKS.md) and
 [T32](TASKS.md); this entry closes with the commit that finishes
 whichever lands last.
-
-**P9 — The code lags Q60: nothing shows a replay's version warning**
-
-Q60 ruled that a saved replay records the game version that wrote it and
-its final state hash, that a replay from another version opens with a
-warning, and that a playback whose final hash differs says so; `06` and
-`07` state it as current.
-[T33](history/tasks-completed/task-completed-0033.md) put both fields in
-the file, has `render` write them, and has `crates/replay` build the
-warning and the report of a differing final hash. Neither is shown,
-because the renderer cannot open a replay at all, so there is still no
-screen an old replay could warn on. The work left is in
-[T27](TASKS.md), which opens replays; this entry closes with the commit
-that finishes it.
