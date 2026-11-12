@@ -25,6 +25,11 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
+mod copy;
+mod debug;
+
+pub use debug::{EditTarget, FrameView, HandlerView, Inspection, ModuleView};
+
 /// A loaded bundle: `main.py` and the modules it may import, each compiled,
 /// with the import graph checked for cycles.
 /// A hook's code, and the module it was defined in when that is not
@@ -54,6 +59,20 @@ pub struct Program {
     /// The bundle's version: FNV-1a over each file's length-prefixed name and
     /// bytes in sorted name order (`syntax.md`, The bundle).
     pub version: u64,
+    /// Every file's **content hash** by its name, `main.py` included
+    /// (`docs/06`, Forks, Content hashes): what a watch names.
+    pub content: Rc<BTreeMap<String, u64>>,
+}
+
+/// A file's content hash: FNV-1a 64-bit over its bytes as the bundle holds
+/// them, with no name and no length prefix (`docs/06`, Forks).
+pub fn content_hash(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
 }
 
 impl Program {
@@ -73,6 +92,7 @@ impl Program {
         sorted.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
         let mut version = Fnv(0xcbf29ce484222325);
         let mut modules: BTreeMap<String, Rc<Code>> = BTreeMap::new();
+        let mut content: BTreeMap<String, u64> = BTreeMap::new();
         let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut hooks = Hooks::default();
         // The interrupt files' statements, kept for the second binding
@@ -97,6 +117,7 @@ impl Program {
             }
             version.write_len_prefixed(name.as_bytes());
             version.write_len_prefixed(src.as_bytes());
+            content.insert(name.to_string(), content_hash(src.as_bytes()));
             let stmts = parse_file_bounded(name, src, limits.depth_nesting as u32)?;
             edges.insert(stem.to_string(), imported_modules(&stmts));
             let code = compile_module(name, &stmts)?;
@@ -146,6 +167,7 @@ impl Program {
             hooks,
             modules,
             version: version.0,
+            content: Rc::new(content),
         })
     }
 }
@@ -414,6 +436,34 @@ pub enum Slice {
     /// `death`'s epilogue ran: the machine has left the world and runs
     /// nothing further.
     Dead,
+    /// A [`Tracer`] stopped the slice at a boundary (`docs/06`, Forks):
+    /// it is not over, and [`Machine::resume_slice`] goes on from there.
+    /// Only a fork's debugger passes a tracer that stops, so the match's
+    /// sim never sees this.
+    Stopped,
+}
+
+/// What a debugger is shown at each boundary a slice passes (`docs/06`,
+/// Forks). It reads the machine and changes nothing: a slice traced runs
+/// as one that is not, operation for operation and unit for unit.
+pub trait Tracer {
+    /// The machine stands at a boundary, before anything the boundary
+    /// does; [`Machine::beginning`] says whether a statement begins here.
+    /// `true` stops the slice at it.
+    fn boundary(&mut self, vm: &Machine) -> bool;
+}
+
+/// Counters a debugger compares between two boundaries. They are no part
+/// of the program's state: nothing the program does reads them, and the
+/// state hash does not walk them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Trace {
+    /// Times main flow started again from the top.
+    pub restarts: u64,
+    /// Times every frame was abandoned — for a handler, or for a restart.
+    pub abandons: u64,
+    /// Times `dying` was delivered.
+    pub dyings: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -529,6 +579,18 @@ pub struct Machine {
     /// Lifecycle events of the current slice, for the sim to act on.
     events: Vec<Event>,
     dead: bool,
+    /// The budget this tick's slice opened with: the tick budget less the
+    /// deficit carried in. Set once when the slice opens, so a slice
+    /// stopped and resumed never takes the deficit off twice.
+    slice_budget: u64,
+    /// A restart ended the slice: it returns this at its next boundary,
+    /// the restart's own, before anything else happens there.
+    slice_end: Option<Slice>,
+    /// Boundaries this slice has passed, the one it stands at included.
+    passed: u64,
+    /// The slice is stopped at a boundary its tracer has already seen.
+    stopped: bool,
+    trace: Trace,
 }
 
 impl Machine {
@@ -555,6 +617,11 @@ impl Machine {
             pending: BTreeSet::new(),
             events: Vec::new(),
             dead: false,
+            slice_budget: 0,
+            slice_end: None,
+            passed: 0,
+            stopped: false,
+            trace: Trace::default(),
         };
         m.start_main();
         m
@@ -564,6 +631,8 @@ impl Machine {
     /// emptied, `main.py` at its first statement (`execution.md`, Starting
     /// main flow).
     fn start_main(&mut self) {
+        self.trace.restarts = self.trace.restarts.wrapping_add(1);
+        self.trace.abandons = self.trace.abandons.wrapping_add(1);
         self.globals.borrow_mut().clear();
         self.modules_run.clear();
         self.frames.clear();
@@ -770,6 +839,7 @@ impl Machine {
         }
         self.pending.remove(&kind);
         self.frames.clear();
+        self.trace.abandons = self.trace.abandons.wrapping_add(1);
         self.waiting = false;
         self.native_waiting = false;
         self.native_input = None;
@@ -786,6 +856,7 @@ impl Machine {
                     self.pending.insert(k);
                 }
                 self.events.push(Event::Dying);
+                self.trace.dyings = self.trace.dyings.wrapping_add(1);
                 self.mode = Mode::Handler {
                     kind: Interrupt::Dying,
                     hook_spent: 0,
@@ -880,6 +951,7 @@ impl Machine {
             hook_running: false,
         };
         self.frames.clear();
+        self.trace.abandons = self.trace.abandons.wrapping_add(1);
         match self.program.hooks.on_fault.clone() {
             Some(hook) => {
                 self.start_hook(hook, vec![exc.as_value()]);
@@ -907,7 +979,8 @@ impl Machine {
         self.epilogue()
     }
 
-    /// The running handler's epilogue. `Some` ends the slice.
+    /// The running handler's epilogue. A `fault`'s restarts main flow, which
+    /// ends the slice at its next boundary (`slice_end`).
     fn epilogue(&mut self) -> Option<Slice> {
         let Mode::Handler { kind, .. } = self.mode else {
             return None;
@@ -916,7 +989,8 @@ impl Machine {
         match kind {
             Interrupt::Fault => {
                 self.start_main();
-                Some(self.restart_slice())
+                self.slice_end = Some(self.restart_slice());
+                None
             }
             Interrupt::Dying => {
                 self.pending.insert(Interrupt::Death);
@@ -964,6 +1038,7 @@ impl Machine {
         }
         self.events.push(Event::Escalated { from: kind, to });
         self.frames.clear();
+        self.trace.abandons = self.trace.abandons.wrapping_add(1);
         self.pending.insert(to);
         None
     }
@@ -1312,11 +1387,24 @@ impl Machine {
     /// Run one tick's slice: until the budget is spent, a host call waits,
     /// main flow restarts, or a fault escapes.
     pub fn run_slice(&mut self, host: &mut dyn Host) -> Slice {
+        self.run_slice_traced(host, None)
+    }
+
+    /// [`Machine::run_slice`], shown to a tracer at every boundary it
+    /// passes (`docs/06`, Forks).
+    pub fn run_slice_traced(
+        &mut self,
+        host: &mut dyn Host,
+        tracer: Option<&mut dyn Tracer>,
+    ) -> Slice {
         if self.dead {
             return Slice::Dead;
         }
         self.spent = 0;
         self.restarted_this_tick = false;
+        self.passed = 0;
+        self.stopped = false;
+        self.slice_end = None;
         // A hook waiting on an action loses `wait_per_tick` of its budget
         // for every tick the wait spans (Q32).
         let per_tick = self.limits.budget_hook_wait_per_tick;
@@ -1329,16 +1417,53 @@ impl Machine {
         {
             *hook_spent = hook_spent.saturating_add(per_tick);
         }
-        let budget = self.limits.budget_tick.saturating_sub(self.deficit);
-        let result = self.run(host, budget);
-        self.deficit = self.spent.saturating_sub(budget);
+        self.slice_budget = self.limits.budget_tick.saturating_sub(self.deficit);
+        self.close_slice(host, tracer)
+    }
+
+    /// Go on with a slice a tracer stopped, from the boundary it stopped
+    /// at. The slice's budget is the one it opened with: the deficit was
+    /// taken off it then, and is not taken off again.
+    pub fn resume_slice(&mut self, host: &mut dyn Host, tracer: Option<&mut dyn Tracer>) -> Slice {
+        if self.dead {
+            return Slice::Dead;
+        }
+        debug_assert!(self.stopped, "only a stopped slice is resumed");
+        self.close_slice(host, tracer)
+    }
+
+    /// Run the slice on, and close its books unless it stopped: what it
+    /// spent past its budget is the next tick's deficit.
+    fn close_slice(&mut self, host: &mut dyn Host, tracer: Option<&mut dyn Tracer>) -> Slice {
+        let result = self.run(host, tracer);
+        if result != Slice::Stopped {
+            self.deficit = self.spent.saturating_sub(self.slice_budget);
+        }
         result
     }
 
-    fn run(&mut self, host: &mut dyn Host, budget: u64) -> Slice {
+    fn run(&mut self, host: &mut dyn Host, mut tracer: Option<&mut dyn Tracer>) -> Slice {
+        let budget = self.slice_budget;
         loop {
-            // A boundary: interrupts first, then the hook budget, then the
-            // tick budget (`execution.md`, Metering and Delivery).
+            // A boundary. A tracer sees it first, once: a slice resumed
+            // stands at one its tracer has already been shown.
+            if std::mem::take(&mut self.stopped) {
+                // Resumed: this boundary is counted and seen already.
+            } else {
+                self.passed = self.passed.wrapping_add(1);
+                if let Some(t) = tracer.as_deref_mut()
+                    && t.boundary(self)
+                {
+                    self.stopped = true;
+                    return Slice::Stopped;
+                }
+            }
+            // A restart's boundary: the slice ends here.
+            if let Some(end) = self.slice_end.take() {
+                return end;
+            }
+            // Interrupts first, then the hook budget, then the tick budget
+            // (`execution.md`, Metering and Delivery).
             if let Some(kind) = self.deliverable() {
                 if let Some(slice) = self.deliver(host, kind) {
                     return slice;
@@ -1386,7 +1511,7 @@ impl Machine {
                         continue;
                     }
                     self.start_main();
-                    return self.restart_slice();
+                    self.slice_end = Some(self.restart_slice());
                 }
                 Err(exc) => {
                     let exc = self.locate(exc);
@@ -1403,6 +1528,53 @@ impl Machine {
                 }
             }
         }
+    }
+
+    /// The statement that begins at the boundary the machine stands at,
+    /// as its file and line, if one does (`docs/06`, Forks, Statements):
+    /// the next thing the slice does is start a statement's operation, or
+    /// a clause that begins again. Standing at the boundary to yield, in
+    /// deficit, waiting, or to be delivered an interrupt begins nothing.
+    pub fn beginning(&self) -> Option<(&str, u32)> {
+        if self.dead
+            || self.slice_end.is_some()
+            || self.deliverable().is_some()
+            || self.waiting
+            || self.spent >= self.slice_budget
+            || self.native_input.is_some()
+        {
+            return None;
+        }
+        if let Mode::Handler {
+            hook_spent,
+            hook_budget,
+            hook_running: true,
+            ..
+        } = self.mode
+            && hook_spent > hook_budget
+        {
+            return None;
+        }
+        let f = self.frames.last()?;
+        if !f.code.begins.get(f.pc).copied()? {
+            return None;
+        }
+        if let Some(Instr::ForIter(_)) = f.code.code.get(f.pc) {
+            // A `for` begins again only when it binds an element after
+            // the first.
+            let Some(Value::Iter(it)) = f.stack.last() else {
+                return None;
+            };
+            let pos = it.pos.get();
+            let more = match &it.inst {
+                Some((_, n)) => pos < *n,
+                None => pos < it.items.len(),
+            };
+            if pos == 0 || !more {
+                return None;
+            }
+        }
+        Some((f.code.file.as_str(), f.code.lines.get(f.pc).copied()?))
     }
 
     fn locate(&self, exc: Exception) -> Exception {
