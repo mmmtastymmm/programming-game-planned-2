@@ -312,6 +312,12 @@ pub struct Team {
     pub resigned: bool,
     /// Per tile index.
     pub memory: Vec<TileMemory>,
+    /// The tile indices the team saw at its last vision pass: exactly the
+    /// tiles its memory holds as `Visible`, since that pass is the only
+    /// writer of a tile's state. Kept so the pass demotes them without
+    /// scanning the map for them (I9); derived from the memory, and no
+    /// part of the hash beyond it.
+    pub seen: Vec<usize>,
     /// The starting tiles, for scripts.
     pub starts: Vec<TilePos>,
     /// The printer that began the team's last print; `0`, which no entity
@@ -353,6 +359,14 @@ pub struct World {
     /// The tiles each team sees now, kept between queries
     /// (`sense::SightCache`); derived, never hashed.
     pub sight: crate::sense::SightCache,
+    /// Counts the changes a team's sight depends on: every machine
+    /// placed, removed or moved. A site becoming its building is a
+    /// removal and a placement, and a team going out is its machines'
+    /// removal. The sight cache holds the count it was built at, so
+    /// asking whether it still stands is one comparison (I9). Bumped by
+    /// `place`, `remove`, `move_machine` and `remove_team`, which are
+    /// the only code that may do those things; derived, never hashed.
+    pub(crate) generation: u64,
 }
 
 impl World {
@@ -393,6 +407,7 @@ impl World {
             next_host_object: 0x8000_0000_0000_0000,
             empty_program,
             sight: crate::sense::SightCache::default(),
+            generation: 0,
         };
         let team_starts: Vec<Vec<TilePos>> = world.map.teams.clone();
         for (i, starts) in team_starts.iter().enumerate() {
@@ -423,6 +438,7 @@ impl World {
                     out: false,
                     resigned: false,
                     memory,
+                    seen: Vec::new(),
                     starts: starts.clone(),
                     print_turn: EntityId(0),
                 },
@@ -608,7 +624,39 @@ impl World {
                 log: Vec::new(),
             },
         );
+        self.sight_changed();
         id
+    }
+
+    /// Remove a machine from the world: the one way one leaves it, so
+    /// the sight cache hears of it.
+    pub fn remove(&mut self, id: EntityId) -> Option<Machine> {
+        let gone = self.machines.remove(&id);
+        if gone.is_some() {
+            self.sight_changed();
+        }
+        gone
+    }
+
+    /// Stand a machine on `to`: the one place a position changes, so the
+    /// sight cache hears of it.
+    pub fn move_machine(&mut self, id: EntityId, to: TilePos) {
+        if let Some(m) = self.machines.get_mut(&id) {
+            m.pos = to;
+            self.sight_changed();
+        }
+    }
+
+    /// Remove every machine of `team`, as a team that goes out loses
+    /// them (`docs/06`, step 5).
+    pub fn remove_team(&mut self, team: TeamId) {
+        self.machines.retain(|_, m| m.team != team);
+        self.sight_changed();
+    }
+
+    /// What some team sees may have changed (`generation`).
+    fn sight_changed(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Set a machine's health: the one place health changes, so a printer

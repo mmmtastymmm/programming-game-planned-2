@@ -121,6 +121,13 @@ export function runRustGates(repo) {
     { name: "golden replay: a match that ran one tick", check: "replay-golden",
       expect: "the match ended early", files: ["crates/replay/tests/golden.rs"],
       mutate: (d) => edit(join(d, "crates/replay/tests/golden.rs"), /ticks: \d+,/, "ticks: 1,") },
+    // The sight cache trusts a counter the world bumps at each named site
+    // (I9, T38), so a site that forgets leaves it stale. The debug build
+    // the gate runs in keeps the comparison the counter replaced, and
+    // says which rule was broken rather than reporting a drifted hash.
+    { name: "golden replay: a move the sight cache is not told of", check: "replay-golden",
+      expect: "the sight cache is stale", files: ["crates/sim/src/world.rs"],
+      mutate: (d) => edit(join(d, "crates/sim/src/world.rs"), /m\.pos = to;\n\s*self\.sight_changed\(\);/, "m.pos = to;") },
 
     // ── the language fixtures ───────────────────────────────────────────────
     { name: "language fixture: a stored hash changed", check: "lang-golden",
