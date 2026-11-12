@@ -24,13 +24,18 @@
 //!   the `**` procedure's count of steps. Computed in Rust, since a program
 //!   cannot observe a step count.
 //!
+//! The two program fixtures are also run as a debugger runs a program
+//! (`docs/06`, Forks; T26) — watched at every boundary, stopped and resumed
+//! at every boundary, and replaced by a deep copy at every stop — and each
+//! way must give the stored fixture, transcript, budget and state alike.
+//!
 //! Every fixture has an "alive" test asserting on what the transcript must
 //! contain, so a test that fails to run — an error transcript hashes the
 //! same in every process — cannot score green (CLAUDE.md).
 
 use lang::data::{COSTS_TOML, LIMITS_TOML};
 use lang::num::Num;
-use lang::{Costs, Host, HostCall, Interrupt, Limits, Machine, Program, Slice, Value};
+use lang::{Costs, Host, HostCall, Interrupt, Limits, Machine, Program, Slice, Tracer, Value};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -117,6 +122,78 @@ impl Host for TranscriptHost {
     }
 }
 
+/// How a run drives its slices: as the match does, or as a debugger does
+/// (`docs/06`, Forks).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum How {
+    /// `run_slice`, as the match's sim calls it.
+    Plain,
+    /// Shown to a tracer at every boundary, which stops at none.
+    Watched,
+    /// Stopped at every boundary and resumed from it.
+    Stopped,
+    /// Stopped at every boundary, and the machine replaced there, and at
+    /// every tick's end, by its deep copy.
+    Copied,
+}
+
+/// What a run gave: the transcript, one hash per tick, the machine's
+/// state bytes at each tick's end, and what its tracer saw.
+#[derive(Debug, PartialEq)]
+struct Ran {
+    lines: Vec<String>,
+    hashes: Vec<u64>,
+    states: Vec<Vec<u8>>,
+}
+
+/// What a debugger's runs saw, which a plain run has none of.
+#[derive(Debug, Default)]
+struct Seen {
+    boundaries: u64,
+    beginnings: u64,
+    stops: u64,
+}
+
+/// A tracer that counts, and stops at every boundary or at none.
+struct EveryBoundary<'a> {
+    stop: bool,
+    seen: &'a mut Seen,
+}
+
+impl Tracer for EveryBoundary<'_> {
+    fn boundary(&mut self, vm: &Machine) -> bool {
+        self.seen.boundaries = self.seen.boundaries.wrapping_add(1);
+        if vm.beginning().is_some() {
+            self.seen.beginnings = self.seen.beginnings.wrapping_add(1);
+        }
+        self.stop
+    }
+}
+
+/// One tick's slice of `m`, driven as `how` says.
+fn slice(m: &mut Machine, host: &mut TranscriptHost, how: How, seen: &mut Seen) -> Slice {
+    if how == How::Plain {
+        return m.run_slice(host);
+    }
+    let mut tracer = EveryBoundary {
+        stop: how != How::Watched,
+        seen,
+    };
+    let mut result = m.run_slice_traced(host, Some(&mut tracer));
+    let mut n = 0u64;
+    while result == Slice::Stopped {
+        // The position's `n`: the boundaries this slice passed before.
+        assert_eq!(m.boundary(), n, "a stop names the wrong boundary");
+        n = n.wrapping_add(1);
+        tracer.seen.stops = tracer.seen.stops.wrapping_add(1);
+        if how == How::Copied {
+            *m = m.deep_copy();
+        }
+        result = m.resume_slice(host, Some(&mut tracer));
+    }
+    result
+}
+
 /// Run a bundle for `ticks` ticks under a schedule of raised interrupts;
 /// the transcript and one hash per tick.
 fn run(
@@ -125,8 +202,21 @@ fn run(
     schedule: &[(u64, Interrupt)],
     next_program: Option<Program>,
 ) -> (Vec<String>, Vec<u64>) {
+    let ran = run_as(program, ticks, schedule, next_program, How::Plain).0;
+    (ran.lines, ran.hashes)
+}
+
+fn run_as(
+    program: &Program,
+    ticks: u64,
+    schedule: &[(u64, Interrupt)],
+    next_program: Option<Program>,
+    how: How,
+) -> (Ran, Seen) {
     let (costs, limits) = tables();
     let mut m = Machine::new(program, costs, limits);
+    let mut seen = Seen::default();
+    let mut states = Vec::new();
     let mut host = TranscriptHost {
         lines: vec![format!("version {:016x}", program.version)],
         next_program,
@@ -142,10 +232,14 @@ fn run(
                     .push(format!("tick {tick}: raise {}", kind.name()));
             }
         }
-        let slice = m.run_slice(&mut host);
+        let slice = slice(&mut m, &mut host, how, &mut seen);
         for ev in m.take_events() {
             host.lines.push(format!("  event {ev:?}"));
         }
+        if how == How::Copied {
+            m = m.deep_copy();
+        }
+        states.push(m.state_bytes());
         let record = match &m.fault_record {
             Some(r) => format!(
                 " record={}@{}:{} tick {} v{:016x}",
@@ -180,7 +274,149 @@ fn run(
             break;
         }
     }
-    (host.lines, hashes)
+    (
+        Ran {
+            lines: host.lines,
+            hashes,
+            states,
+        },
+        seen,
+    )
+}
+
+/// A scenario: its name, its program, the interrupts raised on it, and
+/// the program a `deploy` among them installs.
+type Scenario = (
+    &'static str,
+    Program,
+    &'static [(u64, Interrupt)],
+    Option<Program>,
+);
+
+/// Every scenario the program fixtures run, by name.
+fn scenarios() -> Vec<Scenario> {
+    vec![
+        ("showcase", bundle("showcase"), &[], None),
+        (
+            "interrupts A",
+            bundle("interrupts"),
+            SCHEDULE_A,
+            Some(bundle("interrupts")),
+        ),
+        ("interrupts B", bundle("interrupts"), SCHEDULE_B, None),
+    ]
+}
+
+/// The forks-and-watches property at the language's level (`docs/06`,
+/// Testing): a slice a debugger watches, stops and resumes, or copies,
+/// runs as the match's does — the same calls on the same ticks, the same
+/// budget spent and deficit left, the same state at every tick's end.
+#[test]
+fn a_debugged_run_gives_the_fixture() {
+    for (name, program, schedule, next) in scenarios() {
+        let (plain, _) = run_as(&program, 60, schedule, next.clone(), How::Plain);
+        // A run that carries no deficit could not show one charged twice,
+        // and the showcase is the scenario that carries them.
+        if name == "showcase" {
+            let carried = plain
+                .lines
+                .iter()
+                .filter(|l| {
+                    l.rsplit_once("deficit=")
+                        .is_some_and(|(_, d)| !d.starts_with('0'))
+                })
+                .count();
+            assert!(carried >= 5, "only {carried} ticks left a deficit");
+        }
+        for how in [How::Watched, How::Stopped, How::Copied] {
+            let (ran, seen) = run_as(&program, 60, schedule, next.clone(), how);
+            assert_eq!(
+                ran.lines.join("\n"),
+                plain.lines.join("\n"),
+                "{name}, {how:?}: the transcript moved"
+            );
+            assert_eq!(ran.hashes, plain.hashes, "{name}, {how:?}");
+            assert!(ran.states == plain.states, "{name}, {how:?}: a state moved");
+            // Alive: the tracer was shown the run, and stopped it.
+            let ticks = ran.hashes.len() as u64;
+            assert!(
+                seen.boundaries > ticks.saturating_mul(4),
+                "{name}, {how:?}: only {} boundaries in {ticks} ticks",
+                seen.boundaries
+            );
+            assert!(seen.beginnings > 10, "{name}, {how:?}: {seen:?}");
+            if how == How::Watched {
+                assert_eq!(seen.stops, 0, "{name}: a watch stopped a slice");
+            } else {
+                assert_eq!(seen.stops, seen.boundaries, "{name}, {how:?}");
+            }
+        }
+    }
+}
+
+/// A copy shares nothing with its source: one taken at a tick's end and
+/// left behind while the source runs to the end still runs, from that
+/// tick, as the source did.
+#[test]
+fn a_copy_left_behind_runs_as_its_source_did() {
+    for (name, program, schedule, next) in scenarios() {
+        let (whole, _) = run_as(&program, 60, schedule, next.clone(), How::Plain);
+        let (costs, limits) = tables();
+        let mut m = Machine::new(&program, costs, limits);
+        let mut host = TranscriptHost {
+            lines: vec![],
+            next_program: next.clone(),
+        };
+        let mut copies: Vec<(u64, Machine)> = Vec::new();
+        let mut last = 0;
+        for tick in 1..=60u64 {
+            last = tick;
+            m.tick = tick;
+            for (t, kind) in schedule {
+                if *t == tick {
+                    m.raise(*kind);
+                }
+            }
+            let slice = m.run_slice(&mut host);
+            m.take_events();
+            if slice == Slice::Wait {
+                m.resume(Value::int(i128::from(tick)));
+            }
+            if slice == Slice::Dead {
+                break;
+            }
+            copies.push((tick, m.deep_copy()));
+        }
+        assert!(copies.len() > 5, "{name}: only {} copies", copies.len());
+        // The source is at its end; each copy now runs the rest.
+        for (from, mut copy) in copies {
+            let mut host = TranscriptHost {
+                lines: vec![],
+                next_program: next.clone(),
+            };
+            for tick in from.wrapping_add(1)..=last {
+                copy.tick = tick;
+                for (t, kind) in schedule {
+                    if *t == tick {
+                        copy.raise(*kind);
+                    }
+                }
+                let slice = copy.run_slice(&mut host);
+                copy.take_events();
+                let at = usize::try_from(tick.wrapping_sub(1)).expect("tick");
+                assert!(
+                    copy.state_bytes() == whole.states[at],
+                    "{name}: the copy taken at tick {from} differs at tick {tick}"
+                );
+                if slice == Slice::Wait {
+                    copy.resume(Value::int(i128::from(tick)));
+                }
+                if slice == Slice::Dead {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 fn fnv_start() -> u64 {

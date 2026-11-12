@@ -146,6 +146,13 @@ pub struct Code {
     pub names: Vec<String>,
     pub code: Vec<Instr>,
     pub lines: Vec<u32>,
+    /// Where a statement **begins** (`docs/06`, Forks, Statements): every
+    /// `Stmt`, and the first instruction of each clause that begins again
+    /// on a line of its own — an `except`'s test, a `case`'s pattern, and
+    /// a `for`'s `ForIter`, which begins only when it binds an element
+    /// after the first. Read by a debugger's watches; the program never
+    /// sees it, and it charges nothing.
+    pub begins: Vec<bool>,
     pub children: Vec<Rc<Code>>,
     pub is_module: bool,
 }
@@ -178,6 +185,9 @@ struct Ctx<'a> {
     names: Vec<String>,
     code: Vec<Instr>,
     lines: Vec<u32>,
+    begins: Vec<bool>,
+    /// The next instruction emitted is where a clause begins again.
+    begin_next: bool,
     children: Vec<Rc<Code>>,
     loops: Vec<LoopCtx>,
     blocks: Vec<BlockCtx>,
@@ -214,6 +224,8 @@ impl<'a> Ctx<'a> {
             names: vec![],
             code: vec![],
             lines: vec![],
+            begins: vec![],
+            begin_next: false,
             children: vec![],
             loops: vec![],
             blocks: vec![],
@@ -242,14 +254,17 @@ impl<'a> Ctx<'a> {
             names: self.names,
             code: self.code,
             lines: self.lines,
+            begins: self.begins,
             children: self.children,
             is_module: self.is_module,
         }
     }
 
     fn emit(&mut self, i: Instr) -> usize {
+        let begins = std::mem::take(&mut self.begin_next) || i == Instr::Stmt;
         self.code.push(i);
         self.lines.push(self.line);
+        self.begins.push(begins);
         self.code.len().wrapping_sub(1)
     }
 
@@ -470,6 +485,9 @@ impl<'a> Ctx<'a> {
                 self.expr(iter)?;
                 self.emit(Instr::GetIter);
                 let start = self.here();
+                // The `for` begins again each time it binds an element
+                // after the first (`docs/06`, Statements).
+                self.begin_next = true;
                 let jexit = self.emit(Instr::ForIter(0));
                 self.store_target(target)?;
                 self.loops.push(LoopCtx {
@@ -520,6 +538,8 @@ impl<'a> Ctx<'a> {
                 let mut ends = Vec::new();
                 for arm in arms {
                     self.line = arm.line;
+                    // A `case` begins each time its pattern is tested.
+                    self.begin_next = true;
                     let mut fails = Vec::new();
                     self.compile_pattern(&arm.pattern, subj, &mut fails)?;
                     if let Some(g) = &arm.guard {
@@ -678,6 +698,8 @@ impl<'a> Ctx<'a> {
         let mut ends = vec![jend];
         for h in handlers {
             self.line = h.line;
+            // An `except` begins each time it is tested.
+            self.begin_next = true;
             let next = match &h.types {
                 Some(t) => {
                     self.emit(Instr::Dup);

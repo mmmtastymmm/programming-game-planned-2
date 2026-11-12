@@ -44,4 +44,7 @@ pub use data::{Costs, DataError, Limits};
 pub use errors::{ExcClass, Exception};
 pub use num::Num;
 pub use value::Value;
-pub use vm::{Event, FaultRecord, Hooks, Host, HostCall, Interrupt, Machine, Program, Slice};
+pub use vm::{
+    EditTarget, Event, FaultRecord, FrameView, HandlerView, Hooks, Host, HostCall, Inspection,
+    Interrupt, Machine, ModuleView, Program, Slice, Trace, Tracer, content_hash,
+};
