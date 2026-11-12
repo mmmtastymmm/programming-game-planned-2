@@ -50,6 +50,17 @@ pub fn keys(
             state.selected = None;
         }
     }
+    if keys.just_pressed(KeyCode::KeyL) {
+        crate::ui::toggle(&mut state, "log");
+    }
+    if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::Equal) {
+        step_speed(&mut driver.0, &mut state, keys.just_pressed(KeyCode::Equal));
+    }
+    // A replay sends no command (`docs/07`, The match): the mark tools,
+    // deploy and resign are not offered.
+    if driver.0.is_replay() {
+        return;
+    }
     for (key, plan) in [
         (KeyCode::KeyB, PlanKind::Building),
         (KeyCode::KeyP, PlanKind::Paint),
@@ -67,12 +78,6 @@ pub fn keys(
                 state.tool = tool;
             }
         }
-    }
-    if keys.just_pressed(KeyCode::KeyL) {
-        crate::ui::toggle(&mut state, "log");
-    }
-    if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::Equal) {
-        step_speed(&mut driver.0, &mut state, keys.just_pressed(KeyCode::Equal));
     }
     if shift && keys.just_pressed(KeyCode::KeyD) {
         deploy(&mut driver.0, &mut state);
@@ -93,9 +98,19 @@ pub fn step_speed(driver: &mut crate::driver::Driver, state: &mut ViewState, up:
     } else {
         idx.saturating_sub(1)
     };
-    if let Some(s) = steps.get(next) {
-        submit(driver, state, CommandKind::SetSpeed(*s));
+    let Some(s) = steps.get(next) else { return };
+    if driver.is_replay() {
+        // The pace is the viewer's (`docs/06`, The driver): no command.
+        if driver.set_pace(*s).is_ok() {
+            state.status = if *s == 0 {
+                "the replay is paused".to_string()
+            } else {
+                format!("the replay plays at {s} ticks/s")
+            };
+        }
+        return;
     }
+    submit(driver, state, CommandKind::SetSpeed(*s));
 }
 
 /// Deploy every deployment the tree composes ahead of what runs

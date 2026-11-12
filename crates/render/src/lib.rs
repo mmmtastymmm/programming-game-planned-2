@@ -8,7 +8,9 @@
 //! review rule in CLAUDE.md — flag any code feeding sim state from the ECS
 //! side — keeps the other direction. In this crate that rule reads: only
 //! [`driver::Driver`] touches [`sim::Sim`], and only through `Sim::step`
-//! with a tick's command set, `Sim::snapshot` and `Sim::state_hash`.
+//! with a tick's command set, `Sim::snapshot` and `Sim::state_hash`. A
+//! replay is no match: [`playback::Viewer`] plays one on a fork (Q55),
+//! which never reaches a match's world, log or hash.
 //!
 //! [`driver`] is plain Rust with no Bevy type in it, so the loop `docs/06`
 //! specifies — speed, the paused driver still reaching a command (Q32),
@@ -40,6 +42,7 @@ pub mod layout;
 pub mod marks;
 pub mod outlines;
 pub mod palette;
+pub mod playback;
 pub mod programs;
 pub mod screens;
 pub mod ui;

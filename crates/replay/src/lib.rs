@@ -33,6 +33,12 @@ pub struct Replay {
     /// with, since a build's rules can change while its version does not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_hash: Option<u64>,
+    /// The team of the peer that saved the file (Q55), outside the
+    /// replay's identity: whose view a playback draws and whose debugger
+    /// it may open. None in a file older than Q55, and in a replay a tool
+    /// wrote rather than a match's end, which can only be watched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<TeamId>,
 }
 
 /// A replay's log as a fork reads it (`docs/06`, Forks): complete from the
@@ -270,7 +276,29 @@ mod tests {
             ticks: 20,
             version: None,
             final_hash: None,
+            team: None,
         }
+    }
+
+    #[test]
+    fn a_replay_round_trips_its_team_outside_its_identity() {
+        let bare = replay();
+        let text = bare.to_ron();
+        assert!(!text.contains("team:"), "{text}");
+        let old = Replay::from_ron(&text).expect("a file older than Q55 parses");
+        assert_eq!(old.team, None);
+        let saved = Replay {
+            team: Some(TeamId(1)),
+            ..bare.clone()
+        };
+        let text = saved.to_ron();
+        assert!(text.contains("team:"), "{text}");
+        let back = Replay::from_ron(&text).expect("parses");
+        assert_eq!(back.team, Some(TeamId(1)));
+        // Two peers' files of one match are one replay (`docs/06`): they
+        // differ in the team alone.
+        assert_eq!(back.identity(), bare.identity());
+        assert_eq!(back.run(), bare.run(), "the team is no input to the run");
     }
 
     #[test]

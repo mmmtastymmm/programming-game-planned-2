@@ -5,7 +5,7 @@
 //! the player, its layout remembered beside the programs. Every button
 //! becomes a command the renderer submits and forgets.
 
-use crate::app::{DriverResource, Tool, ViewState};
+use crate::app::{DriverResource, Screen, Tool, ViewState};
 use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
@@ -44,6 +44,7 @@ pub fn panels(
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
     mut colors: ResMut<TeamColors>,
+    mut next: ResMut<NextState<Screen>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     let ctx = ctx.clone();
@@ -58,10 +59,19 @@ pub fn panels(
 
     egui::Panel::top("time").show(&mut root, |ui| {
         let d = &mut driver.0;
+        // A replay (`docs/07`, The match): the tick of its last, and no
+        // delay, since nothing is submitted.
+        let last = d.viewer().map(|v| v.ticks());
         ui.horizontal(|ui| {
+            if last.is_some() {
+                ui.strong("replay");
+            }
             ui.strong(&d.map_name);
             ui.separator();
-            ui.label(format!("tick {}", d.tick));
+            match last {
+                Some(last) => ui.label(format!("tick {} of {last}", d.tick)),
+                None => ui.label(format!("tick {}", d.tick)),
+            };
             ui.separator();
             if ui.small_button("−").clicked() {
                 step_speed(d, &mut state, false);
@@ -75,9 +85,28 @@ pub fn panels(
                 step_speed(d, &mut state, true);
             }
             ui.separator();
-            ui.label(format!("delay {}", d.delay));
+            if let Some(last) = last {
+                // The seek: a drag asks for a tick, and the driver moves
+                // the playback there over the frames it takes.
+                let mut to = d.seeking.unwrap_or(d.tick);
+                ui.spacing_mut().slider_width = 220.0;
+                let slider = egui::Slider::new(&mut to, 0..=last).text("seek");
+                if ui.add(slider).changed() {
+                    let _ = d.seek(to);
+                }
+            } else {
+                ui.label(format!("delay {}", d.delay));
+            }
             ui.separator();
             ui.monospace(format!("{:016x}", d.state_hash()));
+            if let Some(v) = d.viewer() {
+                ui.separator();
+                ui.label(if v.can_debug() {
+                    format!("team {}'s", d.player.0)
+                } else {
+                    format!("no team recorded · team {}'s view", d.player.0)
+                });
+            }
             if d.is_networked() {
                 ui.separator();
                 let peers: Vec<String> = d
@@ -107,7 +136,7 @@ pub fn panels(
                 ui.separator();
                 ui.colored_label(egui::Color32::YELLOW, format!("stalled on tick {}", s.tick));
             }
-            if let Some(ended) = d.ended {
+            if let Some(ended) = d.outcome() {
                 ui.separator();
                 ui.colored_label(
                     egui::Color32::LIGHT_GREEN,
@@ -117,7 +146,25 @@ pub fn panels(
                     },
                 );
             }
+            if last.is_some() {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("leave").clicked() {
+                        next.set(Screen::Start);
+                    }
+                });
+            }
         });
+        if let Some(v) = d.viewer() {
+            // The playback reached the last tick on another hash (Q60).
+            if let Some(report) = &v.report {
+                ui.colored_label(egui::Color32::LIGHT_RED, report);
+            }
+            // Another version wrote the file (Q60): shown from the moment
+            // it opens.
+            if let Some(warning) = &v.warning {
+                ui.colored_label(egui::Color32::YELLOW, warning);
+            }
+        }
         if !state.status.is_empty() {
             ui.small(&state.status);
         }
@@ -323,6 +370,16 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
     {
         state.tool = Tool::Select;
     }
+    if d.is_replay() {
+        // A replay sends no command (`docs/07`, The match): the mark
+        // tools and resign are not offered, and none stays armed.
+        state.tool = Tool::Select;
+        ui.small("a replay sends no command: no marks, no resign");
+        ui.separator();
+        camera_help(ui);
+        ui.small("-/=: the replay's pace · the time bar seeks");
+        return;
+    }
     // The strip (Q37): a row per kind from data, each ending in clear;
     // `B`/`P`/`O` pick the row the digits index.
     for plan in ROWS {
@@ -362,9 +419,14 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
         submit(d, state, CommandKind::Resign);
     }
     ui.separator();
+    camera_help(ui);
+    ui.small("-/=: speed");
+}
+
+fn camera_help(ui: &mut egui::Ui) {
     ui.small("left drag / middle / Shift+right: pan (unarmed)");
     ui.small("right drag: orbit · wheel: zoom");
-    ui.small("WASD: pan · L: log · -/=: speed");
+    ui.small("WASD: pan · L: log");
 }
 
 fn inspector(

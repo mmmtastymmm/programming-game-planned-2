@@ -1,6 +1,6 @@
 //! Before the first tick and after the last (`docs/07`, Q36): the start
 //! screen that picks the map, the cards, the programs directory and play,
-//! host or join, and the end screen over the frozen map that names the
+//! host, join or a replay to open (Q55), and the end screen over the frozen map that names the
 //! result and where the replay went. [`crate::launch`] does the work; this
 //! is only what the player sees of it.
 
@@ -16,6 +16,7 @@ enum ModeKind {
     Play,
     Host,
     Join,
+    Replay,
 }
 
 /// The start screen's form and the match it hands over. Non-send: a
@@ -28,6 +29,10 @@ pub struct StartScreen {
     kind: ModeKind,
     host_addr: String,
     join_addr: String,
+    /// The replay picked to open, and the files of `replays/` listed for
+    /// the programs directory named beside them; `None` lists them again.
+    replay: Option<PathBuf>,
+    replays: Option<(String, Vec<PathBuf>)>,
     /// Start as soon as the screen is up: a flag was given (Q36).
     autostart: bool,
     error: Option<String>,
@@ -39,10 +44,11 @@ pub struct StartScreen {
 impl StartScreen {
     pub fn new(setup: Setup, autostart: bool) -> StartScreen {
         let root = launch::data_root();
-        let (kind, host_addr, join_addr) = match &setup.mode {
-            Mode::Play => (ModeKind::Play, None, None),
-            Mode::Host(a) => (ModeKind::Host, Some(a.clone()), None),
-            Mode::Join(a) => (ModeKind::Join, None, Some(a.clone())),
+        let (kind, host_addr, join_addr, replay) = match &setup.mode {
+            Mode::Play => (ModeKind::Play, None, None, None),
+            Mode::Host(a) => (ModeKind::Host, Some(a.clone()), None, None),
+            Mode::Join(a) => (ModeKind::Join, None, Some(a.clone()), None),
+            Mode::Replay(p) => (ModeKind::Replay, None, None, Some(p.clone())),
         };
         StartScreen {
             programs: setup
@@ -56,6 +62,8 @@ impl StartScreen {
             kind,
             host_addr: host_addr.unwrap_or_else(|| "0.0.0.0:7777".into()),
             join_addr: join_addr.unwrap_or_else(|| "127.0.0.1:7777".into()),
+            replay,
+            replays: None,
             autostart,
             error: None,
             pending: None,
@@ -63,27 +71,50 @@ impl StartScreen {
         }
     }
 
-    /// The setup the form now says.
-    fn chosen(&self) -> Setup {
-        let mut s = self.setup.clone();
-        s.programs = match self.programs.trim() {
+    /// The programs directory the form names, if any.
+    fn programs_dir(&self) -> Option<PathBuf> {
+        match self.programs.trim() {
             "" => None,
             p => Some(PathBuf::from(p)),
-        };
+        }
+    }
+
+    /// The setup the form now says; an error if it asks for a replay and
+    /// none is picked.
+    fn chosen(&self) -> Result<Setup, String> {
+        let mut s = self.setup.clone();
+        s.programs = self.programs_dir();
         s.mode = match self.kind {
             ModeKind::Play => Mode::Play,
             ModeKind::Host => Mode::Host(self.host_addr.trim().to_string()),
             ModeKind::Join => Mode::Join(self.join_addr.trim().to_string()),
+            ModeKind::Replay => Mode::Replay(self.replay.clone().ok_or("pick a replay to open")?),
         };
-        if self.kind == ModeKind::Join {
+        if matches!(self.kind, ModeKind::Join | ModeKind::Replay) {
             s.opposition.clear();
         }
-        s
+        Ok(s)
+    }
+
+    /// The replays beside the programs directory the form names, listed
+    /// again whenever that directory changes or a match has been started
+    /// since, which may have saved one.
+    fn replays(&mut self) -> &[PathBuf] {
+        let dir = self.programs.trim().to_string();
+        if self.replays.as_ref().is_none_or(|(d, _)| *d != dir) {
+            let found = launch::list_replays(self.programs_dir().as_deref());
+            self.replays = Some((dir, found));
+        }
+        self.replays.as_ref().map_or(&[], |(_, r)| r.as_slice())
     }
 
     fn begin(&mut self, next: &mut NextState<Screen>) {
         self.error = None;
-        match launch::start(&self.chosen()) {
+        let setup = match self.chosen() {
+            Ok(s) => s,
+            Err(e) => return self.fail(e),
+        };
+        match launch::start(&setup) {
             Ok(Started::Ready(m)) => self.launch(*m, next),
             Ok(Started::Waiting(p)) => self.pending = Some(*p),
             Err(e) => self.fail(e),
@@ -92,6 +123,7 @@ impl StartScreen {
 
     fn launch(&mut self, m: Match, next: &mut NextState<Screen>) {
         self.launched = Some(m);
+        self.replays = None;
         next.set(Screen::Match);
     }
 
@@ -150,6 +182,7 @@ pub fn start_screen(
                     ModeKind::Play => "play",
                     ModeKind::Host => "host",
                     ModeKind::Join => "join",
+                    ModeKind::Replay => "open",
                 };
                 if ui.add_enabled(!waiting, egui::Button::new(label)).clicked() {
                     start.begin(&mut next);
@@ -166,15 +199,18 @@ fn form(ui: &mut egui::Ui, start: &mut StartScreen) {
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
-            ui.label("map");
-            egui::ComboBox::from_id_salt("map")
-                .selected_text(stem(&start.setup.map))
-                .show_ui(ui, |ui| {
-                    for m in &start.maps {
-                        ui.selectable_value(&mut start.setup.map, m.clone(), stem(m));
-                    }
-                });
-            ui.end_row();
+            // A replay carries its own map.
+            if start.kind != ModeKind::Replay {
+                ui.label("map");
+                egui::ComboBox::from_id_salt("map")
+                    .selected_text(stem(&start.setup.map))
+                    .show_ui(ui, |ui| {
+                        for m in &start.maps {
+                            ui.selectable_value(&mut start.setup.map, m.clone(), stem(m));
+                        }
+                    });
+                ui.end_row();
+            }
 
             ui.label("programs");
             ui.add(
@@ -189,6 +225,7 @@ fn form(ui: &mut egui::Ui, start: &mut StartScreen) {
                 ui.radio_value(&mut start.kind, ModeKind::Play, "play alone");
                 ui.radio_value(&mut start.kind, ModeKind::Host, "host");
                 ui.radio_value(&mut start.kind, ModeKind::Join, "join");
+                ui.radio_value(&mut start.kind, ModeKind::Replay, "open a replay");
             });
             ui.end_row();
 
@@ -204,8 +241,44 @@ fn form(ui: &mut egui::Ui, start: &mut StartScreen) {
                     ui.text_edit_singleline(&mut start.join_addr);
                     ui.end_row();
                 }
+                ModeKind::Replay => {
+                    ui.label("replay");
+                    let found = start.replays().to_vec();
+                    ui.vertical(|ui| {
+                        let picked = start
+                            .replay
+                            .as_deref()
+                            .map_or_else(|| "pick a replay".to_string(), stem);
+                        egui::ComboBox::from_id_salt("replay")
+                            .selected_text(picked)
+                            .width(320.0)
+                            .show_ui(ui, |ui| {
+                                for r in &found {
+                                    ui.selectable_value(
+                                        &mut start.replay,
+                                        Some(r.clone()),
+                                        stem(r),
+                                    );
+                                }
+                            });
+                        if found.is_empty() {
+                            ui.weak(format!(
+                                "none in {}",
+                                launch::replays_dir(start.programs_dir().as_deref()).display()
+                            ));
+                        }
+                        if ui.small_button("list again").clicked() {
+                            start.replays = None;
+                        }
+                    });
+                    ui.end_row();
+                }
             }
 
+            // A replay carries every team's commands, so it seats nobody.
+            if start.kind == ModeKind::Replay {
+                return;
+            }
             if start.kind != ModeKind::Join {
                 ui.label("opposition");
                 ui.vertical(|ui| {

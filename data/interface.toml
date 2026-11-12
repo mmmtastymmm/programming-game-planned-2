@@ -6,6 +6,20 @@
 # a fault mark stays over a machine this many ticks after its record's tick
 fault_mark_ticks = 30
 
+[debugging]
+# The debugger's and a replay's saved states and limits (Q55; docs/07,
+# Debugging). A state is saved at every tick that is a multiple of
+# debug_checkpoint_ticks; the match keeps the last debug_checkpoints_kept,
+# and a replay's playback, on reaching that many, drops every other one and
+# doubles its interval, so a seek anywhere re-runs at most one interval.
+debug_checkpoint_ticks = 50
+debug_checkpoints_kept = 16
+# every step but run stops after this many ticks, passed to the fork's
+# step as an argument; the sim reads none of these
+debug_step_max_ticks = 600
+# further hits listed beside the open fork, the latest first
+debug_hits_kept = 20
+
 [teams]
 # The team colors (Q43, Q45, Q47, Q48): the lights of a bot, a printer
 # and a depot glow in their team's color, a printer's trim is painted in
