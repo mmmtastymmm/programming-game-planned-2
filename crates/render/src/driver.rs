@@ -11,7 +11,11 @@
 //! A replay is not a match and is not played by that loop (`docs/06`, The
 //! driver): the driver then holds the replay's playback, a fork, and steps
 //! it a tick at a time at the viewer's pace, sending no command.
+//!
+//! The debugger's half of the driver is [`crate::debug`]: the watches it
+//! passes to `sim.step`, the states it saves, and the fork it opens.
 
+use crate::debug::Debugger;
 use crate::palette::Debugging;
 use crate::playback::Viewer;
 use net::CommandLog;
@@ -32,7 +36,7 @@ const SEEK_FRAME: std::time::Duration = std::time::Duration::from_millis(12);
 const SEEK_CHUNK: u64 = 16;
 
 /// What the driver drives: a match's sim, or a replay's playback.
-enum Engine {
+pub(crate) enum Engine {
     Match(Box<Sim>),
     Replay(Box<Viewer>),
 }
@@ -91,7 +95,7 @@ pub struct Desync {
 }
 
 pub struct Driver {
-    engine: Engine,
+    pub(crate) engine: Engine,
     pub log: CommandLog,
     /// The last completed tick.
     pub tick: u64,
@@ -109,7 +113,7 @@ pub struct Driver {
     /// does not run to (Q55 rule 13). `local_peers` is no such test: in
     /// single-player it also holds every team that is nobody's.
     scripted_teams: BTreeSet<TeamId>,
-    accumulated: f64,
+    pub(crate) accumulated: f64,
     /// Real seconds spent waiting on a missing set.
     stalled: f64,
     pub stall: Option<Stall>,
@@ -120,7 +124,7 @@ pub struct Driver {
     pub submitted: Vec<Command>,
     pub map_name: String,
     /// The map's bytes, which with the log are the replay (Q36).
-    map_text: String,
+    pub(crate) map_text: String,
     /// The map's south-west and north-east corners, for the view's frame.
     pub bounds: (TilePos, TilePos),
     /// The other peers, if this is a match; none in single-player.
@@ -143,6 +147,12 @@ pub struct Driver {
     pub hashes_compared: u64,
     /// The tick a replay's seek is on its way to.
     pub seeking: Option<u64>,
+    /// The speed the map starts at: what a fork's *run* goes at until the
+    /// debugger window sets another.
+    pub start_speed: u64,
+    /// The debugger (`docs/07`, Debugging): watches, saved states, hits
+    /// and the open fork.
+    pub debug: Debugger,
 }
 
 impl Driver {
@@ -364,6 +374,8 @@ impl Driver {
             events: Vec::new(),
             hashes_compared: 0,
             seeking: None,
+            start_speed: speed,
+            debug: Debugger::new(crate::palette::Interface::load()?.debugging),
         })
     }
 
@@ -417,6 +429,8 @@ impl Driver {
             events: Vec::new(),
             hashes_compared: 0,
             seeking: None,
+            start_speed: speed,
+            debug: Debugger::new(tuning),
         })
     }
 
@@ -638,13 +652,14 @@ impl Driver {
             Vec::new()
         };
         commands.extend(self.log.sets_for(t));
-        let report = sim.step(&commands, &[]);
+        let report = sim.step(&commands, self.debug.watches());
         if let Some(s) = report.speed {
             self.speed = s;
         }
         if report.ended.is_some() {
             self.ended = report.ended;
         }
+        let hits = report.hits.clone();
         self.last_report = report;
         self.tick = t;
         // A tick ran, so whatever set was awaited has arrived: the stall
@@ -676,6 +691,7 @@ impl Driver {
         let prev = std::mem::replace(&mut self.snapshots.cur, cur);
         self.snapshots.prev = Some(prev);
         self.snapshots.since = 0.0;
+        self.after_tick(hits);
     }
 
     /// Whether every peer's set for `tick` is in hand, sending the local
@@ -687,6 +703,9 @@ impl Driver {
 
     /// One frame of the driver loop `docs/06` specifies, `dt` real seconds.
     pub fn advance(&mut self, dt: f64) {
+        // The fork is no part of the match: it runs whether the match
+        // does, is over, or has stopped on a desync.
+        self.run_fork(dt);
         if self.is_replay() {
             return self.play(dt);
         }
@@ -778,10 +797,14 @@ impl Driver {
         let period = 1.0 / self.speed as f64;
         let mut ran = 0u32;
         while self.accumulated >= period && ran < 64 {
-            let Some(report) = viewer.advance(&[]) else {
+            let Engine::Replay(viewer) = &mut self.engine else {
+                return;
+            };
+            let Some(report) = viewer.advance(self.debug.watches()) else {
                 self.accumulated = 0.0;
                 break;
             };
+            let hits = report.hits.clone();
             self.last_report = report;
             self.tick = viewer.tick();
             self.own_hashes.clear();
@@ -791,6 +814,8 @@ impl Driver {
             self.snapshots.since = 0.0;
             self.accumulated -= period;
             ran += 1;
+            // A hit pauses the playback here: it leaves no time to spend.
+            self.after_tick(hits);
         }
     }
 
