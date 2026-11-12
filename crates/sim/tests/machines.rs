@@ -3,7 +3,7 @@
 //! change names the rule it broke.
 
 use lang::Num;
-use sim::world::{Model, TileState};
+use sim::world::{MachineRecord, Model, TileMemory, TileState};
 use sim::{Command, CommandKind, Data, Map, PlanKind, Sim, TeamId, TilePos, bundle_of};
 
 /// 9 by 7, origin at the centre: x in -4..=4, y in -3..=3. Team 0 starts
@@ -175,11 +175,11 @@ fn printers_take_turns_by_entity_id() {
     run(&mut s, vec![deploy(0, "bot", "wait(1000)\n")], 1);
     assert_eq!((printing(&s, p1), printing(&s, p3)), (30, 0));
     assert_eq!(turn(&s), p1, "the first print goes to the least id");
-    s.world.machines.remove(&fiat[0]);
+    s.world.remove(fiat[0]);
     run(&mut s, vec![], 1);
     assert_eq!(printing(&s, p3), 30, "the next turn is the next id");
     assert_eq!(turn(&s), p3);
-    s.world.machines.remove(&fiat[1]);
+    s.world.remove(fiat[1]);
     run(&mut s, vec![], 1);
     assert_eq!(turn(&s), p3, "no printer was ready, so the turn stays");
     // Tick 31: printer 1's print lands, and it is the only one ready for
@@ -983,4 +983,139 @@ fn paint_and_overlay_plans_go_only_on_ground_the_team_has_seen() {
         "a building plan may go anywhere"
     );
     assert_eq!(report.dropped.len(), 3, "{:?}", report.dropped);
+}
+
+/// 15 by 9 with a wall of rock down the middle and three teams, so a bot
+/// walking east loses and regains tiles behind the wall.
+const VISION_MAP: &str = r#"
+name = "vision"
+speed = 10
+width = 15
+height = 9
+terrain = """
+...............
+.......#.......
+.o.....#.....o.
+.......#.......
+...............
+.......#.......
+.......#.......
+...o...#.......
+...............
+"""
+[deposit_default]
+cap = 50
+regrowth = 1
+amount = 50
+[[team]]
+start = [-6, 0]
+[[team]]
+start = [6, 0]
+[[team]]
+start = [0, -4]
+"#;
+
+/// Step 8 as `docs/06` states it and as it was first written: every tile
+/// of the map, for one team, from that team's memory before the pass.
+fn memory_by_a_walk_of_the_whole_map(
+    s: &Sim,
+    team: TeamId,
+    before: &[TileMemory],
+) -> Vec<TileMemory> {
+    let w = &s.world;
+    let visible = sim::sense::team_visible_tiles(w, team);
+    let mut out = before.to_vec();
+    for p in w.map.positions() {
+        let idx = w.tile_index(p).unwrap();
+        if visible.contains(&p) {
+            let tile = &w.tiles[idx];
+            out[idx] = TileMemory {
+                state: TileState::Visible,
+                seen_at: w.tick,
+                terrain: tile.terrain,
+                deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
+                paint: tile.paint.clone(),
+                overlay: tile.overlay.clone(),
+                building: w
+                    .machines
+                    .values()
+                    .find(|m| m.is_building() && m.pos == p)
+                    .map(MachineRecord::of),
+            };
+        } else if out[idx].state == TileState::Visible {
+            out[idx].state = TileState::Remembered;
+        }
+    }
+    out
+}
+
+#[test]
+fn the_vision_pass_writes_what_a_walk_of_the_whole_map_writes() {
+    let data = Data::load().unwrap();
+    let mut s = Sim::new(Map::parse(VISION_MAP, &data).unwrap());
+    // A bot a team that walks a loop, so tiles come into view and leave it.
+    let walkers: Vec<_> = [(0, -6, 2), (1, 6, -2), (2, 0, -2)]
+        .into_iter()
+        .map(|(t, x, y)| {
+            s.world.place(
+                Model::Bot,
+                TeamId(t),
+                TilePos::new(x, y),
+                Some("bot".into()),
+            )
+        })
+        .collect();
+    let walk = "while True:\n    for d in ['e', 'e', 'e', 'n', 'n', 'w', 'w', 'w', 's', 's']:\n        try:\n            move(d)\n        except ValueError:\n            wait(1)\n";
+    let teams: Vec<TeamId> = s.world.teams.keys().copied().collect();
+    let started: Vec<TilePos> = walkers.iter().map(|id| s.world.machines[id].pos).collect();
+    let (mut demoted, mut moved) = (0usize, false);
+    for tick in 1..=80u64 {
+        let before: Vec<Vec<TileMemory>> = teams
+            .iter()
+            .map(|t| s.world.teams[t].memory.clone())
+            .collect();
+        let mut cmds = Vec::new();
+        if tick == 1 {
+            cmds = (0..3).map(|t| deploy(t, "bot", walk)).collect();
+        }
+        if tick == 50 {
+            // Team 2 goes out: the pass leaves its memory as it stands.
+            let mut resign = Command::new(tick, TeamId(2), 0, CommandKind::Resign);
+            resign.tick = tick;
+            cmds.push(resign);
+        }
+        s.step(&cmds);
+        for (team, before) in teams.iter().zip(&before) {
+            let t = &s.world.teams[team];
+            let expected = if t.out {
+                before.clone()
+            } else {
+                memory_by_a_walk_of_the_whole_map(&s, *team, before)
+            };
+            assert!(t.memory == expected, "tick {tick}, team {team:?}");
+            // What the team holds as seen is what its memory says it sees.
+            let visible: Vec<usize> = (0..t.memory.len())
+                .filter(|i| t.memory[*i].state == TileState::Visible)
+                .collect();
+            let mut seen = t.seen.clone();
+            seen.sort_unstable();
+            assert_eq!(seen, visible, "tick {tick}, team {team:?}");
+            demoted += (0..before.len())
+                .filter(|i| {
+                    before[*i].state == TileState::Visible
+                        && t.memory[*i].state == TileState::Remembered
+                })
+                .count();
+        }
+        moved |= walkers
+            .iter()
+            .zip(&started)
+            .any(|(id, at)| s.world.machines.get(id).is_some_and(|m| m.pos != *at));
+    }
+    assert!(s.world.teams[&TeamId(2)].out, "the resignation landed");
+    assert!(moved, "no walker moved, so the pass was never tested");
+    assert!(
+        demoted > 0,
+        "no tile left view, so demotion was never tested"
+    );
 }

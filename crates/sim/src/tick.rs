@@ -339,9 +339,7 @@ impl Sim {
         let w = &mut self.world;
         match effect {
             Effect::Move { to } => {
-                if let Some(m) = w.machines.get_mut(&id) {
-                    m.pos = to;
-                }
+                w.move_machine(id, to);
             }
             Effect::Pick { kind, from } => {
                 let amount = {
@@ -510,13 +508,13 @@ impl Sim {
     }
 
     /// A full site's construction ran its course: it becomes its building.
-    fn finish_site(&mut self, id: EntityId) {
+    pub(crate) fn finish_site(&mut self, id: EntityId) {
         let w = &mut self.world;
         let Some(site) = w.machines.get(&id) else {
             return;
         };
         let (team, pos, model) = (site.team, site.pos, site.becomes.unwrap_or(Model::Depot));
-        w.machines.remove(&id);
+        w.remove(id);
         let new_id = w.place(model, team, pos, Some(model.name().to_string()));
         // Keeps the site's entity? No: the building is a machine of its own,
         // named after its own id, as `place` names it.
@@ -525,7 +523,7 @@ impl Sim {
     }
 
     fn remove_machine(&mut self, id: EntityId) {
-        self.world.machines.remove(&id);
+        self.world.remove(id);
     }
 
     /// Step 3, a printer's part: its print counts down, and at zero the
@@ -674,13 +672,13 @@ impl Sim {
         }
         let dead: Vec<EntityId> = w.dead.iter().copied().collect();
         for id in dead {
-            w.machines.remove(&id);
+            w.remove(id);
         }
         w.dead.clear();
     }
 
     /// Step 5: every team that resigned or has no printer is out.
-    fn out_teams(&mut self) {
+    pub(crate) fn out_teams(&mut self) {
         let w = &mut self.world;
         let teams: Vec<TeamId> = w.teams.keys().copied().collect();
         for team in teams {
@@ -691,7 +689,7 @@ impl Sim {
             if !t.resigned && w.printers_of(team) > 0 {
                 continue;
             }
-            w.machines.retain(|_, m| m.team != team);
+            w.remove_team(team);
             for tile in &mut w.tiles {
                 tile.plans.remove(&team);
             }
@@ -713,6 +711,12 @@ impl Sim {
     }
 
     /// Step 8: each team's visible tiles, and their snapshots (Q21).
+    ///
+    /// Only a tile the team sees now, or saw at the last pass, can
+    /// change, so those are the tiles visited: what it saw is demoted,
+    /// what it sees is written. Every other tile is left as it stands,
+    /// which is what a walk of the whole map wrote to it, at a cost of
+    /// teams by tiles a tick whatever the teams saw (I9).
     fn vision_pass(&mut self) {
         let teams: Vec<TeamId> = self.world.teams.keys().copied().collect();
         let tick = self.world.tick;
@@ -730,27 +734,31 @@ impl Sim {
                 continue;
             }
             sense::ensure_sight(&mut self.world, team);
-            let positions = self.world.map.positions();
-            for p in positions {
-                let idx = self.world.tile_index(p).expect("in bounds");
-                if self.world.sight.teams[&team].contains(&p) {
-                    let tile = &self.world.tiles[idx];
-                    let mem = TileMemory {
-                        state: TileState::Visible,
-                        seen_at: tick,
-                        terrain: tile.terrain,
-                        deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
-                        paint: tile.paint.clone(),
-                        overlay: tile.overlay.clone(),
-                        building: buildings.get(&p).cloned(),
-                    };
-                    self.world.teams.get_mut(&team).expect("team").memory[idx] = mem;
-                } else {
-                    let mem = &mut self.world.teams.get_mut(&team).expect("team").memory[idx];
-                    if mem.state == TileState::Visible {
-                        mem.state = TileState::Remembered;
-                    }
+            let w = &mut self.world;
+            let (width, height) = (w.map.width, w.map.height);
+            let visible = &w.sight.teams[&team];
+            let t = w.teams.get_mut(&team).expect("team");
+            // What it saw at the last pass it now remembers; a tile it
+            // sees still is written over below.
+            for idx in t.seen.drain(..) {
+                let mem = &mut t.memory[idx];
+                if mem.state == TileState::Visible {
+                    mem.state = TileState::Remembered;
                 }
+            }
+            for &p in visible {
+                let idx = crate::map::index(p, width, height).expect("in bounds");
+                let tile = &w.tiles[idx];
+                t.memory[idx] = TileMemory {
+                    state: TileState::Visible,
+                    seen_at: tick,
+                    terrain: tile.terrain,
+                    deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
+                    paint: tile.paint.clone(),
+                    overlay: tile.overlay.clone(),
+                    building: buildings.get(&p).cloned(),
+                };
+                t.seen.push(idx);
             }
         }
     }

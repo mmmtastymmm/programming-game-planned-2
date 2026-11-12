@@ -9,22 +9,35 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Everything a team's sight depends on: every machine's id, position,
 /// model (its vision range) and team. Terrain, the other input, never
 /// changes after the map loads.
+#[cfg(debug_assertions)]
 type Basis = Vec<(EntityId, TilePos, Model, TeamId)>;
 
 /// The tiles each team sees now, kept between queries while the basis
 /// they were computed from stands. Sightings are a function of the world
 /// and no part of it (`docs/06`, The state hash), so this is neither
-/// hashed nor snapshotted; it is checked against the world on every use,
-/// so any path that moves, places or removes a machine invalidates it
-/// without having to know it exists. Without it every `see()` recomputed
-/// its team's whole field of view, which at a thousand bots a team was
+/// hashed nor snapshotted. Without it every `see()` recomputed its
+/// team's whole field of view, which at a thousand bots a team was
 /// nearly all of a tick (I8).
+///
+/// Whether the basis stands is one comparison: the world counts every
+/// change to it (`World::generation`), and the cache holds the count it
+/// was built at. Comparing the basis itself on every query was every
+/// machine for every `see()`, a hundred million comparisons a tick at
+/// ten thousand bots (I9). The price is that a machine placed, removed
+/// or moved by anything but `World`'s own methods leaves the cache
+/// stale, so a build with debug assertions still keeps the basis and
+/// compares it on every use: every test, the golden replay among them,
+/// fails on a site that forgot.
 #[derive(Default)]
 pub struct SightCache {
-    basis: Basis,
+    /// `World::generation` when `teams` was last emptied.
+    built_at: u64,
     pub(crate) teams: BTreeMap<TeamId, BTreeSet<TilePos>>,
+    #[cfg(debug_assertions)]
+    basis: Basis,
 }
 
+#[cfg(debug_assertions)]
 fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamId)> + '_ {
     world
         .machines
@@ -34,10 +47,19 @@ fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamI
 
 /// Make `world.sight.teams[team]` the tiles `team` sees now.
 pub fn ensure_sight(world: &mut World, team: TeamId) {
-    if !world.sight.basis.iter().copied().eq(basis(world)) {
-        world.sight.basis = basis(world).collect();
+    if world.sight.built_at != world.generation {
+        world.sight.built_at = world.generation;
         world.sight.teams.clear();
+        #[cfg(debug_assertions)]
+        {
+            world.sight.basis = basis(world).collect();
+        }
     }
+    #[cfg(debug_assertions)]
+    assert!(
+        world.sight.basis.iter().copied().eq(basis(world)),
+        "the sight cache is stale: a machine was placed, removed, moved or changed by something other than `World::place`, `remove`, `move_machine` or `remove_team`"
+    );
     if !world.sight.teams.contains_key(&team) {
         let visible = team_visible_tiles(world, team);
         world.sight.teams.insert(team, visible);
@@ -219,20 +241,65 @@ start = [4, -2]
             assert_eq!(team_sees(w, team), team_sees_by_definition(w, team));
         }
         // A move changes the basis, so the cached set is dropped.
-        w.machines.get_mut(&b).unwrap().pos = TilePos::new(-1, 2);
+        let before = w.sight.teams[&t0].clone();
+        w.move_machine(b, TilePos::new(-1, 2));
         assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
         assert_eq!(team_sees(w, t1), team_sees_by_definition(w, t1));
+        assert_ne!(w.sight.teams[&t0], before, "the move changed the view");
         // So does a new machine, and a removed one.
         let c = w.place(Model::Bot, t0, TilePos::new(3, -3), Some("bot".into()));
         assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
         assert!(team_can_see(w, t0, c));
-        w.machines.remove(&c);
+        w.remove(c);
         assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
         assert!(!team_can_see(w, t0, c));
         for target in w.machines.keys().copied().collect::<Vec<_>>() {
             let by_definition = team_sees_by_definition(w, t1).contains(&target);
             assert_eq!(team_can_see(w, t1, target), by_definition, "{target:?}");
         }
+        // A conversion: a site, which sees two tiles, becomes a printer,
+        // which sees eight, and the team's view grows with it.
+        let site = w.place(Model::Site, t0, TilePos::new(-4, -3), None);
+        w.machines.get_mut(&site).unwrap().becomes = Some(Model::Printer);
+        assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
+        let before = w.sight.teams[&t0].clone();
+        s.finish_site(site);
+        let w = &mut s.world;
+        assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
+        assert!(
+            w.sight.teams[&t0].len() > before.len(),
+            "the building sees further than its site did"
+        );
+        // A team going out: its machines leave, and it sees nothing.
+        assert!(!team_sees(w, t1).is_empty());
+        w.teams.get_mut(&t1).unwrap().resigned = true;
+        s.out_teams();
+        let w = &mut s.world;
+        assert!(w.teams[&t1].out);
+        assert_eq!(team_sees(w, t1), BTreeSet::new());
+        assert_eq!(team_sees(w, t1), team_sees_by_definition(w, t1));
+        assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
+    }
+
+    /// The price of the generation counter is that a change made behind
+    /// `World`'s back leaves the cache stale. A build with debug
+    /// assertions, which every test is, catches the next query after it.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "the sight cache is stale")]
+    fn a_machine_moved_behind_the_worlds_back_is_caught_at_the_next_query() {
+        let data = Data::load().unwrap();
+        let mut s = Sim::new(Map::parse(MAP, &data).unwrap());
+        let w = &mut s.world;
+        let b = w.place(
+            Model::Bot,
+            TeamId(0),
+            TilePos::new(-3, 2),
+            Some("bot".into()),
+        );
+        team_sees(w, TeamId(0));
+        w.machines.get_mut(&b).unwrap().pos = TilePos::new(-1, 2);
+        team_sees(w, TeamId(0));
     }
 
     #[test]
