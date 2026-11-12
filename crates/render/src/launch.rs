@@ -1,7 +1,8 @@
 //! What a match is started from and what it leaves behind (`docs/07`,
 //! Q36): the choices the start screen and the command line share, the
 //! driver built from them — off the main thread while a host or joiner
-//! waits on its peers — and the replay written when the match is over.
+//! waits on its peers — the replay written when the match is over, and a
+//! replay opened to watch.
 //! Plain Rust, so it is tested headless; [`crate::screens`] is the Bevy
 //! half.
 
@@ -12,12 +13,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
-/// Play alone against the cards, host on an address, or join one.
+/// Play alone against the cards, host on an address, join one, or open a
+/// replay's file (Q55).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     Play,
     Host(String),
     Join(String),
+    Replay(PathBuf),
 }
 
 /// Every choice a match is started from.
@@ -59,6 +62,7 @@ impl Setup {
         let mut opposition: Vec<PathBuf> = Vec::new();
         let mut host = None;
         let mut join = None;
+        let mut replay = None;
         let mut skip = false;
         let mut args = args.into_iter();
         while let Some(a) = args.next() {
@@ -68,6 +72,7 @@ impl Setup {
                 "--play" => {}
                 "--host" => host = Some(value("--host ADDR")?),
                 "--join" => join = Some(value("--join ADDR")?),
+                "--replay" => replay = Some(PathBuf::from(value("--replay FILE")?)),
                 "--map" => setup.map = PathBuf::from(value("--map FILE")?),
                 "--opposition" => opposition.push(PathBuf::from(value("--opposition DIR")?)),
                 "--programs" => setup.programs = Some(PathBuf::from(value("--programs DIR")?)),
@@ -75,11 +80,17 @@ impl Setup {
                 other => return Err(format!("unknown argument {other}")),
             }
         }
-        setup.mode = match (host, join) {
-            (Some(_), Some(_)) => return Err("--host and --join are exclusive".into()),
-            (Some(a), None) => Mode::Host(a),
-            (None, Some(a)) => Mode::Join(a),
-            (None, None) => Mode::Play,
+        setup.mode = match (host, join, replay) {
+            (None, None, Some(path)) => Mode::Replay(path),
+            (_, _, Some(_)) => {
+                return Err(
+                    "--replay opens a replay, which no peer joins; drop --host and --join".into(),
+                );
+            }
+            (Some(_), Some(_), None) => return Err("--host and --join are exclusive".into()),
+            (Some(a), None, None) => Mode::Host(a),
+            (None, Some(a), None) => Mode::Join(a),
+            (None, None, None) => Mode::Play,
         };
         // Single-player defaults to the Fool; a host seats only what it is
         // given, and a joiner seats nothing.
@@ -88,6 +99,11 @@ impl Setup {
             Mode::Join(_) if !opposition.is_empty() => {
                 return Err("a joiner seats no opposition; drop --opposition".into());
             }
+            Mode::Replay(_) if !opposition.is_empty() => {
+                return Err("a replay seats no opposition; drop --opposition".into());
+            }
+            // A replay carries its match: its map and every team's commands.
+            Mode::Replay(_) => Vec::new(),
             _ => opposition,
         };
         Ok((setup, skip))
@@ -112,6 +128,34 @@ pub fn list(dir: &Path, maps: bool) -> Vec<PathBuf> {
         .collect();
     out.sort();
     out
+}
+
+/// Where replays are written and read (Q36): `replays/` inside the
+/// programs directory, or inside the working directory without one.
+pub fn replays_dir(programs: Option<&Path>) -> PathBuf {
+    programs.unwrap_or(Path::new(".")).join("replays")
+}
+
+/// The replays in [`replays_dir`], the newest first, for the start
+/// screen's list.
+pub fn list_replays(programs: Option<&Path>) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(replays_dir(programs)) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "ron"))
+        .map(|e| {
+            let written = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            (written, e.path())
+        })
+        .collect();
+    // Newest first; the name settles two written in one instant.
+    out.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    out.into_iter().map(|(_, p)| p).collect()
 }
 
 /// A path's stem, for naming a map or card on screen and in a file name.
@@ -147,6 +191,11 @@ struct Loaded {
 fn load(setup: &Setup) -> Result<Loaded, String> {
     let map_text =
         std::fs::read_to_string(&setup.map).map_err(|e| format!("{}: {e}", setup.map.display()))?;
+    Ok(load_programs(setup, map_text, stem(&setup.map)))
+}
+
+/// The programs directory read in, beside a map already in hand.
+fn load_programs(setup: &Setup, map_text: String, map_stem: String) -> Loaded {
     let mut warning = None;
     let (opening, tree, deployed) = match &setup.programs {
         Some(dir) => match crate::programs::read_all(dir) {
@@ -162,15 +211,31 @@ fn load(setup: &Setup) -> Result<Loaded, String> {
         },
         None => (Vec::new(), Default::default(), Default::default()),
     };
-    Ok(Loaded {
+    Loaded {
         map_text,
-        map_stem: stem(&setup.map),
+        map_stem,
         programs: setup.programs.clone(),
         tree,
         deployed,
         opening,
         warning,
-    })
+    }
+}
+
+/// Open a replay's file on its playback (`docs/07`, The match). The
+/// programs directory is still read in, for the tree and its windows, but
+/// nothing of it is deployed: a replay sends no command.
+fn open_replay(setup: &Setup, path: &Path) -> Result<Match, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let replay = replay::Replay::from_ron(&text)
+        .map_err(|e| format!("{} is not a replay: {e}", path.display()))?;
+    let tuning = crate::palette::Interface::load()?.debugging;
+    let map_text = replay.map.clone();
+    let driver =
+        Driver::open_replay(replay, tuning).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut loaded = load_programs(setup, map_text, driver.map_name.clone());
+    loaded.deployed.clear();
+    Ok(loaded.into_match(driver))
 }
 
 impl Loaded {
@@ -211,6 +276,9 @@ pub enum Started {
 /// Read the map and programs and build the driver as the command line
 /// always has — at once for play, behind a handshake for host and join.
 pub fn start(setup: &Setup) -> Result<Started, String> {
+    if let Mode::Replay(path) = &setup.mode {
+        return Ok(Started::Ready(Box::new(open_replay(setup, path)?)));
+    }
     let loaded = load(setup)?;
     let (tx, rx) = channel();
     let map_text = loaded.map_text.clone();
@@ -232,6 +300,7 @@ pub fn start(setup: &Setup) -> Result<Started, String> {
             });
             true
         }
+        Mode::Replay(path) => return Ok(Started::Ready(Box::new(open_replay(setup, path)?))),
         Mode::Join(addr) => {
             let addr = addr.clone();
             std::thread::spawn(move || {
@@ -288,14 +357,19 @@ impl Pending {
     }
 }
 
-/// Where a match's replay goes (Q36): `replays/<map>-<tick>-<hash>.ron`
-/// inside the programs directory, or the working directory without one —
-/// named by the tick and hash, so two peers that agree write one name.
-pub fn replay_path(programs: Option<&Path>, map_stem: &str, tick: u64, hash: u64) -> PathBuf {
-    programs
-        .unwrap_or(Path::new("."))
-        .join("replays")
-        .join(format!("{map_stem}-{tick}-{hash:016x}.ron"))
+/// Where a match's replay goes (Q36, as Q55 amends it):
+/// `replays/<map>-<tick>-<hash>-<team>.ron` inside the programs directory,
+/// or the working directory without one — named by the tick and hash, so
+/// two peers that agree write names that differ only in the team, and two
+/// peers sharing one directory keep both.
+pub fn replay_path(
+    programs: Option<&Path>,
+    map_stem: &str,
+    tick: u64,
+    hash: u64,
+    team: sim::TeamId,
+) -> PathBuf {
+    replays_dir(programs).join(format!("{map_stem}-{tick}-{hash:016x}-{}.ron", team.0))
 }
 
 /// Write the match so far as its replay; the path it went to.
@@ -305,7 +379,7 @@ pub fn save_replay(
     map_stem: &str,
 ) -> Result<PathBuf, String> {
     let (tick, hash) = driver.replay_point();
-    let path = replay_path(programs, map_stem, tick, hash);
+    let path = replay_path(programs, map_stem, tick, hash, driver.player);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
@@ -391,13 +465,130 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("render-replay-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = save_replay(&m.driver, Some(&dir), &m.map_stem).unwrap();
-        let name = format!("first-{}-{:016x}.ron", m.driver.tick, m.driver.state_hash());
+        // Named for the map, the tick, the hash and the saver's team (Q55).
+        let name = format!(
+            "first-{}-{:016x}-0.ron",
+            m.driver.tick,
+            m.driver.state_hash()
+        );
         assert_eq!(path, dir.join("replays").join(name));
+        assert_eq!(
+            replay_path(None, "m", 7, 0xab, sim::TeamId(3)),
+            PathBuf::from("./replays/m-7-00000000000000ab-3.ron")
+        );
         let back = replay::Replay::from_ron(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(back.run().last().copied(), Some(m.driver.state_hash()));
         // The file on disk carries the version and the final hash (Q60).
         assert_eq!(back.version.as_deref(), Some(replay::GAME_VERSION));
         assert_eq!(back.final_hash, Some(m.driver.state_hash()));
+        assert_eq!(back.team, Some(m.driver.player));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_replay_flag_opens_a_file_and_seats_nobody() {
+        let root = data_root();
+        let (s, skip) = Setup::from_args(args(&["--replay", "r/a.ron"]), &root).unwrap();
+        assert!(skip, "--replay skips the screen");
+        assert_eq!(s.mode, Mode::Replay(PathBuf::from("r/a.ron")));
+        assert!(s.opposition.is_empty(), "a replay carries its match");
+        for (bad, says) in [
+            (&["--replay", "a", "--host", "h:1"][..], "no peer joins"),
+            (&["--join", "h:1", "--replay", "a"], "no peer joins"),
+            (
+                &["--replay", "a", "--opposition", "o"],
+                "seats no opposition",
+            ),
+            (&["--replay"], "--replay FILE"),
+        ] {
+            let error = Setup::from_args(args(bad), &root).expect_err("took it");
+            assert!(error.contains(says), "{bad:?}: {error}");
+        }
+    }
+
+    #[test]
+    fn a_saved_replay_is_listed_and_opens_on_its_playback() {
+        let root = data_root();
+        let mut setup = Setup::defaults(&root);
+        setup.programs = None;
+        let Started::Ready(mut m) = start(&setup).unwrap() else {
+            panic!("play waited on a handshake");
+        };
+        m.driver.advance(3.5);
+        let (ticks, hash) = (m.driver.tick, m.driver.state_hash());
+        assert!(ticks >= 30, "{ticks}");
+
+        let dir = std::env::temp_dir().join(format!("render-open-replay-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(list_replays(Some(&dir)).is_empty(), "no directory, no list");
+        let path = save_replay(&m.driver, Some(&dir), &m.map_stem).unwrap();
+        std::fs::write(dir.join("replays").join("notes.txt"), "not one").unwrap();
+        assert_eq!(list_replays(Some(&dir)), vec![path.clone()]);
+
+        // No map and no opposition of the setup's is read: the file has both.
+        // The programs directory is: its tree is there to read and try,
+        // and none of it counts as deployed.
+        setup.mode = Mode::Replay(path.clone());
+        setup.map = PathBuf::from("/no/such/map.toml");
+        setup.opposition = vec![PathBuf::from("/no/such/card")];
+        setup.programs = Some(root.join("starter"));
+        let Started::Ready(mut r) = start(&setup).unwrap() else {
+            panic!("a replay waited on a handshake");
+        };
+        assert!(r.driver.is_replay());
+        assert_eq!(r.map_stem, "first");
+        assert!(!r.tree.is_empty(), "the starter tree was read");
+        assert_eq!(r.warning, None);
+        assert!(r.deployed.is_empty(), "a replay deploys nothing");
+        assert_eq!((r.driver.tick, r.driver.player), (0, m.driver.player));
+        r.driver.seek(ticks).unwrap();
+        while r.driver.seeking.is_some() {
+            r.driver.advance(0.0);
+        }
+        assert_eq!((r.driver.tick, r.driver.state_hash()), (ticks, hash));
+        let viewer = r.driver.viewer().unwrap();
+        assert_eq!(
+            (viewer.warning.clone(), viewer.report.clone()),
+            (None, None)
+        );
+        assert!(viewer.can_debug());
+
+        // A file that is no replay is an error naming it, not a crash.
+        let other = dir.join("replays").join("notes.txt");
+        setup.mode = Mode::Replay(other.clone());
+        let Err(error) = start(&setup) else {
+            panic!("opened a text file as a replay")
+        };
+        assert!(
+            error.contains("notes.txt") && error.contains("is not a replay"),
+            "{error}"
+        );
+        setup.mode = Mode::Replay(dir.join("replays").join("gone.ron"));
+        let Err(error) = start(&setup) else {
+            panic!("opened a file that is not there")
+        };
+        assert!(error.contains("gone.ron"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replays_are_listed_newest_first() {
+        let dir = std::env::temp_dir().join(format!("render-list-replays-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let replays = replays_dir(Some(&dir));
+        std::fs::create_dir_all(&replays).unwrap();
+        let at = |name: &str, secs: u64| {
+            let path = replays.join(name);
+            let file = std::fs::File::create(&path).unwrap();
+            file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+                .unwrap();
+            path
+        };
+        let old = at("b-old.ron", 1_000);
+        let new = at("a-new.ron", 3_000);
+        let twin = at("c-twin.ron", 3_000);
+        let mid = at("z-mid.ron", 2_000);
+        assert_eq!(list_replays(Some(&dir)), vec![new, twin, mid, old]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

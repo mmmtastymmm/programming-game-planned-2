@@ -7,7 +7,13 @@
 //! every set for the next tick is in hand (Q12), and stops on the first
 //! tick two peers hash differently. Without one it is single-player, which
 //! is lockstep with one peer.
+//!
+//! A replay is not a match and is not played by that loop (`docs/06`, The
+//! driver): the driver then holds the replay's playback, a fork, and steps
+//! it a tick at a time at the viewer's pace, sending no command.
 
+use crate::palette::Debugging;
+use crate::playback::Viewer;
 use net::CommandLog;
 use net::exchange::{Event, Exchange};
 use net::tcp::{MatchIdentity, Session};
@@ -19,6 +25,17 @@ use std::path::Path;
 
 /// Own hashes kept for comparing against a peer's late-arriving one.
 const HASHES_KEPT: u64 = 4096;
+
+/// How long one frame may spend on a replay's seek before it draws, and
+/// how many ticks it runs between looks at the clock.
+const SEEK_FRAME: std::time::Duration = std::time::Duration::from_millis(12);
+const SEEK_CHUNK: u64 = 16;
+
+/// What the driver drives: a match's sim, or a replay's playback.
+enum Engine {
+    Match(Box<Sim>),
+    Replay(Box<Viewer>),
+}
 
 /// The last two completed-tick snapshots and the real time since the last.
 pub struct Snapshots {
@@ -74,11 +91,12 @@ pub struct Desync {
 }
 
 pub struct Driver {
-    sim: Sim,
+    engine: Engine,
     pub log: CommandLog,
     /// The last completed tick.
     pub tick: u64,
-    /// Ticks per real second; `0` is pause (Q6).
+    /// Ticks per real second; `0` is pause (Q6). On a replay this is the
+    /// viewer's pace, which no command sets.
     pub speed: u64,
     pub delay: u64,
     pub stall_report_ticks: u64,
@@ -123,6 +141,8 @@ pub struct Driver {
     /// Peer hashes compared against this driver's own, so a test can tell
     /// agreement from silence.
     pub hashes_compared: u64,
+    /// The tick a replay's seek is on its way to.
+    pub seeking: Option<u64>,
 }
 
 impl Driver {
@@ -312,7 +332,7 @@ impl Driver {
         }
         let cur = sim.snapshot();
         Ok(Driver {
-            sim,
+            engine: Engine::Match(Box::new(sim)),
             log,
             tick: 0,
             speed,
@@ -343,7 +363,104 @@ impl Driver {
             desync: None,
             events: Vec::new(),
             hashes_compared: 0,
+            seeking: None,
         })
+    }
+
+    /// A replay opened to watch (`docs/07`, The match): its playback,
+    /// standing before tick 1, drawn in the view of the team that saved it
+    /// or of the first team. It starts at the map's speed; from there the
+    /// pace is the viewer's.
+    pub fn open_replay(replay: replay::Replay, tuning: Debugging) -> Result<Driver, String> {
+        let data = Data::load().map_err(|e| e.to_string())?;
+        let map = Map::parse(&replay.map, &data)
+            .map_err(|e| format!("the replay's map does not load: {e}"))?;
+        let teams = (0..map.teams.len() as u32).map(TeamId);
+        let log = CommandLog::new(teams);
+        let map_name = map.name.clone();
+        let bounds = map.bounds();
+        let speed = map.speed;
+        let map_text = replay.map.clone();
+        let viewer = Viewer::open(replay, tuning)?;
+        let cur = viewer.snapshot();
+        let own_hashes = BTreeMap::from([(0, viewer.state_hash())]);
+        Ok(Driver {
+            player: viewer.team(),
+            engine: Engine::Replay(Box::new(viewer)),
+            log,
+            tick: 0,
+            speed,
+            delay: 0,
+            stall_report_ticks: data.net.stall_report_ticks,
+            local_peers: BTreeSet::new(),
+            scripted_teams: BTreeSet::new(),
+            accumulated: 0.0,
+            stalled: 0.0,
+            stall: None,
+            snapshots: Snapshots {
+                prev: None,
+                cur,
+                since: 0.0,
+            },
+            last_report: StepReport::default(),
+            ended: None,
+            submitted: Vec::new(),
+            map_name,
+            map_text,
+            bounds,
+            exchange: None,
+            remote_peers: BTreeSet::new(),
+            sent_through: None,
+            own_hashes,
+            peer_hashes: BTreeMap::new(),
+            desync: None,
+            events: Vec::new(),
+            hashes_compared: 0,
+            seeking: None,
+        })
+    }
+
+    /// The replay's playback, when this driver plays one.
+    pub fn viewer(&self) -> Option<&Viewer> {
+        match &self.engine {
+            Engine::Match(_) => None,
+            Engine::Replay(v) => Some(v),
+        }
+    }
+
+    pub fn is_replay(&self) -> bool {
+        self.viewer().is_some()
+    }
+
+    /// The winner, or `None` for a draw, once the match is over — or once
+    /// a replay's playback stands where its match was. `ended` is the
+    /// match's alone: a replay finishing ends nothing.
+    pub fn outcome(&self) -> Option<Option<TeamId>> {
+        match &self.engine {
+            Engine::Match(_) => self.ended,
+            Engine::Replay(v) => v.ended(),
+        }
+    }
+
+    /// Set a replay's pace: ticks per real second, `0` pausing it. The
+    /// viewer's alone, so it is no command; a match's speed is.
+    pub fn set_pace(&mut self, speed: u64) -> Result<(), String> {
+        if !self.is_replay() {
+            return Err("a match's speed is set by a command".into());
+        }
+        self.speed = speed;
+        self.accumulated = 0.0;
+        Ok(())
+    }
+
+    /// Ask a replay's playback to stand at the end of `tick`, or of its
+    /// last tick if that is earlier; [`Driver::advance`] moves it there.
+    pub fn seek(&mut self, tick: u64) -> Result<(), String> {
+        let Some(v) = self.viewer() else {
+            return Err("only a replay seeks".into());
+        };
+        self.seeking = Some(tick.min(v.ticks()));
+        Ok(())
     }
 
     /// Submit a command from the player: validated as a peer would, agreed
@@ -352,9 +469,12 @@ impl Driver {
     /// already sent to the peers is final, so a submission during a stall
     /// lands on the first tick still open.
     pub fn submit(&mut self, kind: CommandKind) -> Result<u64, String> {
+        let Engine::Match(sim) = &self.engine else {
+            return Err("a replay sends no command".into());
+        };
         let tick = self.next_open_tick();
         let c = Command::new(tick, self.player, 0, kind);
-        self.sim.validate(&c)?;
+        sim.validate(&c)?;
         // Paint and overlay only on ground the team has seen (Q49): the
         // sim drops a mark that fails this on its tick, so refuse it here,
         // where the player can be told why.
@@ -380,10 +500,18 @@ impl Driver {
     /// before the first tick, or once the stored one has aged out, is it
     /// computed here.
     pub fn state_hash(&self) -> u64 {
-        self.own_hashes
-            .get(&self.tick)
-            .copied()
-            .unwrap_or_else(|| self.sim.state_hash())
+        match &self.engine {
+            Engine::Match(sim) => self
+                .own_hashes
+                .get(&self.tick)
+                .copied()
+                .unwrap_or_else(|| sim.state_hash()),
+            Engine::Replay(v) => self
+                .own_hashes
+                .get(&self.tick)
+                .copied()
+                .unwrap_or_else(|| v.state_hash()),
+        }
     }
 
     /// Every local peer's set for every tick through `tick` is in hand by
@@ -430,7 +558,11 @@ impl Driver {
                         continue;
                     }
                     for c in &commands {
-                        if let Err(err) = self.sim.validate(c) {
+                        let checked = match &self.engine {
+                            Engine::Match(sim) => sim.validate(c),
+                            Engine::Replay(_) => Err("a replay takes no set".to_string()),
+                        };
+                        if let Err(err) = checked {
                             // Every peer validates at submission, so a set
                             // this peer refuses means the peers disagree
                             // on the match itself.
@@ -496,6 +628,9 @@ impl Driver {
     }
 
     fn run_tick(&mut self) {
+        let Engine::Match(sim) = &mut self.engine else {
+            return;
+        };
         let t = self.tick.saturating_add(1);
         let mut commands = if t == 1 {
             self.log.sets_for(0)
@@ -503,7 +638,7 @@ impl Driver {
             Vec::new()
         };
         commands.extend(self.log.sets_for(t));
-        let report = self.sim.step(&commands, &[]);
+        let report = sim.step(&commands, &[]);
         if let Some(s) = report.speed {
             self.speed = s;
         }
@@ -516,7 +651,8 @@ impl Driver {
         // clock restarts from here, not from the last frame that ran no tick.
         self.stalled = 0.0;
         self.stall = None;
-        let hash = self.sim.state_hash();
+        let hash = sim.state_hash();
+        let cur = sim.snapshot();
         self.own_hashes.insert(t, hash);
         if let Some(old) = t.checked_sub(HASHES_KEPT) {
             self.own_hashes.remove(&old);
@@ -537,7 +673,6 @@ impl Driver {
             self.peer_hashes.remove(&(t, peer));
             self.compare(t, peer, hash, theirs);
         }
-        let cur = self.sim.snapshot();
         let prev = std::mem::replace(&mut self.snapshots.cur, cur);
         self.snapshots.prev = Some(prev);
         self.snapshots.since = 0.0;
@@ -552,6 +687,9 @@ impl Driver {
 
     /// One frame of the driver loop `docs/06` specifies, `dt` real seconds.
     pub fn advance(&mut self, dt: f64) {
+        if self.is_replay() {
+            return self.play(dt);
+        }
         self.receive();
         if self.ended.is_some() || self.desync.is_some() {
             return;
@@ -602,6 +740,60 @@ impl Driver {
         self.stall = None;
     }
 
+    /// One frame of a replay (`docs/06`, The driver): a seek on its way
+    /// moves first, and otherwise the playback steps a tick at a time at
+    /// the viewer's pace. A paused replay stays paused, whatever its log
+    /// holds, and one that is done runs no further.
+    fn play(&mut self, dt: f64) {
+        let Engine::Replay(viewer) = &mut self.engine else {
+            return;
+        };
+        self.snapshots.since += dt;
+        if let Some(target) = self.seeking {
+            let started = std::time::Instant::now();
+            let mut there = viewer.seek_some(target, SEEK_CHUNK);
+            while !there && started.elapsed() < SEEK_FRAME {
+                there = viewer.seek_some(target, SEEK_CHUNK);
+            }
+            if there {
+                self.seeking = None;
+            }
+            self.tick = viewer.tick();
+            self.own_hashes.clear();
+            self.own_hashes.insert(self.tick, viewer.state_hash());
+            // A jump, not a step: there is nothing to interpolate from.
+            self.snapshots = Snapshots {
+                prev: None,
+                cur: viewer.snapshot(),
+                since: 0.0,
+            };
+            self.last_report = StepReport::default();
+            self.accumulated = 0.0;
+            return;
+        }
+        if self.speed == 0 {
+            return;
+        }
+        self.accumulated += dt;
+        let period = 1.0 / self.speed as f64;
+        let mut ran = 0u32;
+        while self.accumulated >= period && ran < 64 {
+            let Some(report) = viewer.advance(&[]) else {
+                self.accumulated = 0.0;
+                break;
+            };
+            self.last_report = report;
+            self.tick = viewer.tick();
+            self.own_hashes.clear();
+            self.own_hashes.insert(self.tick, viewer.state_hash());
+            let prev = std::mem::replace(&mut self.snapshots.cur, viewer.snapshot());
+            self.snapshots.prev = Some(prev);
+            self.snapshots.since = 0.0;
+            self.accumulated -= period;
+            ran += 1;
+        }
+    }
+
     fn stall(&mut self, dt: f64) {
         self.stalled += dt;
         let threshold = if self.speed == 0 {
@@ -630,6 +822,9 @@ impl Driver {
     /// and this peer's hash at its last tick (Q60), so a later build can
     /// say it plays the file back differently.
     pub fn replay(&self) -> replay::Replay {
+        if let Some(v) = self.viewer() {
+            return v.replay().clone();
+        }
         let (ticks, hash) = self.replay_point();
         replay::Replay {
             map: self.map_text.clone(),
@@ -637,6 +832,7 @@ impl Driver {
             ticks,
             version: Some(replay::GAME_VERSION.to_string()),
             final_hash: Some(hash),
+            team: Some(self.player),
         }
     }
 
@@ -655,13 +851,17 @@ impl Driver {
         }
     }
 
-    /// The last completed-tick snapshot.
     /// Whether the player may place `plan` on `at` now (Q49): paint and
     /// overlay only on ground the team has seen. A read; nothing is written.
+    /// Never on a replay, which takes no mark.
     pub fn may_plan(&self, at: sim::TilePos, plan: sim::PlanKind) -> Result<(), String> {
-        self.sim.world.may_plan(self.player, at, plan)
+        match &self.engine {
+            Engine::Match(sim) => sim.world.may_plan(self.player, at, plan),
+            Engine::Replay(_) => Err("a replay sends no command".into()),
+        }
     }
 
+    /// The last completed-tick snapshot.
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshots.cur
     }
@@ -1080,5 +1280,184 @@ mod tests {
             .is_err()
         );
         assert!(d.submitted.is_empty());
+    }
+
+    fn tuning() -> Debugging {
+        Debugging {
+            debug_checkpoint_ticks: 5,
+            debug_checkpoints_kept: 4,
+            debug_step_max_ticks: 100,
+            debug_hits_kept: 5,
+        }
+    }
+
+    /// A match with a faster stretch and a pause in its log, as the replay
+    /// it saves and the hash at the end of each of its ticks.
+    fn recorded() -> (replay::Replay, Vec<u64>) {
+        let mut d = driver();
+        d.advance(1.0);
+        d.submit(CommandKind::SetSpeed(20)).unwrap();
+        d.advance(1.0);
+        d.submit(CommandKind::SetSpeed(0)).unwrap();
+        d.advance(1.0);
+        assert_eq!(d.speed, 0, "the match paused");
+        d.submit(CommandKind::SetSpeed(10)).unwrap();
+        d.advance(2.0);
+        assert!(d.tick > 40, "{}", d.tick);
+        let replay = d.replay();
+        assert_eq!(replay.team, Some(d.player), "the saver's team is in it");
+        let hashes = replay.run();
+        assert_eq!(hashes.last().copied(), Some(d.state_hash()));
+        (replay, hashes)
+    }
+
+    #[test]
+    fn a_replay_plays_at_the_viewers_pace_to_the_matchs_hash_and_stops() {
+        let (replay, hashes) = recorded();
+        let ticks = replay.ticks;
+        let mut r = Driver::open_replay(replay.clone(), tuning()).unwrap();
+        assert!(r.is_replay());
+        assert_eq!((r.tick, r.speed, r.player), (0, 10, TeamId(0)));
+        assert_eq!(r.snapshot().tick, 0);
+        for hash in &hashes {
+            r.advance(0.1);
+            assert_eq!(r.state_hash(), *hash, "tick {}", r.tick);
+            assert_eq!(r.snapshot().tick, r.tick);
+            // The match's SetSpeeds are in the log and set nothing here.
+            assert_eq!(r.speed, 10, "tick {}", r.tick);
+        }
+        assert_eq!(r.tick, ticks);
+        r.advance(5.0);
+        assert_eq!(r.tick, ticks, "nothing past the last tick");
+        // A replay finishing ends nothing: no end screen, no file saved.
+        assert_eq!(r.ended, None);
+        assert_eq!(r.outcome(), None, "the match was still running");
+        assert!(r.stall.is_none() && r.desync.is_none());
+        // It hands back the file it was opened from.
+        assert_eq!(r.replay(), replay);
+    }
+
+    #[test]
+    fn a_replays_pace_and_pause_are_the_viewers() {
+        let (replay, hashes) = recorded();
+        let mut r = Driver::open_replay(replay, tuning()).unwrap();
+        r.set_pace(0).unwrap();
+        r.advance(60.0);
+        assert_eq!(r.tick, 0, "paused, whatever the log holds");
+        r.set_pace(20).unwrap();
+        r.advance(0.5);
+        assert_eq!(r.tick, 10);
+        r.set_pace(0).unwrap();
+        // Paused across the tick the match's own SetSpeed(20) landed on.
+        r.advance(60.0);
+        assert_eq!(r.tick, 10);
+        r.set_pace(10).unwrap();
+        r.advance(1.0);
+        assert_eq!(r.tick, 20, "a tenth of a second a tick, not the match's 20");
+        assert_eq!(r.state_hash(), hashes[19]);
+
+        // A match's speed is a command's, and a match does not seek.
+        let mut d = driver();
+        assert!(d.set_pace(0).is_err());
+        assert!(d.seek(3).is_err());
+        assert_eq!((d.speed, d.seeking), (10, None));
+    }
+
+    #[test]
+    fn a_replay_sends_no_command() {
+        let (replay, _) = recorded();
+        let mut r = Driver::open_replay(replay, tuning()).unwrap();
+        r.advance(1.0);
+        for kind in [CommandKind::SetSpeed(0), CommandKind::Resign] {
+            let error = r.submit(kind).expect_err("a replay took a command");
+            assert!(error.contains("a replay sends no command"), "{error}");
+        }
+        assert!(r.submitted.is_empty());
+        assert_eq!(r.log.commands().count(), 0);
+        let error = r
+            .may_plan(sim::TilePos::new(0, 0), sim::PlanKind::Paint)
+            .expect_err("a replay offered a mark");
+        assert!(error.contains("a replay sends no command"), "{error}");
+        let before = (r.tick, r.speed);
+        r.advance(1.0);
+        assert_eq!((r.tick, r.speed), (before.0 + 10, before.1));
+    }
+
+    #[test]
+    fn a_seek_moves_the_playback_over_frames_and_keeps_the_pace() {
+        let (replay, hashes) = recorded();
+        let ticks = replay.ticks;
+        let mut r = Driver::open_replay(replay, tuning()).unwrap();
+        let seek = |r: &mut Driver, tick: u64| {
+            r.seek(tick).unwrap();
+            let mut frames = 0;
+            while r.seeking.is_some() {
+                // No time passes: a seek is not the clock's.
+                r.advance(0.0);
+                frames += 1;
+                assert!(frames < 10_000, "the seek never arrived");
+            }
+        };
+        r.advance(0.25);
+        assert!(r.snapshots.prev.is_some(), "two ticks played");
+        seek(&mut r, 37);
+        assert_eq!(r.tick, 37);
+        assert_eq!(r.state_hash(), hashes[36]);
+        assert_eq!(r.snapshot().tick, 37);
+        assert!(r.snapshots.prev.is_none(), "a jump has nothing to blend");
+        // Back, while paused: it lands and stays paused.
+        r.set_pace(0).unwrap();
+        seek(&mut r, 4);
+        assert_eq!((r.tick, r.speed), (4, 0));
+        assert_eq!(r.state_hash(), hashes[3]);
+        r.advance(10.0);
+        assert_eq!(r.tick, 4);
+        // Past the end is the last tick, and playing on from a seek works.
+        seek(&mut r, ticks + 500);
+        assert_eq!(r.tick, ticks);
+        assert_eq!(r.state_hash(), *hashes.last().unwrap());
+        seek(&mut r, 9);
+        r.set_pace(10).unwrap();
+        r.advance(0.1);
+        assert_eq!(r.tick, 10);
+        assert_eq!(r.state_hash(), hashes[9]);
+        assert!(r.snapshots.prev.is_some());
+    }
+
+    #[test]
+    fn a_replay_of_a_finished_match_reports_its_outcome_without_ending() {
+        let mut d = driver();
+        d.advance(1.0);
+        let lands = d.submit(CommandKind::Resign).unwrap();
+        d.advance(1.0);
+        assert_eq!(d.tick, lands);
+        assert_eq!(d.ended, Some(Some(TeamId(1))));
+        let mut r = Driver::open_replay(d.replay(), tuning()).unwrap();
+        r.advance(1.0);
+        assert_eq!(r.outcome(), None, "not yet");
+        r.advance(10.0);
+        assert_eq!(r.tick, lands);
+        assert_eq!(r.outcome(), Some(Some(TeamId(1))));
+        assert_eq!(r.ended, None, "the end screen is the match's");
+        assert_eq!(r.state_hash(), d.state_hash());
+    }
+
+    #[test]
+    fn a_replay_whose_map_or_team_does_not_load_is_an_error() {
+        let (replay, _) = recorded();
+        let broken = replay::Replay {
+            map: "not a map".into(),
+            ..replay.clone()
+        };
+        let error = Driver::open_replay(broken, tuning()).err().expect("opened");
+        assert!(error.contains("the replay's map does not load"), "{error}");
+        let stranger = replay::Replay {
+            team: Some(TeamId(9)),
+            ..replay
+        };
+        let error = Driver::open_replay(stranger, tuning())
+            .err()
+            .expect("opened");
+        assert!(error.contains("no such team"), "{error}");
     }
 }

@@ -48,6 +48,7 @@ pub const ATLASES: [&str; 9] = [
 #[derive(Resource, Debug, Clone, serde::Deserialize)]
 pub struct Interface {
     pub faults: InterfaceFaults,
+    pub debugging: Debugging,
     pub teams: InterfaceTeams,
     pub bodies: InterfaceBodies,
 }
@@ -55,6 +56,19 @@ pub struct Interface {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct InterfaceFaults {
     pub fault_mark_ticks: u64,
+}
+
+/// The debugger's and a replay's tuning (Q55; `docs/07`, Debugging).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+pub struct Debugging {
+    /// A state is saved at every tick that is a multiple of this.
+    pub debug_checkpoint_ticks: u64,
+    /// How many saved states are kept beside the pinned ones.
+    pub debug_checkpoints_kept: usize,
+    /// The tick limit every step but run is passed.
+    pub debug_step_max_ticks: u64,
+    /// How many further hits are listed.
+    pub debug_hits_kept: usize,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -76,7 +90,24 @@ pub const INTERFACE_TOML: &str = include_str!("../../../data/interface.toml");
 
 impl Interface {
     pub fn load() -> Result<Interface, String> {
-        let i: Interface = toml::from_str(INTERFACE_TOML).map_err(|e| e.to_string())?;
+        Interface::parse(INTERFACE_TOML)
+    }
+
+    pub fn parse(text: &str) -> Result<Interface, String> {
+        let i: Interface = toml::from_str(text).map_err(|e| format!("interface.toml: {e}"))?;
+        let d = &i.debugging;
+        if d.debug_checkpoint_ticks == 0 || d.debug_checkpoints_kept < 2 {
+            return Err(
+                "interface.toml: debug_checkpoint_ticks must be at least 1 and debug_checkpoints_kept at least 2"
+                    .into(),
+            );
+        }
+        if d.debug_step_max_ticks == 0 || d.debug_hits_kept == 0 {
+            return Err(
+                "interface.toml: debug_step_max_ticks and debug_hits_kept must be at least 1"
+                    .into(),
+            );
+        }
         if i.teams.outlines.is_empty() {
             return Err("interface.toml: teams.outlines is empty".into());
         }
@@ -691,5 +722,48 @@ mod tests {
         }
         // North is -Z.
         assert!(f.tile_xyz(TilePos::new(0, 5), 0.0).z < f.tile_xyz(TilePos::new(0, 0), 0.0).z);
+    }
+
+    #[test]
+    fn the_shipped_table_carries_the_debugging_constants() {
+        let d = Interface::load().unwrap().debugging;
+        assert!(d.debug_checkpoint_ticks >= 1 && d.debug_checkpoints_kept >= 2);
+        assert!(d.debug_step_max_ticks >= 1 && d.debug_hits_kept >= 1);
+        assert_eq!(
+            d,
+            Debugging {
+                debug_checkpoint_ticks: 50,
+                debug_checkpoints_kept: 16,
+                debug_step_max_ticks: 600,
+                debug_hits_kept: 20,
+            },
+            "a retune changes this line and nothing else"
+        );
+    }
+
+    #[test]
+    fn a_debugging_constant_the_saved_states_cannot_work_with_is_refused() {
+        let with = |name: &str, value: u64| {
+            let was = INTERFACE_TOML
+                .lines()
+                .find(|l| l.starts_with(&format!("{name} = ")))
+                .unwrap_or_else(|| panic!("no `{name}` row"));
+            INTERFACE_TOML.replace(was, &format!("{name} = {value}"))
+        };
+        assert!(Interface::parse(&with("debug_checkpoint_ticks", 1)).is_ok());
+        assert!(Interface::parse(&with("debug_checkpoints_kept", 2)).is_ok());
+        for (name, value) in [
+            // An interval of no ticks never comes round.
+            ("debug_checkpoint_ticks", 0),
+            // Halving one state leaves none to seek from.
+            ("debug_checkpoints_kept", 1),
+            ("debug_step_max_ticks", 0),
+            ("debug_hits_kept", 0),
+        ] {
+            let error = Interface::parse(&with(name, value)).expect_err(name);
+            assert!(error.contains(name), "{name}: {error}");
+        }
+        let error = Interface::parse("faults = 3").expect_err("parsed");
+        assert!(error.starts_with("interface.toml: "), "{error}");
     }
 }

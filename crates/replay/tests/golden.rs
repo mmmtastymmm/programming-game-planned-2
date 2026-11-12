@@ -138,6 +138,7 @@ fn golden_replay() -> Replay {
         ticks: 400,
         version: None,
         final_hash: None,
+        team: None,
     }
 }
 

@@ -1280,12 +1280,14 @@ pub fn window_body(
     let mut deploy_now = false;
     let mut deploy_all = false;
     let mut export_now = false;
+    // A replay sends no command (`docs/07`, The match): no deploy.
+    let live = !d.is_replay();
     ui.horizontal(|ui| {
         let ready = state.editor.ahead(path, &snap, player);
-        if ui.add_enabled(ready, egui::Button::new("deploy")).clicked() {
+        if live && ui.add_enabled(ready, egui::Button::new("deploy")).clicked() {
             deploy_now = true;
         }
-        if ui.button("deploy all changed (Shift+D)").clicked() {
+        if live && ui.button("deploy all changed (Shift+D)").clicked() {
             deploy_all = true;
         }
         if ui.button("export").clicked() {
