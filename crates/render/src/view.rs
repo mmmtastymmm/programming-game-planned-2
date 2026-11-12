@@ -90,8 +90,13 @@ pub struct Entities {
     pub machines: HashMap<EntityId, MachineView>,
     /// The render height of each tile's top as the player knows it.
     pub tops: HashMap<TilePos, f32>,
-    pub synced_tick: Option<u64>,
-    pub sounds_tick: Option<u64>,
+    /// The stamp of what the map drew when the tiles last synced
+    /// ([`crate::driver::Driver::drawn_stamp`]): a tick of the match, or
+    /// a fork and where it stood.
+    pub synced_tick: Option<(u64, u64, u64)>,
+    /// What the rings last sounded for: the match or which fork, and its
+    /// tick. A fork's steps inside one tick do not ring it again.
+    pub sounds_tick: Option<(u64, u64)>,
     /// The armed tool's ghost: what it shows, and on which tiles — the one
     /// under the cursor, or a `Shift`+drag's rectangle (Q44).
     pub cursor: (Tool, Vec<TilePos>),
@@ -317,11 +322,12 @@ pub fn sync_tiles(
     mut ents: ResMut<Entities>,
     mut covers: Query<&mut Visibility, With<FogCover>>,
 ) {
-    let snap = driver.0.snapshot();
-    if ents.synced_tick == Some(snap.tick) {
+    let snap = driver.0.drawn();
+    let stamp = driver.0.drawn_stamp();
+    if ents.synced_tick == Some(stamp) {
         return;
     }
-    ents.synced_tick = Some(snap.tick);
+    ents.synced_tick = Some(stamp);
     let player = driver.0.player;
     let Some(team) = snap.teams.iter().find(|t| t.id == player) else {
         return;
@@ -666,7 +672,7 @@ pub fn sync_machines(
     mut ents: ResMut<Entities>,
     mut bodies: Query<(&mut Visibility, &mut MeshMaterial3d<StandardMaterial>), With<MachineBody>>,
 ) {
-    let snap = driver.0.snapshot();
+    let snap = driver.0.drawn();
     let player = driver.0.player;
     let seen: Vec<EntityId> = snap.machines.iter().map(|m| m.record.id).collect();
     for m in &snap.machines {
@@ -1161,7 +1167,7 @@ pub fn fault_marks(
     ents: Res<Entities>,
     mut marks: Query<(&mut Visibility, &mut MeshMaterial3d<StandardMaterial>), With<FaultMark>>,
 ) {
-    let snap = driver.0.snapshot();
+    let snap = driver.0.drawn();
     let frame = ((time.elapsed_secs() * 4.0) as usize) % palette.scribble_mats.len();
     for m in &snap.machines {
         let Some(view) = ents.machines.get(&m.record.id) else {
@@ -1194,10 +1200,11 @@ pub fn interpolate(
     ents: Res<Entities>,
     mut bodies: Query<&mut Transform, With<MachineBody>>,
 ) {
-    let d = &driver.0;
-    let f = d.snapshots.fraction(d.speed);
-    let prev: HashMap<EntityId, TilePos> = d
-        .snapshots
+    // What the map draws: the fork's snapshots while one is open, moving
+    // at its run's speed.
+    let shown = driver.0.shown();
+    let f = shown.fraction(driver.0.shown_speed());
+    let prev: HashMap<EntityId, TilePos> = shown
         .prev
         .as_ref()
         .map(|s| {
@@ -1207,7 +1214,7 @@ pub fn interpolate(
                 .collect()
         })
         .unwrap_or_default();
-    for m in &d.snapshots.cur.machines {
+    for m in &shown.cur.machines {
         let Some(view) = ents.machines.get(&m.record.id) else {
             continue;
         };
@@ -1244,7 +1251,7 @@ pub fn health_bars(
     mut fills: Query<&mut Transform, Without<BillboardBar>>,
 ) {
     let dt = time.delta_secs();
-    let snap = driver.0.snapshot();
+    let snap = driver.0.drawn();
     for m in &snap.machines {
         let Some(view) = ents.machines.get_mut(&m.record.id) else {
             continue;
@@ -1309,7 +1316,7 @@ pub fn markers(
     if let Ok((mut t, mut v)) = select.single_mut() {
         let at = state
             .selected
-            .and_then(|id| machine(driver.0.snapshot(), id))
+            .and_then(|id| machine(driver.0.drawn(), id))
             .map(|m| m.record.pos);
         match at {
             Some(p) => {
@@ -1337,9 +1344,10 @@ pub fn sounds(
         &mut Transform,
     )>,
 ) {
-    let snap = driver.0.snapshot();
-    if ents.sounds_tick != Some(snap.tick) {
-        ents.sounds_tick = Some(snap.tick);
+    let snap = driver.0.drawn();
+    let (which, _, tick) = driver.0.drawn_stamp();
+    if ents.sounds_tick != Some((which, tick)) {
+        ents.sounds_tick = Some((which, tick));
         for s in &snap.sounds {
             commands.spawn((
                 SoundRing { age: 0.0 },

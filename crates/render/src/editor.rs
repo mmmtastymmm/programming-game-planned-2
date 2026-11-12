@@ -8,6 +8,8 @@
 //! nothing here reaches a peer except through the command log.
 
 use crate::app::{DriverResource, ViewState};
+use crate::breakpoints::{self, Text};
+use crate::debugger;
 use crate::driver::Driver;
 use crate::input::submit;
 use crate::view;
@@ -42,6 +44,13 @@ pub struct Editor {
     /// Each composed bundle loaded the sim's way: its version, or the
     /// error (`01`) at a bundle file name.
     pub loaded: BTreeMap<String, Result<u64, LoadError>>,
+    /// The lines a statement begins on (`docs/06`), by tree path, for each
+    /// file of a bundle that loads: where a breakpoint may sit. A file no
+    /// loading bundle carries has no entry.
+    pub begins: BTreeMap<String, BTreeSet<u32>>,
+    /// Files renamed or moved since the breakpoints last followed the
+    /// tree, as (from, to).
+    pub moved: Vec<(String, String)>,
     /// A tree that does not compose at all (a name shared by two files).
     pub compose_error: Option<String>,
     /// The tree panel's selection, for rename and delete.
@@ -230,6 +239,7 @@ impl Editor {
         match compose(&self.tree()) {
             Ok(bundles) => {
                 self.compose_error = None;
+                let mut begins = BTreeMap::new();
                 self.loaded = bundles
                     .iter()
                     .map(|(d, b)| {
@@ -238,15 +248,25 @@ impl Editor {
                             .iter()
                             .map(|(n, s)| (n.as_str(), s.as_str()))
                             .collect();
-                        (d.clone(), Program::load(&refs, &limits).map(|p| p.version))
+                        let program = Program::load(&refs, &limits);
+                        if let Ok(p) = &program {
+                            for (name, _) in &b.files {
+                                if let Some(path) = self.path_of(d, name) {
+                                    begins.insert(path, p.begin_lines(name));
+                                }
+                            }
+                        }
+                        (d.clone(), program.map(|p| p.version))
                     })
                     .collect();
+                self.begins = begins;
                 self.bundles = bundles;
             }
             Err(e) => {
                 self.compose_error = Some(e);
                 self.bundles.clear();
                 self.loaded.clear();
+                self.begins.clear();
             }
         }
     }
@@ -370,9 +390,10 @@ impl Editor {
             return Err(format!("`{from}` does not exist"));
         };
         self.add_file(to)?;
-        self.files
-            .insert(to.trim().trim_matches('/').to_string(), doc);
+        let to = to.trim().trim_matches('/').to_string();
+        self.files.insert(to.clone(), doc);
         self.files.remove(from);
+        self.moved.push((from.to_string(), to));
         self.recompose();
         Ok(())
     }
@@ -454,6 +475,11 @@ impl Editor {
             .map(|(p, d)| (format!("{to}/{}", &p[prefix.len()..]), d.clone()))
             .collect();
         self.files.retain(|p, _| !p.starts_with(&prefix));
+        self.moved.extend(
+            moved
+                .iter()
+                .map(|(p, _)| (format!("{from}/{}", &p[to.len() + 1..]), p.clone())),
+        );
         self.files.extend(moved);
         let folders: Vec<String> = self.folders.iter().cloned().collect();
         self.folders.clear();
@@ -908,7 +934,7 @@ pub fn line_col(text: &str, at: usize) -> (usize, usize) {
 /// Each line's number in the gutter ending at `right`, level with the
 /// line's first row; a line wrapped onto more rows numbers only the first.
 /// The cursor's line is drawn brighter.
-fn line_numbers(
+pub(crate) fn line_numbers(
     ui: &egui::Ui,
     output: &egui::text_edit::TextEditOutput,
     right: f32,
@@ -940,7 +966,7 @@ fn line_numbers(
 }
 
 /// The screen rect of 1-based `line`'s first row, across the text box.
-fn line_rect(
+pub(crate) fn line_rect(
     galley: &egui::Galley,
     galley_pos: egui::Pos2,
     across: egui::Rect,
@@ -1097,6 +1123,28 @@ pub fn window_body(
         galley
     };
     let mut changed = false;
+    // The breakpoint column (`docs/07`, Breakpoints): this text's dots,
+    // and the lines the fork's selected machine stands on if it runs
+    // exactly this text.
+    let shown_text = state
+        .editor
+        .files
+        .get(path)
+        .map(|doc| Text::of_tree(path, &doc.text));
+    let (marks, arrows) = match &shown_text {
+        Some(t) => (
+            debugger::dots(
+                d,
+                &state.debug.catalog,
+                state.debug.breakpoints.files.get(path),
+                state.editor.begins.get(path),
+                t,
+            ),
+            debugger::frame_lines(d, &state.debug, t),
+        ),
+        None => Default::default(),
+    };
+    let mut gutter_click = None;
     let hover_font = egui::TextStyle::Monospace.resolve(ui.style());
     let now = ui.input(|i| i.time);
     let mut cursor_at = None;
@@ -1112,8 +1160,10 @@ pub fn window_body(
         let lines = doc.text.split('\n').count();
         let digits = lines.to_string().len().max(2);
         let digit_w = ui.fonts_mut(|f| f.glyph_width(&hover_font, '0'));
-        let gutter_w = digit_w * digits as f32 + 4.0;
+        let gutter_w = debugger::MARKS_WIDTH + digit_w * digits as f32 + 4.0;
         let gutter_font = hover_font.clone();
+        // An edit carries the file's breakpoints with their lines.
+        let before = (!marks.is_empty()).then(|| doc.text.clone());
         let mut output = egui::ScrollArea::vertical()
             .max_height((ui.available_height() - 150.0).max(80.0))
             .show(ui, |ui| {
@@ -1131,6 +1181,16 @@ pub fn window_body(
                         .char_range()
                         .map(|r| line_col(&doc.text, r.primary.index.0).0);
                     line_numbers(ui, &output, gutter.right(), gutter_font, current);
+                    let across = output.response.response.rect;
+                    gutter_click = debugger::marks_column(
+                        ui,
+                        &output.galley,
+                        output.galley_pos,
+                        egui::Rect::from_x_y_ranges(gutter.x_range(), across.y_range()),
+                        egui::Id::new(("marks", path)),
+                        &marks,
+                        &arrows,
+                    );
                     // A definition gone to (Q58): scrolled into view once, then
                     // lit, fading.
                     if let Some((line, since)) = reveal {
@@ -1160,6 +1220,12 @@ pub fn window_body(
         });
         let response = output.response.response.clone();
         changed = response.changed();
+        if changed
+            && let Some(before) = &before
+            && let Some(lines) = state.debug.breakpoints.files.get_mut(path)
+        {
+            *lines = breakpoints::carry(lines, before, &doc.text);
+        }
         if let Some((line, since)) = reveal {
             if since.is_none() {
                 // The cursor goes to the line, so typing starts there.
@@ -1238,6 +1304,9 @@ pub fn window_body(
     if changed {
         state.editor.recompose();
     }
+    if let Some(line) = gutter_click {
+        debugger::click_file(d, state, path, line);
+    }
     if let Some(e) = &compose_error {
         ui.colored_label(egui::Color32::LIGHT_RED, e);
     } else if let Some(e) = stray_error(path) {
@@ -1276,6 +1345,21 @@ pub fn window_body(
             })
             .collect();
         ui.small(format!("reaches {}", parts.join("  ")));
+    }
+    // Each version of this file a machine of the team runs (`docs/07`,
+    // Version windows), opened read-only.
+    if let Ok(own) = d.debug_team() {
+        let versions = state.debug.catalog.versions_of(d.drawn(), own, path);
+        if !versions.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.small("running:");
+                for version in versions {
+                    if ui.small_button(version.label()).clicked() {
+                        state.debug.open(version);
+                    }
+                }
+            });
+        }
     }
     let mut deploy_now = false;
     let mut deploy_all = false;
@@ -1902,5 +1986,68 @@ mod tests {
         assert!(e.files.contains_key("a/tools/module_2.py") && !e.folders.contains("a/folder"));
         assert!(e.rename_leaf("robots/bot.py", "x.py").is_err());
         assert_eq!(line_range("ab\ncd", 7), 4..5);
+    }
+
+    #[test]
+    fn the_lines_a_statement_begins_on_are_known_for_each_file_that_loads() {
+        let mut t = Tree::new();
+        t.insert(
+            "robots/bot.py".into(),
+            "import geo\n\n# a note\nx = geo.one()\nwhile True:\n    wait(x)\n".into(),
+        );
+        t.insert("lib/geo.py".into(), "def one():\n    return 1\n".into());
+        let mut e = Editor::from_tree(&t);
+        assert_eq!(e.loaded["bot"].as_ref().map(|_| ()), Ok(()));
+        let lines = |e: &Editor, path: &str| -> Option<Vec<u32>> {
+            e.begins.get(path).map(|b| b.iter().copied().collect())
+        };
+        assert_eq!(lines(&e, "robots/bot.py"), Some(vec![1, 4, 5, 6]));
+        assert_eq!(lines(&e, "lib/geo.py"), Some(vec![1, 2]));
+
+        // A text that does not load has no known statement, and neither
+        // has a file only it carried.
+        e.files.get_mut("robots/bot.py").unwrap().text = "x = (\n".into();
+        e.recompose();
+        assert!(e.loaded["bot"].is_err());
+        assert_eq!(lines(&e, "robots/bot.py"), None);
+        assert_eq!(lines(&e, "lib/geo.py"), None);
+        // And a tree that does not compose has none at all.
+        e.files.get_mut("robots/bot.py").unwrap().text = "x = 1\n".into();
+        e.recompose();
+        assert_eq!(lines(&e, "robots/bot.py"), Some(vec![1]));
+        e.files.insert("other/geo.py".into(), Doc::default());
+        e.recompose();
+        assert!(e.compose_error.is_some());
+        assert!(e.begins.is_empty());
+    }
+
+    #[test]
+    fn a_rename_is_remembered_for_what_follows_the_tree() {
+        let mut t = Tree::new();
+        t.insert("robots/bot.py".into(), "x = 1\n".into());
+        t.insert("lib/geo.py".into(), "y = 1\n".into());
+        t.insert("lib/deep/far.py".into(), "z = 1\n".into());
+        let mut e = Editor::from_tree(&t);
+        assert!(e.moved.is_empty());
+        assert!(e.rename("robots/bot.py", "robots/red.py").is_err());
+        assert!(e.rename("lib/none.py", "lib/some.py").is_err());
+        assert!(e.moved.is_empty(), "a refused rename moves nothing");
+        e.rename("lib/geo.py", " lib/nav.py ").unwrap();
+        assert_eq!(e.moved, vec![("lib/geo.py".into(), "lib/nav.py".into())]);
+        e.moved.clear();
+        assert!(e.rename_folder("lib", "robots").is_err());
+        assert!(e.moved.is_empty());
+        e.rename_folder("lib", "util").unwrap();
+        assert_eq!(
+            e.moved,
+            vec![
+                (
+                    "lib/deep/far.py".to_string(),
+                    "util/deep/far.py".to_string()
+                ),
+                ("lib/nav.py".to_string(), "util/nav.py".to_string()),
+            ]
+        );
+        assert!(e.files.contains_key("util/deep/far.py"));
     }
 }
