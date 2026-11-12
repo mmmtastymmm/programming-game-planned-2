@@ -282,7 +282,7 @@ value with no reference into the sim:
 | Part | Holds |
 |---|---|
 | `tick` | the tick just completed, and the speed in force — the driver's number, carried for the renderer, not the sim's |
-| `machines` | every machine's attribute record (`02`), plus its diagnostic log entries from this tick |
+| `machines` | every machine's attribute record (`02`), the version of the bundle its program runs, which a deploy since may have left behind (Q11), plus its diagnostic log entries from this tick |
 | `tiles`, per team | every tile's record as that team sees it: state, terrain, deposit, paint, overlay, wires, building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is on its grid (Q59) |
 | `sounds` | every sound emitted this tick, with its cause, position, loudness and tick |
 | `faults` | every machine's fault record (`01`) |

@@ -345,16 +345,8 @@ pub fn install(world: &mut World) {
     for mut w in windows.iter_mut(world) {
         w.title = title.clone();
     }
-    let layout_path = crate::layout::Layout::path(m.programs.as_deref());
     let state_programs = m.programs.clone();
-    let mut state = ViewState {
-        layout: crate::layout::Layout::load(layout_path.as_deref()),
-        layout_path,
-        editor: crate::editor::Editor::from_tree(&m.tree),
-        programs: m.programs,
-        deployed: m.deployed,
-        ..Default::default()
-    };
+    let mut state = ViewState::started(&m.tree, m.programs, m.deployed);
     if let Some(w) = m.warning {
         state.status = format!("started without programs: {w}");
     }

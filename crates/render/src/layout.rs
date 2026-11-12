@@ -41,6 +41,10 @@ impl Placement {
 pub struct Layout {
     #[serde(default)]
     pub windows: BTreeMap<String, Placement>,
+    /// The file windows' breakpoints (`docs/07`, Breakpoints), kept with
+    /// the tree: each file's lines by its path.
+    #[serde(default)]
+    pub breakpoints: BTreeMap<String, Vec<u32>>,
 }
 
 /// The file's name beside the programs.
@@ -85,12 +89,15 @@ pub fn default_placement(name: &str, index: usize, screen: egui::Rect, open: boo
         "inspector" => (320.0, 260.0, true),
         "tools" => (320.0, 230.0, true),
         "log" => (900.0, 200.0, true),
+        "debugger" => (420.0, 520.0, open),
         _ => (520.0, 620.0, open),
     };
     let (x, y) = match name {
         "tools" => (screen.max.x - w - 10.0, screen.min.y + 10.0),
         "inspector" => (screen.max.x - w - 10.0, screen.min.y + 250.0),
         "log" => (screen.min.x + 10.0, screen.max.y - h - 10.0),
+        // Left of the tools and the inspector, clear of both.
+        "debugger" => (screen.max.x - w - 340.0, screen.min.y + 60.0),
         _ => (
             screen.min.x + 10.0 + 30.0 * index as f32,
             screen.min.y + 10.0 + 30.0 * index as f32,
@@ -116,9 +123,11 @@ mod tests {
             h: 400.0,
             open: true,
         });
+        l.breakpoints.insert("robots/red.py".into(), vec![3, 9]);
         l.save(&path).unwrap();
         let back = Layout::load(Some(&path));
         assert_eq!(back.windows["red"], l.windows["red"]);
+        assert_eq!(back.breakpoints, l.breakpoints);
         std::fs::write(&path, "not = [toml").unwrap();
         assert!(Layout::load(Some(&path)).windows.is_empty());
         assert!(

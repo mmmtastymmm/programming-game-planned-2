@@ -1,7 +1,9 @@
 //! The Bevy app: plugins, resources, and the schedule. The driver runs once
 //! per frame in `Update`, before the view reads the snapshot it published.
 
+use crate::breakpoints::Breakpoints;
 use crate::camera::{LmbGesture, orbit_camera};
+use crate::debugger::DebugUi;
 use crate::driver::Driver;
 use crate::editor::Editor;
 use crate::launch::Setup;
@@ -71,9 +73,33 @@ pub struct ViewState {
     pub editor: Editor,
     /// The fault tick last logged per machine, so each record logs once.
     pub faults_seen: std::collections::HashMap<sim::EntityId, u64>,
+    /// The debugger's windows (`docs/07`, Debugging).
+    pub debug: DebugUi,
 }
 
 impl ViewState {
+    /// The renderer's state for a match begun with `tree`: the layout
+    /// kept in `programs`, and with it the file windows' breakpoints,
+    /// which are kept with the tree (`docs/07`, Breakpoints).
+    pub fn started(
+        tree: &sim::script::Tree,
+        programs: Option<PathBuf>,
+        deployed: std::collections::BTreeMap<String, sim::Bundle>,
+    ) -> ViewState {
+        let layout_path = Layout::path(programs.as_deref());
+        let layout = Layout::load(layout_path.as_deref());
+        let mut state = ViewState {
+            layout,
+            layout_path,
+            editor: Editor::from_tree(tree),
+            programs,
+            deployed,
+            ..Default::default()
+        };
+        state.debug.breakpoints = Breakpoints::from_kept(&state.layout.breakpoints);
+        state
+    }
+
     /// The tiles the armed tool's ghost covers: a `Shift`+drag's rectangle
     /// so far, or else the tile under the cursor. Empty unarmed.
     pub fn preview(&self) -> Vec<sim::TilePos> {
@@ -110,6 +136,7 @@ impl Default for ViewState {
             status: String::new(),
             editor: Editor::default(),
             faults_seen: Default::default(),
+            debug: DebugUi::default(),
         }
     }
 }

@@ -1242,6 +1242,22 @@ impl Fork {
         self.applied = self.log.len();
     }
 
+    /// Whether a variable of the machine may be edited where the fork
+    /// stands (`docs/06`, Editing), or the reason it may not: what
+    /// [`Fork::edit`] refuses before it reads the value.
+    pub fn can_edit(&self, machine: EntityId) -> Result<(), String> {
+        self.branch_point()?;
+        let m = self.sim.world.machines.get(&machine);
+        let m = m
+            .filter(|m| m.team == self.team)
+            .ok_or("no such machine of this team")?;
+        let program = m.program.as_ref().ok_or("the machine runs no program")?;
+        if program.is_dead() || program.delivering() == Some(Interrupt::Death) {
+            return Err("the machine is at its death".into());
+        }
+        Ok(())
+    }
+
     /// Set a local or a global of one of the team's machines (`docs/06`,
     /// Editing). A refusal names its reason and changes nothing.
     pub fn edit(
@@ -1250,16 +1266,11 @@ impl Fork {
         target: EditTarget,
         literal: &str,
     ) -> Result<(), String> {
+        self.can_edit(machine)?;
         let here = self.branch_point()?;
-        let team = self.team;
         let m = self.sim.world.machines.get_mut(&machine);
-        let m = m
-            .filter(|m| m.team == team)
-            .ok_or("no such machine of this team")?;
-        let program = m.program.as_mut().ok_or("the machine runs no program")?;
-        if program.is_dead() || program.delivering() == Some(Interrupt::Death) {
-            return Err("the machine is at its death".into());
-        }
+        let program = m.and_then(|m| m.program.as_mut());
+        let program = program.ok_or("the machine runs no program")?;
         program.edit(&target, literal)?;
         self.branch(
             here,
@@ -1324,11 +1335,7 @@ impl Fork {
         snapshot.machines.retain(|m| m.record.team != self.team);
         let own = self.sim.world.machines.values();
         for m in own.filter(|m| m.team == self.team) {
-            snapshot.machines.push(MachineSnapshot {
-                record: MachineRecord::of(m),
-                log: m.log.clone(),
-                fault: m.program.as_ref().and_then(|p| p.fault_record.clone()),
-            });
+            snapshot.machines.push(MachineSnapshot::of(m));
         }
         snapshot.machines.sort_by_key(|m| m.record.id);
         snapshot

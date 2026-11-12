@@ -6,6 +6,7 @@
 //! becomes a command the renderer submits and forgets.
 
 use crate::app::{DriverResource, Screen, Tool, ViewState};
+use crate::debugger;
 use crate::editor;
 use crate::input::{step_speed, submit};
 use crate::layout::default_placement;
@@ -30,8 +31,21 @@ pub fn toggle(state: &mut ViewState, name: &str) {
     }
 }
 
-/// The three windows that are not files.
-const FIXED_WINDOWS: [&str; 3] = ["inspector", "tools", "log"];
+/// The four windows that are not files.
+const FIXED_WINDOWS: [&str; 4] = ["inspector", "tools", "log", debugger::WINDOW];
+
+/// Bring a window of the layout to the front, expanded.
+fn raise(ctx: &egui::Context, name: &str) {
+    let id = egui::Id::new(("window", name));
+    let mut fold = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ctx,
+        id.with("collapsing"),
+        true,
+    );
+    fold.set_open(true);
+    fold.store(ctx);
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, id));
+}
 
 pub fn panels(
     mut contexts: EguiContexts,
@@ -56,6 +70,7 @@ pub fn panels(
             .max_rect(ctx.viewport_rect()),
     );
     editor::sync(&driver, &mut state);
+    let fork_opened = debugger::sync(&mut driver.0, &mut state);
 
     egui::Panel::top("time").show(&mut root, |ui| {
         let d = &mut driver.0;
@@ -210,22 +225,25 @@ pub fn panels(
         if state.editor.files.contains_key(&first) {
             to_open.push(first);
         }
-        to_open.extend(FIXED_WINDOWS.iter().map(|s| s.to_string()));
+        // The debugger's window waits for a fork, or for its label.
+        let first_run = FIXED_WINDOWS.iter().filter(|s| **s != debugger::WINDOW);
+        to_open.extend(first_run.map(|s| s.to_string()));
+    }
+    // A fork just opened (`docs/07`, A hit): the debugger window opens on
+    // its machine, expanded and in front.
+    if fork_opened {
+        raise(&ctx, debugger::WINDOW);
+        let open = state.layout.windows.get(debugger::WINDOW);
+        if !open.is_some_and(|p| p.open) {
+            to_open.push(debugger::WINDOW.to_string());
+        }
     }
     // A definition gone to from a hover box (Q58): its file's window
     // opens, expanded and in front, and shows the line.
     if let Some((path, line)) = state.editor.goto.take()
         && state.editor.files.contains_key(&path)
     {
-        let id = egui::Id::new(("window", &path));
-        let mut fold = egui::collapsing_header::CollapsingState::load_with_default_open(
-            &ctx,
-            id.with("collapsing"),
-            true,
-        );
-        fold.set_open(true);
-        fold.store(&ctx);
-        ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, id));
+        raise(&ctx, &path);
         state.editor.reveal = Some(editor::Reveal {
             path: path.clone(),
             line,
@@ -247,7 +265,7 @@ pub fn panels(
     }
 
     // The windows, constrained to what the bars leave: every open file,
-    // and the three fixed ones.
+    // and the fixed ones.
     let names: Vec<String> = state
         .layout
         .windows
@@ -280,6 +298,7 @@ pub fn panels(
                     match name.as_str() {
                         "inspector" => inspector(ui, &interface, &driver, &mut state, &mut colors),
                         "tools" => tools(ui, &mut driver, &mut state, &rows),
+                        debugger::WINDOW => debugger::window(ui, &mut driver.0, &mut state),
                         _ => log(ui, &state),
                     }
                 }
@@ -302,12 +321,15 @@ pub fn panels(
         }
     }
 
+    // The version windows and the fork's banner (`docs/07`, Debugging).
+    debugger::overlays(&ctx, &mut driver.0, &mut state);
+
     // A planned overlay's label, faint over its ghost (Q37) — the player's
     // own plans, and the armed overlay's preview (Q44) — drawn on the
     // background layer under the windows.
     if let Ok((camera, cam_tf)) = cams.single() {
         let painter = ctx.layer_painter(egui::LayerId::background());
-        let snap = driver.0.snapshot();
+        let snap = driver.0.drawn();
         let mut labels: Vec<(sim::TilePos, String)> = snap
             .teams
             .iter()
@@ -380,9 +402,17 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
         ui.small("-/=: the replay's pace · the time bar seeks");
         return;
     }
+    // The mark tools rest while the map draws a fork (`docs/07`, The
+    // match while a fork is open): they act on a map the player is not
+    // looking at. Resign still acts on the match.
+    let resting = d.draws_fork();
+    if resting {
+        ui.small("the mark tools rest while the map shows a fork");
+        ui.small("show the match in the banner brings them back");
+    }
     // The strip (Q37): a row per kind from data, each ending in clear;
     // `B`/`P`/`O` pick the row the digits index.
-    for plan in ROWS {
+    for plan in ROWS.into_iter().filter(|_| !resting) {
         ui.horizontal_wrapped(|ui| {
             let head = format!("{} {}", marks::row_key(plan), plan.name());
             if ui.selectable_label(state.row == Some(plan), head).clicked() {
@@ -412,8 +442,10 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
             }
         });
     }
-    ui.small("drag: mark every tile crossed · Shift+drag: fill a rectangle");
-    ui.small("clear on a tile you planned withdraws the plan");
+    if !resting {
+        ui.small("drag: mark every tile crossed · Shift+drag: fill a rectangle");
+        ui.small("clear on a tile you planned withdraws the plan");
+    }
     ui.separator();
     if ui.button("resign (Shift+R)").clicked() {
         submit(d, state, CommandKind::Resign);
@@ -438,7 +470,8 @@ fn inspector(
 ) {
     let d = &driver.0;
     let player = d.player;
-    let snap = d.snapshot();
+    // The map's own snapshot: the fork's while the map draws one.
+    let snap = d.drawn();
     // The inspector keeps the size it was given and scrolls: sized to its
     // content, it grew over the cursor whenever a hovered tile added a
     // line, which unhovered the tile and shrank it again, so the hover
@@ -482,11 +515,30 @@ fn inspector(
                                 .find(|t| t.id == r.team)
                                 .and_then(|t| t.deployments.get(dep).copied().flatten())
                         });
+                        // The version the machine itself runs, which a
+                        // redeploy leaves behind until the machine takes it.
                         if let Some(dep) = &r.deployment {
-                            match running {
-                                Some(v) => ui.label(format!("runs {dep} ({v:016x})")),
-                                None => ui.label(format!("runs {dep}")),
+                            match (m.runs, running) {
+                                (Some(v), Some(at)) if at != v => ui.label(format!(
+                                    "runs {dep} ({v:016x}) · the deployment is at {at:016x}"
+                                )),
+                                (Some(v), _) => ui.label(format!("runs {dep} ({v:016x})")),
+                                (None, _) => ui.label(format!("runs {dep}")),
                             };
+                        }
+                        // The version of each file it runs (`docs/07`,
+                        // Version windows): the team's own code only.
+                        if d.debug_team() == Ok(r.team) {
+                            let texts = state.debug.catalog.texts_of(m);
+                            if !texts.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    for text in texts {
+                                        if ui.small_button(text.label()).clicked() {
+                                            state.debug.open(text);
+                                        }
+                                    }
+                                });
+                            }
                         }
                         if let Some(l) = &r.load {
                             ui.label(format!("load: {}", amounts(l)));
@@ -495,7 +547,7 @@ fn inspector(
                             ui.label(format!("store: {}", amounts(s)));
                         }
                         if let Some(f) = &m.fault {
-                            let version = match running {
+                            let version = match m.runs.or(running) {
                                 Some(v) if v == f.version => "the running version".to_string(),
                                 _ => format!("version {:016x}, since redeployed", f.version),
                             };

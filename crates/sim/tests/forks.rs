@@ -595,6 +595,7 @@ fn a_step_stops_at_the_selected_machines_dying_and_at_its_death_in_its_slice() {
     assert!(matches!(stop.position, Position::Slice { machine, .. } if machine == id));
     let refused = fork.edit(id, x_of_main(), "6").unwrap_err();
     assert_eq!(refused, "the machine is at its death");
+    assert_eq!(fork.can_edit(id).unwrap_err(), refused);
     assert_eq!(global(&fork, id, "x").as_deref(), Some("5"));
     // The step after has no machine to follow past the tick.
     let tick = stop.position.tick();
@@ -633,6 +634,7 @@ fn a_step_stops_at_a_death_in_step_4_and_nothing_is_changed_there() {
     assert_eq!(fork.state_hash(), None);
     let message = "nothing is changed at a stop in step 4";
     assert_eq!(fork.edit(id, x_of_main(), "6").unwrap_err(), message);
+    assert_eq!(fork.can_edit(id).unwrap_err(), message);
     let tried = bundle_of("wait(1)\n");
     assert_eq!(fork.what_if("bot", &tried).unwrap_err(), message);
     assert!(!fork.flags(&log).diverged);
@@ -1041,6 +1043,7 @@ fn a_fork_of_a_live_pvp_match_stops_at_the_live_tick_and_takes_no_entry() {
     );
     let message = "a fork of a live PvP match takes no edit and no what-if";
     assert_eq!(fork.edit(id, x_of_main(), "5").unwrap_err(), message);
+    assert_eq!(fork.can_edit(id).unwrap_err(), message);
     let tried = bundle_of("wait(1)\n");
     assert_eq!(fork.what_if("printer", &tried).unwrap_err(), message);
     assert_eq!(global(&fork, id, "x").as_deref(), Some("1"));
@@ -1200,6 +1203,17 @@ fn a_fork_reports_its_teams_machines_and_no_other() {
         "a rival's program is not shown"
     );
     assert!(fork.inspect(EntityId(99), 80).is_none());
+    // An edit is offered of the team's own machine with a program, and
+    // of no other.
+    assert_eq!(fork.can_edit(id), Ok(()));
+    assert_eq!(
+        fork.can_edit(rival).unwrap_err(),
+        "no such machine of this team"
+    );
+    assert_eq!(
+        fork.can_edit(EntityId(99)).unwrap_err(),
+        "no such machine of this team"
+    );
 }
 
 /// `docs/06`, Drawing a fork: mid-tick, the team's own machines as they
@@ -1238,4 +1252,13 @@ fn a_mid_tick_snapshot_draws_rivals_as_at_the_last_completed_tick() {
     let of = |id| drawn.machines.iter().find(|m| m.record.id == id).unwrap();
     assert_eq!(of(rival).record.busy, Some("wait"));
     assert_eq!(drawn.tick, 1);
+    // Each machine with the version of the bundle it runs, mid-tick and
+    // at the tick's end alike.
+    let version = |main: &str| {
+        let limits = lang::Limits::parse(lang::data::LIMITS_TOML).unwrap();
+        Some(sim::load_bundle(&bundle_of(main), &limits).unwrap().version)
+    };
+    assert_eq!(of(rival).runs, version("wait(1000)\n"));
+    assert_eq!(of(mine).runs, version("log('here')\nwait(1000)\n"));
+    assert_ne!(of(rival).runs, of(mine).runs);
 }

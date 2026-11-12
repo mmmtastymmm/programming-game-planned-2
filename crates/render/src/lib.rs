@@ -32,9 +32,11 @@
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
 pub mod app;
+pub mod breakpoints;
 pub mod camera;
 pub mod check;
 pub mod debug;
+pub mod debugger;
 pub mod digits;
 pub mod driver;
 pub mod editor;

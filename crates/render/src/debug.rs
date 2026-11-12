@@ -15,8 +15,8 @@ use lang::EditTarget;
 use net::CommandLog;
 use replay::ReplayLog;
 use sim::{
-    Command, CommandKind, Data, EntityId, Flags, Fork, Hit, Inspected, Map, Saved, Sim, Step, Stop,
-    TeamId, Timeline, Watch,
+    Bundle, Cause, Command, CommandKind, Data, EntityId, Flags, Fork, Hit, Inspected, Map,
+    Position, Saved, Sim, Snapshot, Step, Stop, TeamId, Timeline, Watch,
 };
 use std::collections::BTreeMap;
 
@@ -97,6 +97,10 @@ pub struct ForkSession {
     /// Faithful, or ahead, stale, diverged: against the log as it stood
     /// on the last frame.
     pub flags: Flags,
+    /// How many times the fork has come to stand somewhere new: with the
+    /// tick, what tells the map its picture is out of date, since a step
+    /// can move the fork inside one tick and *back* can return it to one.
+    arrivals: u64,
 }
 
 impl ForkSession {
@@ -122,6 +126,7 @@ impl ForkSession {
         self.snapshots.prev = ran.then_some(prev);
         self.snapshots.since = 0.0;
         self.flags = self.fork.flags(line);
+        self.arrivals += 1;
     }
 }
 
@@ -141,6 +146,9 @@ pub struct Debugger {
     pub hits: Vec<Listed>,
     /// *Show the match*: the map draws the match though a fork is open.
     pub show_match: bool,
+    /// How many forks have been opened, so the map can tell one from the
+    /// next.
+    opened: u64,
 }
 
 impl Debugger {
@@ -153,7 +161,14 @@ impl Debugger {
             session: None,
             hits: Vec::new(),
             show_match: false,
+            opened: 0,
         }
+    }
+
+    /// How many forks have been opened: a change is a fork just opened,
+    /// by a hit, by hand or by a reopening.
+    pub fn opened(&self) -> u64 {
+        self.opened
     }
 
     /// The team's watches, passed to every tick the match or the playback
@@ -393,6 +408,7 @@ impl Driver {
                 since: 0.0,
             },
             flags,
+            arrivals: 0,
             fork,
         }
     }
@@ -404,6 +420,7 @@ impl Driver {
             self.unpin(old.from);
         }
         self.debug.show_match = false;
+        self.debug.opened += 1;
     }
 
     /// A hit opened a fork: pause what the player is watching (`docs/07`,
@@ -529,6 +546,53 @@ impl Driver {
             Some(session) if !self.debug.show_match => &session.snapshots,
             _ => &self.snapshots,
         }
+    }
+
+    /// The snapshot the map and the windows draw.
+    pub fn drawn(&self) -> &Snapshot {
+        &self.shown().cur
+    }
+
+    /// A stamp of what the map draws, which changes whenever that does:
+    /// the match's tick, or the fork's with which fork it is and how many
+    /// times it has moved. A view that synced on one stamp is current
+    /// until the stamp differs.
+    pub fn drawn_stamp(&self) -> (u64, u64, u64) {
+        match &self.debug.session {
+            Some(s) if !self.debug.show_match => {
+                (self.debug.opened, s.arrivals, s.snapshots.cur.tick)
+            }
+            _ => (0, 0, self.snapshots.cur.tick),
+        }
+    }
+
+    /// Every bundle `team` deployed, as the log holds them or the replay
+    /// recorded them: the one place the team's versions are read from
+    /// (`docs/07`, Version windows).
+    pub fn deploys(&self, team: TeamId) -> Vec<&Bundle> {
+        let commands: Box<dyn Iterator<Item = &Command>> = match &self.engine {
+            Engine::Match(_) => Box::new(self.log.commands()),
+            Engine::Replay(viewer) => Box::new(viewer.replay().commands.iter()),
+        };
+        commands
+            .filter(|c| c.sender == team)
+            .filter_map(|c| match &c.kind {
+                CommandKind::Deploy { bundle, .. } => Some(bundle),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether a variable of the selected machine may be edited where the
+    /// fork stands, or why not: what [`Driver::fork_edit`] refuses before
+    /// it reads the value.
+    pub fn can_edit(&self) -> Result<(), String> {
+        let s = self.debug.session.as_ref().ok_or("no fork is open")?;
+        if s.running {
+            return Err("pause the run to edit".into());
+        }
+        s.fork
+            .can_edit(s.selected.ok_or("select a machine to edit")?)
     }
 
     /// Whether the map draws a fork, so the mark tools rest.
@@ -682,15 +746,82 @@ impl Driver {
     }
 }
 
+/// Where a fork stands, for the banner and the debugger window.
+pub fn position_text(p: Position) -> String {
+    match p {
+        Position::Slice { tick, machine, n } => {
+            format!(
+                "tick {tick}, in machine #{}'s slice at boundary {n}",
+                machine.0
+            )
+        }
+        Position::Damage { tick, machine } => {
+            format!(
+                "tick {tick}, after the damage, at machine #{}'s death",
+                machine.0
+            )
+        }
+        Position::End { tick } => format!("the end of tick {tick}"),
+    }
+}
+
+/// Why the fork stopped (`docs/07`, Stepping), naming the watched line
+/// and whose it was.
+pub fn stop_text(stop: &Stop) -> String {
+    let who = match stop.machine {
+        Some(m) => format!("machine #{}", m.0),
+        None => "the selected machine".into(),
+    };
+    match stop.cause {
+        Cause::Opened => "the fork was opened here".into(),
+        Cause::Statement => format!("{who} begins a statement"),
+        Cause::Watch => match stop.hits.first() {
+            Some(h) => format!(
+                "machine #{} begins {}:{}, a watched line",
+                h.machine.0, h.file, h.line
+            ),
+            None => format!("{who} begins a watched line"),
+        },
+        Cause::Dying => format!("{who} is about to be delivered `dying`"),
+        Cause::Restart => format!("{who}'s program restarted"),
+        Cause::Death => format!("{who} dies"),
+        Cause::TeamOut => format!("{who}'s team is out"),
+        Cause::TickEnd => "the tick ended".into(),
+        Cause::Paused => "the run was paused".into(),
+        Cause::StepLimit => "the step ran its limit of ticks".into(),
+        Cause::LiveTick => "the live match's latest tick: the fork goes no further".into(),
+        Cause::MatchEnded => "the match ended".into(),
+    }
+}
+
+/// A fork's state: faithful, or each of ahead, stale and diverged that
+/// holds (`docs/06`, Its state).
+pub fn flags_text(flags: Flags) -> String {
+    if flags.faithful() {
+        return "faithful".into();
+    }
+    let mut parts = Vec::new();
+    if flags.ahead {
+        parts.push("ahead".to_string());
+    }
+    if let Some(tick) = flags.stale {
+        parts.push(format!("stale since tick {tick}"));
+    }
+    if flags.diverged {
+        parts.push("diverged".to_string());
+    }
+    parts.join(" · ")
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use sim::{Cause, Position, bundle_of};
+    use sim::bundle_of;
 
     /// Every machine that runs it begins line 3 once a tick.
-    const COUNTER: &str = "x = 0\nwhile True:\n    x = x + 1\n    wait(1)\n";
-    const PRINTER: EntityId = EntityId(1);
-    const BOT: EntityId = EntityId(3);
+    pub(crate) const COUNTER: &str = "x = 0\nwhile True:\n    x = x + 1\n    wait(1)\n";
+    pub(crate) const PRINTER: EntityId = EntityId(1);
+    pub(crate) const BOT: EntityId = EntityId(3);
 
     fn map_text() -> String {
         std::fs::read_to_string(concat!(
@@ -700,18 +831,23 @@ mod tests {
         .unwrap()
     }
 
-    /// The team's printer and its bots all run `COUNTER`.
-    fn opening() -> Vec<CommandKind> {
+    /// The team's printer and its bots all run `main`.
+    fn opening_of(main: &str) -> Vec<CommandKind> {
         ["printer", "bot"]
             .into_iter()
             .map(|d| CommandKind::Deploy {
                 deployment: d.into(),
-                bundle: bundle_of(COUNTER),
+                bundle: bundle_of(main),
             })
             .collect()
     }
 
-    fn tuning() -> Debugging {
+    /// The team's printer and its bots all run `COUNTER`.
+    fn opening() -> Vec<CommandKind> {
+        opening_of(COUNTER)
+    }
+
+    pub(crate) fn tuning() -> Debugging {
         Debugging {
             debug_checkpoint_ticks: 5,
             debug_checkpoints_kept: 3,
@@ -722,16 +858,25 @@ mod tests {
 
     /// A single-player match against the Fool, as the build opens it.
     fn shipped() -> Driver {
+        shipped_with(opening())
+    }
+
+    fn shipped_with(opening: Vec<CommandKind>) -> Driver {
         let fool = std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../data/opposition/fool"
         ));
-        Driver::new(&map_text(), &[&fool], opening()).unwrap()
+        Driver::new(&map_text(), &[&fool], opening).unwrap()
     }
 
     /// The same match on the tests' tuning.
-    fn driver() -> Driver {
-        let mut d = shipped();
+    pub(crate) fn driver() -> Driver {
+        driver_running(COUNTER)
+    }
+
+    /// The match on the tests' tuning, the team's machines running `main`.
+    pub(crate) fn driver_running(main: &str) -> Driver {
+        let mut d = shipped_with(opening_of(main));
         d.debug.tuning = tuning();
         d
     }
@@ -746,7 +891,7 @@ mod tests {
         assert_ne!(shipped, tuning(), "or the tests' tuning shows nothing");
     }
 
-    fn watch(line: u32) -> Watch {
+    pub(crate) fn watch(line: u32) -> Watch {
         Watch {
             team: TeamId(0),
             file: "main.py".into(),
@@ -757,7 +902,7 @@ mod tests {
         }
     }
 
-    fn run_to(d: &mut Driver, tick: u64) {
+    pub(crate) fn run_to(d: &mut Driver, tick: u64) {
         for _ in 0..10_000 {
             if d.tick >= tick {
                 return;
@@ -775,13 +920,13 @@ mod tests {
         }
     }
 
-    fn frames(d: &mut Driver, n: usize) {
+    pub(crate) fn frames(d: &mut Driver, n: usize) {
         for _ in 0..n {
             d.advance(0.1);
         }
     }
 
-    fn session(d: &Driver) -> &ForkSession {
+    pub(crate) fn session(d: &Driver) -> &ForkSession {
         d.debug.session.as_ref().expect("an open fork")
     }
 
@@ -803,7 +948,7 @@ mod tests {
         main.globals.into_iter().find(|g| g.0 == "x").map(|g| g.1)
     }
 
-    fn x_of_main() -> EditTarget {
+    pub(crate) fn x_of_main() -> EditTarget {
         EditTarget::Global {
             module: "main".into(),
             name: "x".into(),
@@ -824,7 +969,7 @@ mod tests {
 
     /// A match whose watch on the counter's line first hits in tick 39,
     /// the printer and a bot both beginning it.
-    fn hit_at_39() -> Driver {
+    pub(crate) fn hit_at_39() -> Driver {
         let mut d = driver();
         run_to(&mut d, 38);
         d.set_watches(vec![watch(3)]).unwrap();
@@ -1268,7 +1413,7 @@ mod tests {
     }
 
     /// Two peers over a loopback, each team's machines running `COUNTER`.
-    fn peers() -> (Driver, Driver) {
+    pub(crate) fn peers() -> (Driver, Driver) {
         let (la, lb) = net::exchange::Loopback::pair(TeamId(0), TeamId(1));
         let map = map_text();
         let mut a = Driver::with_exchange(&map, &[], TeamId(0), opening(), Box::new(la)).unwrap();
@@ -1277,7 +1422,7 @@ mod tests {
         (a, b)
     }
 
-    fn both(a: &mut Driver, b: &mut Driver, n: usize) {
+    pub(crate) fn both(a: &mut Driver, b: &mut Driver, n: usize) {
         for _ in 0..n {
             a.advance(0.1);
             b.advance(0.1);
@@ -1331,7 +1476,7 @@ mod tests {
     }
 
     /// Sixty ticks of the single-player match, as the replay it saves.
-    fn recorded() -> replay::Replay {
+    pub(crate) fn recorded() -> replay::Replay {
         let mut d = driver();
         run_to(&mut d, 60);
         d.replay()
@@ -1438,5 +1583,202 @@ mod tests {
         frames(&mut d, 10);
         assert_eq!(d.tick, 10, "it plays");
         assert!(d.debug.session.is_none() && !d.debug.debugging());
+    }
+
+    #[test]
+    fn the_map_draws_the_fork_until_the_match_is_shown_or_the_fork_closes() {
+        let mut d = driver();
+        run_to(&mut d, 38);
+        assert_eq!(d.debug.opened(), 0);
+        assert!(!d.draws_fork());
+        assert_eq!((d.drawn().tick, d.drawn_stamp()), (38, (0, 0, 38)));
+        d.set_watches(vec![watch(3)]).unwrap();
+        d.advance(0.1);
+        assert_eq!(d.debug.opened(), 1, "the hit opened one");
+        assert!(d.draws_fork());
+        let hit = d.drawn_stamp();
+        assert_eq!(hit.0, 1, "which fork it is");
+        assert_eq!(d.drawn().tick, session(&d).snapshots.cur.tick);
+
+        // Every arrival is a new stamp, a step back included: the fork
+        // stands where it stood, but the view synced on what came between.
+        d.fork_step(Step::Line).unwrap();
+        let stepped = d.drawn_stamp();
+        assert_eq!(stepped.0, 1);
+        assert_ne!(stepped, hit);
+        d.fork_back().unwrap();
+        let back = d.drawn_stamp();
+        assert!(back != hit && back != stepped, "{back:?}");
+        d.fork_step(Step::Tick).unwrap();
+        assert_eq!(d.drawn().tick, 39);
+        assert_eq!(d.drawn_stamp().2, 39);
+
+        // *Show the match* draws the match, and the fork is still open.
+        frames(&mut d, 10);
+        assert_eq!(d.tick, 42);
+        d.debug.show_match = true;
+        assert!(!d.draws_fork());
+        assert_eq!((d.drawn().tick, d.drawn_stamp()), (42, (0, 0, 42)));
+        assert_eq!(d.shown_speed(), d.speed);
+        d.debug.show_match = false;
+        assert!(d.draws_fork());
+        assert_eq!(d.drawn().tick, 39);
+        assert_eq!(d.shown_speed(), 0, "a fork that is not running stands");
+        d.fork_run().unwrap();
+        d.set_run_speed(7).unwrap();
+        assert_eq!(d.shown_speed(), 7);
+
+        d.close_fork();
+        assert!(!d.draws_fork());
+        assert_eq!((d.drawn().tick, d.drawn_stamp()), (42, (0, 0, 42)));
+        // The next fork is another, though it stands on a tick the last
+        // one drew.
+        d.set_watches(Vec::new()).unwrap();
+        d.open_fork().unwrap();
+        assert_eq!(d.debug.opened(), 2);
+        assert_eq!(d.drawn_stamp().0, 2);
+        d.reopen(0).unwrap_err();
+        assert_eq!(d.debug.opened(), 2, "a refused reopening opens nothing");
+    }
+
+    #[test]
+    fn the_teams_versions_are_read_from_its_own_deploys() {
+        let mut d = driver();
+        let counter = bundle_of(COUNTER);
+        assert_eq!(d.deploys(TeamId(0)), vec![&counter, &counter]);
+        let theirs = d.deploys(TeamId(1));
+        assert!(!theirs.is_empty(), "the Fool deploys too");
+        assert!(theirs.iter().all(|b| **b != counter));
+        run_to(&mut d, 5);
+        let next = bundle_of("y = 1\nwait(1)\n");
+        d.submit(CommandKind::Deploy {
+            deployment: "bot".into(),
+            bundle: next.clone(),
+        })
+        .unwrap();
+        assert_eq!(d.deploys(TeamId(0)), vec![&counter, &counter, &next]);
+        assert_eq!(d.deploys(TeamId(1)).len(), theirs_len(&d));
+
+        // A replay's are the ones it recorded.
+        let r = Driver::open_replay(recorded(), tuning()).unwrap();
+        assert_eq!(r.deploys(TeamId(0)), vec![&counter, &counter]);
+        assert!(r.deploys(TeamId(1)).iter().all(|b| **b != counter));
+    }
+
+    /// The Fool's deploys in the log, counted without `deploys`.
+    fn theirs_len(d: &Driver) -> usize {
+        d.log
+            .commands()
+            .filter(|c| c.sender == TeamId(1) && matches!(c.kind, CommandKind::Deploy { .. }))
+            .count()
+    }
+
+    #[test]
+    fn an_edit_is_offered_only_where_the_fork_takes_one() {
+        let mut d = driver();
+        run_to(&mut d, 38);
+        let refused = d.can_edit().unwrap_err();
+        assert!(refused.contains("no fork"), "{refused}");
+        d.set_watches(vec![watch(3)]).unwrap();
+        d.advance(0.1);
+        assert_eq!(d.can_edit(), Ok(()), "stopped in the printer's slice");
+        d.fork_select(None).unwrap();
+        let refused = d.can_edit().unwrap_err();
+        assert!(refused.contains("select"), "{refused}");
+        d.fork_select(Some(PRINTER)).unwrap();
+        d.fork_run().unwrap();
+        let refused = d.can_edit().unwrap_err();
+        assert!(refused.contains("pause"), "{refused}");
+        // What it says is what the edit itself would.
+        assert_eq!(d.fork_edit(x_of_main(), "5").unwrap_err(), refused);
+
+        let (mut a, mut b) = peers();
+        both(&mut a, &mut b, 10);
+        a.open_fork().unwrap();
+        a.fork_select(Some(PRINTER)).unwrap();
+        let refused = a.can_edit().unwrap_err();
+        assert!(refused.contains("live PvP"), "{refused}");
+        assert_eq!(a.fork_edit(x_of_main(), "5").unwrap_err(), refused);
+    }
+
+    #[test]
+    fn a_fork_is_described_by_where_it_stands_why_it_stopped_and_its_state() {
+        let slice = Position::Slice {
+            tick: 39,
+            machine: PRINTER,
+            n: 2,
+        };
+        assert_eq!(
+            position_text(slice),
+            "tick 39, in machine #1's slice at boundary 2"
+        );
+        let damage = Position::Damage {
+            tick: 40,
+            machine: BOT,
+        };
+        assert_eq!(
+            position_text(damage),
+            "tick 40, after the damage, at machine #3's death"
+        );
+        assert_eq!(position_text(end(41)), "the end of tick 41");
+
+        let d = hit_at_39();
+        assert_eq!(
+            stop_text(session(&d).stop().unwrap()),
+            "machine #1 begins main.py:3, a watched line"
+        );
+        let stop = |cause, machine| Stop {
+            cause,
+            position: end(1),
+            machine,
+            hits: Vec::new(),
+        };
+        let said = |cause, machine| stop_text(&stop(cause, machine));
+        assert_eq!(said(Cause::Opened, None), "the fork was opened here");
+        assert_eq!(
+            said(Cause::Statement, Some(BOT)),
+            "machine #3 begins a statement"
+        );
+        assert_eq!(
+            said(Cause::Statement, None),
+            "the selected machine begins a statement"
+        );
+        assert_eq!(
+            said(Cause::Watch, Some(BOT)),
+            "machine #3 begins a watched line"
+        );
+        assert_eq!(said(Cause::Death, Some(BOT)), "machine #3 dies");
+        assert_eq!(said(Cause::TickEnd, None), "the tick ended");
+        // Each cause reads differently.
+        let causes = [
+            Cause::Opened,
+            Cause::Statement,
+            Cause::Watch,
+            Cause::Dying,
+            Cause::Restart,
+            Cause::Death,
+            Cause::TeamOut,
+            Cause::TickEnd,
+            Cause::Paused,
+            Cause::StepLimit,
+            Cause::LiveTick,
+            Cause::MatchEnded,
+        ];
+        let texts: std::collections::BTreeSet<String> =
+            causes.iter().map(|c| said(*c, Some(BOT))).collect();
+        assert_eq!(texts.len(), causes.len());
+
+        let flags = |ahead, stale, diverged| Flags {
+            ahead,
+            stale,
+            diverged,
+        };
+        assert_eq!(flags_text(flags(false, None, false)), "faithful");
+        assert_eq!(flags_text(flags(true, None, false)), "ahead");
+        assert_eq!(flags_text(flags(false, None, true)), "diverged");
+        assert_eq!(
+            flags_text(flags(true, Some(41), true)),
+            "ahead · stale since tick 41 · diverged"
+        );
     }
 }

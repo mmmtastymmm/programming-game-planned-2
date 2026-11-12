@@ -4,6 +4,7 @@
 
 use crate::app::{Drag, DriverResource, Tool, ViewState};
 use crate::camera::{LmbGesture, cursor_tile};
+use crate::debugger::{self, Action};
 use crate::marks::{self, MarkRows};
 use crate::palette::Frame;
 use crate::view::Entities;
@@ -28,7 +29,8 @@ const DIGITS: [KeyCode; 9] = [
 
 /// Keys: `B`/`P`/`O` pick a row of the mark strip and `1`–`9` arm an entry
 /// in it (Q37), `Escape` disarms, speed with `-`/`=`, `Shift+D` deploys,
-/// `L` toggles the log, `Shift+R` resigns.
+/// `L` toggles the log, `Shift+R` resigns. While a fork is open, `F4` to
+/// `F9` are the debugger's steps (`docs/07`, Stepping).
 pub fn keys(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
@@ -36,6 +38,16 @@ pub fn keys(
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
+    // The steps are on keys no text box takes, so they work while a file
+    // window has the keyboard.
+    if driver.0.debug.session.is_some() {
+        for action in Action::ALL {
+            if keys.just_pressed(action.code()) {
+                let done = debugger::act(&mut driver.0, action);
+                state.debug.note = done.err().unwrap_or_default();
+            }
+        }
+    }
     if contexts
         .ctx_mut()
         .is_ok_and(|ctx| ctx.egui_wants_keyboard_input())
@@ -47,6 +59,8 @@ pub fn keys(
         if state.tool != Tool::Select {
             state.tool = Tool::Select;
         } else {
+            // On a fork's map the selection is the fork's.
+            let _ = driver.0.fork_select(None);
             state.selected = None;
         }
     }
@@ -61,16 +75,18 @@ pub fn keys(
     if driver.0.is_replay() {
         return;
     }
+    // The mark tools rest while the map draws a fork (`docs/07`).
+    let resting = driver.0.draws_fork();
     for (key, plan) in [
         (KeyCode::KeyB, PlanKind::Building),
         (KeyCode::KeyP, PlanKind::Paint),
         (KeyCode::KeyO, PlanKind::Overlay),
     ] {
-        if keys.just_pressed(key) {
+        if keys.just_pressed(key) && !resting {
             state.row = Some(plan);
         }
     }
-    if let Some(row) = state.row {
+    if let Some(row) = state.row.filter(|_| !resting) {
         for (i, key) in DIGITS.iter().enumerate() {
             if keys.just_pressed(*key)
                 && let Some(tool) = rows.pick(row, i + 1, &state.tool)
@@ -190,7 +206,7 @@ pub fn click(
             mark_tiles(&mut driver.0, &mut state, &tool, marks::rect(a, b));
         }
         if tool == Tool::Select {
-            select(&gesture, tile, &driver, &ents, &mut state);
+            select(&gesture, tile, &mut driver, &ents, &mut state);
         }
         return;
     }
@@ -266,11 +282,13 @@ fn mark_tiles(
     }
 }
 
-/// Unarmed, a click selects the machine on the tile.
+/// Unarmed, a click selects the machine on the tile. On a fork's map
+/// only the team's machines can be selected (`docs/07`, The map of a
+/// fork), and the selection is the fork's.
 fn select(
     gesture: &LmbGesture,
     tile: Option<sim::TilePos>,
-    driver: &DriverResource,
+    driver: &mut DriverResource,
     ents: &Entities,
     state: &mut ViewState,
 ) {
@@ -278,8 +296,9 @@ fn select(
     if !gesture.clicked {
         return;
     }
-    let snap = driver.0.snapshot();
-    state.selected = snap
+    let picked = driver
+        .0
+        .drawn()
         .machines
         .iter()
         .filter(|m| {
@@ -287,4 +306,12 @@ fn select(
         })
         .map(|m| m.record.id)
         .next();
+    if !driver.0.draws_fork() {
+        state.selected = picked;
+        return;
+    }
+    match driver.0.fork_select(picked) {
+        Ok(()) => state.selected = picked,
+        Err(e) => state.status = e,
+    }
 }

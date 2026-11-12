@@ -4,15 +4,29 @@
 use crate::command::TeamId;
 use crate::map::TilePos;
 use crate::tick::Sim;
-use crate::world::{LogEntry, MachineRecord, Plans, Sound, TileMemory};
+use crate::world::{LogEntry, Machine, MachineRecord, Plans, Sound, TileMemory};
 use lang::FaultRecord;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct MachineSnapshot {
     pub record: MachineRecord,
+    /// The version of the bundle its program runs, which a deploy since
+    /// may have left behind (Q11); `None` with no program.
+    pub runs: Option<u64>,
     pub log: Vec<LogEntry>,
     pub fault: Option<FaultRecord>,
+}
+
+impl MachineSnapshot {
+    pub(crate) fn of(m: &Machine) -> MachineSnapshot {
+        MachineSnapshot {
+            record: MachineRecord::of(m),
+            runs: m.program.as_ref().map(|p| p.version()),
+            log: m.log.clone(),
+            fault: m.program.as_ref().and_then(|p| p.fault_record.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,15 +57,7 @@ pub struct Snapshot {
 impl Sim {
     pub fn snapshot(&self) -> Snapshot {
         let w = &self.world;
-        let machines = w
-            .machines
-            .values()
-            .map(|m| MachineSnapshot {
-                record: MachineRecord::of(m),
-                log: m.log.clone(),
-                fault: m.program.as_ref().and_then(|p| p.fault_record.clone()),
-            })
-            .collect();
+        let machines = w.machines.values().map(MachineSnapshot::of).collect();
         let teams = w
             .teams
             .values()
