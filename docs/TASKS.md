@@ -31,19 +31,6 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M8 — The debugger
-
-**T28 — What-if**
-
-Q55: *try in the fork* on each file window, beside deploy in a match and
-alone on a replay, sending the file's deploys into the open fork for its
-next tick, at any stop but one in step 4, a bundle that fails to load
-refused with its error; *take it* deploying to the match the bundles the
-last try sent, offered only while the tree still holds every file of them
-as tried; refused in a live PvP match.
-
-[P5](PROBLEMS.md) closes with T28.
-
 ## M10 — Power
 
 **T31 — Power in `sim`: the grid, powered bots, wires and the solar panel** `⚠HASH`
