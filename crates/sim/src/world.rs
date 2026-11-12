@@ -450,6 +450,79 @@ impl World {
         world
     }
 
+    /// A copy that shares nothing this world will change, for a saved
+    /// state and a fork (`docs/06`, Forks): every machine's program copied
+    /// as deeply as `lang` copies one, every team and tile its own. What
+    /// cannot change is shared — the tables and each loaded bundle's code.
+    /// Written out field by field so that a field added to the world, a
+    /// machine or a team fails to compile here until it is copied too.
+    pub fn copy(&self) -> World {
+        let machines = self
+            .machines
+            .iter()
+            .map(|(id, m)| {
+                let copy = Machine {
+                    id: m.id,
+                    name: m.name.clone(),
+                    model: m.model,
+                    team: m.team,
+                    deployment: m.deployment.clone(),
+                    pos: m.pos,
+                    health: m.health,
+                    dying: m.dying,
+                    action: m.action.clone(),
+                    load: m.load.clone(),
+                    color: m.color.clone(),
+                    store: m.store.clone(),
+                    store_capacity: m.store_capacity.clone(),
+                    becomes: m.becomes,
+                    construction: m.construction,
+                    printing: m.printing,
+                    program: m.program.as_ref().map(|p| p.deep_copy()),
+                    log: m.log.clone(),
+                };
+                (*id, copy)
+            })
+            .collect();
+        let teams = self
+            .teams
+            .iter()
+            .map(|(id, t)| {
+                let copy = Team {
+                    id: t.id,
+                    deployments: t.deployments.clone(),
+                    out: t.out,
+                    resigned: t.resigned,
+                    memory: t.memory.clone(),
+                    seen: t.seen.clone(),
+                    starts: t.starts.clone(),
+                    print_turn: t.print_turn,
+                };
+                (*id, copy)
+            })
+            .collect();
+        World {
+            tick: self.tick,
+            map: self.map.clone(),
+            data: self.data.clone(),
+            costs: self.costs.clone(),
+            limits: self.limits.clone(),
+            tiles: self.tiles.clone(),
+            machines,
+            next_id: self.next_id,
+            teams,
+            sounds_prev: self.sounds_prev.clone(),
+            sounds_now: self.sounds_now.clone(),
+            pending_damage: self.pending_damage.clone(),
+            dead: self.dead.clone(),
+            speed: self.speed,
+            next_host_object: self.next_host_object,
+            empty_program: self.empty_program.clone(),
+            sight: self.sight.clone(),
+            generation: self.generation,
+        }
+    }
+
     pub fn alloc_id(&mut self) -> EntityId {
         let id = EntityId(self.next_id);
         self.next_id = self

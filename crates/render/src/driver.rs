@@ -503,7 +503,7 @@ impl Driver {
             Vec::new()
         };
         commands.extend(self.log.sets_for(t));
-        let report = self.sim.step(&commands);
+        let report = self.sim.step(&commands, &[]);
         if let Some(s) = report.speed {
             self.speed = s;
         }

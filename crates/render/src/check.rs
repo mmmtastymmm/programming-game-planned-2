@@ -2085,7 +2085,7 @@ start = [1, -1]
         let mut checked = false;
         for tick in 0..200 {
             let cmds = if tick == 0 { deploys.clone() } else { vec![] };
-            world.step(&cmds);
+            world.step(&cmds, &[]);
             for m in &world.snapshot().machines {
                 if m.record.team == sim::TeamId(0) {
                     assert!(m.fault.is_none(), "{}: {:?}", m.record.name, m.fault);

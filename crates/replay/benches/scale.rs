@@ -122,7 +122,7 @@ fn bench(teams: usize, n: usize, hash_every: u64, side: Option<i32>, program: &s
             opening.push(c);
         }
     }
-    let report = sim.step(&opening);
+    let report = sim.step(&opening, &[]);
     assert!(report.dropped.is_empty(), "an opening deploy was dropped");
 
     // `n` bots by fiat on every other free tile, dealt round-robin to the teams.
@@ -145,7 +145,7 @@ fn bench(teams: usize, n: usize, hash_every: u64, side: Option<i32>, program: &s
     assert_eq!(placed, n, "the map is too small for {n} bots");
 
     for _ in 0..WARMUP {
-        sim.step(&[]);
+        sim.step(&[], &[]);
     }
     let before: Vec<(sim::EntityId, TilePos)> = sim
         .world
@@ -162,7 +162,7 @@ fn bench(teams: usize, n: usize, hash_every: u64, side: Option<i32>, program: &s
     let start = Instant::now();
     while ticks < WINDOW && start.elapsed() < BUDGET {
         let t = Instant::now();
-        let report = sim.step(&[]);
+        let report = sim.step(&[], &[]);
         step += t.elapsed();
         ticks += 1;
         if hash_every > 0 && ticks % hash_every == 0 {

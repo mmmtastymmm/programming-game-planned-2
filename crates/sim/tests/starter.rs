@@ -88,7 +88,7 @@ fn the_starter_bot_builds_then_paints_then_patrols_and_never_faults() {
             2 => plans(sim.world.tick + 1),
             _ => vec![],
         };
-        let report = sim.step(&commands);
+        let report = sim.step(&commands, &[]);
         assert!(
             report.dropped.is_empty(),
             "tick {tick}: dropped {:?}",

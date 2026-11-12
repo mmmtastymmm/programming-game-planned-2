@@ -5,7 +5,7 @@
 use net::CommandLog;
 use serde::{Deserialize, Serialize};
 use sim::hash::Fnv1a;
-use sim::{Command, Data, Map, Sim, TeamId};
+use sim::{Command, Data, Fork, Map, Sim, StepReport, TeamId, Timeline, Watch};
 
 /// Ceiling on a replay's declared length, so a corrupt artifact cannot ask
 /// the allocator for the moon.
@@ -33,6 +33,74 @@ pub struct Replay {
     /// with, since a build's rules can change while its version does not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_hash: Option<u64>,
+}
+
+/// A replay's log as a fork reads it (`docs/06`, Forks): complete from the
+/// start, so every set is final through the replay's last tick.
+pub struct ReplayLog {
+    log: CommandLog,
+    ticks: u64,
+}
+
+impl Timeline for ReplayLog {
+    fn commands(&self, tick: u64) -> Vec<Command> {
+        // The opening set is tick 0's, applied with the first tick.
+        let mut commands = if tick == 1 {
+            self.log.sets_for(0)
+        } else {
+            Vec::new()
+        };
+        commands.extend(self.log.sets_for(tick));
+        commands
+    }
+
+    fn final_tick(&self) -> u64 {
+        self.ticks
+    }
+}
+
+/// A replay played on a fork (`docs/06`, The driver): it sends no
+/// command, moves a tick at a time at the caller's pace, and stands for
+/// the match when a debugger forks from it.
+pub struct Playback {
+    pub fork: Fork,
+    pub log: ReplayLog,
+}
+
+impl Playback {
+    /// The tick the playback stands at the end of.
+    pub fn tick(&self) -> u64 {
+        self.fork.world().tick
+    }
+
+    /// The replay's last tick.
+    pub fn ticks(&self) -> u64 {
+        self.log.ticks
+    }
+
+    /// Whether the playback has reached the replay's last tick, or its
+    /// match's end.
+    pub fn done(&self) -> bool {
+        self.tick() >= self.log.ticks || self.fork.ended().is_some()
+    }
+
+    /// Play the next tick, reporting as `sim.step` does, `watches`' hits
+    /// included. `None` once the playback is done: it never runs past the
+    /// replay.
+    pub fn advance(&mut self, watches: &[Watch]) -> Option<StepReport> {
+        (!self.done()).then(|| self.fork.advance(watches, &self.log))
+    }
+
+    /// Stand at the end of `tick`, or of the replay's last if that is
+    /// earlier, from a state the playback kept or by running on.
+    pub fn seek(&mut self, tick: u64) {
+        self.fork.seek(tick.min(self.log.ticks), &self.log);
+    }
+
+    /// The state hash at the tick the playback stands at.
+    pub fn state_hash(&self) -> Option<u64> {
+        self.fork.state_hash()
+    }
 }
 
 /// What a run produced: the per-tick hash stream and the finished sim.
@@ -128,7 +196,7 @@ impl Replay {
                 Vec::new()
             };
             commands.extend(log.sets_for(tick));
-            let report = sim.step(&commands);
+            let report = sim.step(&commands, &[]);
             for c in report.dropped {
                 dropped.push((tick, c));
             }
@@ -146,6 +214,34 @@ impl Replay {
 
     pub fn run(&self) -> Vec<u64> {
         self.execute().hashes
+    }
+
+    /// The replay on a fork, standing before tick 1, for `team`'s viewer
+    /// (`docs/06`, The driver). Unlike [`Replay::execute`], which CI runs
+    /// on artifacts of its own, this is handed files a player opens: one
+    /// that cannot play is an error, never a panic.
+    pub fn playback(&self, team: TeamId) -> Result<Playback, String> {
+        if self.ticks > MAX_REPLAY_TICKS {
+            return Err(format!(
+                "the replay declares {} ticks, over the cap of {MAX_REPLAY_TICKS}",
+                self.ticks
+            ));
+        }
+        let data = Data::load().map_err(|e| format!("the shipped tables do not load: {e}"))?;
+        let map = Map::parse(&self.map, &data)
+            .map_err(|e| format!("the replay's map does not load: {e}"))?;
+        let fork = Fork::from_map(map, team);
+        for c in &self.commands {
+            fork.validate(c)
+                .map_err(|e| format!("a replayed command can never apply: {e}"))?;
+        }
+        Ok(Playback {
+            fork,
+            log: ReplayLog {
+                log: self.log(),
+                ticks: self.ticks,
+            },
+        })
     }
 
     pub fn to_ron(&self) -> String {

@@ -505,7 +505,7 @@ on a run that did not run (CLAUDE.md):
 | language fixtures | program → transcript hash, cross-process | `lang`, T14 |
 | the source scan | no floats, no hash-order iteration, no wall clock, in `lang`, `sim`, `net` | `sim/tests/no_floats.rs`, widened to the workspace |
 | cross-architecture | `scripts/determinism-battery.sh` on an x86-64 and an arm64 runner, each against the checked-in fixtures, and the two final-hash files diffed | `.github/workflows/ci.yml`, the `determinism` and `cross-architecture` jobs |
-| forks and watches | a golden replay run with a watch on every line gives the stream it gives without; a fork stopped and resumed at every boundary of every machine, one restored from each of its saved states, and a replay's playback each reproduce it | `sim`, T26 |
+| forks and watches | a golden replay run with a watch on every line gives the stream it gives without; a fork stopped and resumed at every boundary of every machine, one restored from each of its saved states, and a replay's playback each reproduce it | `crates/replay/tests/forks.rs`, over `sim`'s forks; the rules one at a time in `crates/sim/tests/forks.rs` |
 | the check on the checks | each gate seeded with a defect it must catch | `scripts/check-checks.mjs`; `--rust` seeds the gates above (`scripts/lib/rust-gates.mjs`), run from the Rust half of `scripts/ci.sh` |
 
 `render` has no determinism gate, because it has no determinism of its

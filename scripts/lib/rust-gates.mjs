@@ -5,11 +5,11 @@
 //
 // The gates under test are the ones docs/06's table names: the golden replay,
 // the language fixtures, the language's cross-process trace, the source scan,
-// the determinism battery, and the battery's cross-architecture compare. A
-// mutation is a defect that once shipped or one a gate claims to catch: a
-// drifted hash, a transcript gone missing, a match that ran one tick, a float
-// in the wrong crate, an emitter that prints no hash line, two architectures
-// that disagree. The suite asserts the unmutated tree passes every gate, and
+// the forks and watches, the determinism battery, and the battery's
+// cross-architecture compare. A mutation is a defect that once shipped or one
+// a gate claims to catch: a drifted hash, a transcript gone missing, a match
+// that ran one tick, a float in the wrong crate, a watch that costs budget, an
+// emitter that prints no hash line, two architectures that disagree. The suite asserts the unmutated tree passes every gate, and
 // that every mutation is caught by the named gate with a message naming the
 // real problem.
 //
@@ -102,6 +102,7 @@ export function runRustGates(repo) {
     "lang-golden": cargo("-p", "lang", "--test", "golden"),
     "lang-determinism": cargo("-p", "lang", "--test", "determinism"),
     "source-scan": cargo("-p", "sim", "--test", "no_floats"),
+    forks: cargo("-p", "replay", "--test", "forks"),
     battery: battery(hashesOut),
     compare: battery("compare", cmpA, cmpB),
   };
@@ -165,6 +166,20 @@ export function runRustGates(repo) {
       skipIfClean: true, files: ["crates/net/src/lib.rs"],
       mutate: (d) => writeFileSync(join(d, "crates/net/src/lib.rs"),
         readFileSync(join(d, "crates/net/src/lib.rs"), "utf8") + "\n// no f64 or HashMap here, and no Instant either\n") },
+
+    // ── forks and watches (docs/06, Forks; T26) ─────────────────────────────
+    // Neither defect moves the golden stream, which runs unwatched and
+    // never stops: only a run compared with itself sees them.
+    { name: "forks: a watched boundary charges budget", check: "forks",
+      expect: "watches changed the hash stream", files: ["crates/lang/src/vm.rs"],
+      mutate: (d) => edit(join(d, "crates/lang/src/vm.rs"),
+        "self.passed = self.passed.wrapping_add(1);\n",
+        "self.passed = self.passed.wrapping_add(1);\n                if tracer.is_some() {\n                    self.spent = self.spent.wrapping_add(1);\n                }\n") },
+    { name: "forks: a resumed slice takes its deficit off again", check: "forks",
+      expect: "a fork stopped and resumed at every boundary left the hash stream", files: ["crates/lang/src/vm.rs"],
+      mutate: (d) => edit(join(d, "crates/lang/src/vm.rs"),
+        'debug_assert!(self.stopped, "only a stopped slice is resumed");\n',
+        'debug_assert!(self.stopped, "only a stopped slice is resumed");\n        self.slice_budget = self.slice_budget.saturating_sub(self.deficit);\n') },
 
     // ── the battery and the cross-architecture compare ──────────────────────
     { name: "battery: a drifted fixture fails before any hash is emitted", check: "battery",

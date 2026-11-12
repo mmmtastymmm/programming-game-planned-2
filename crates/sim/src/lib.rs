@@ -9,11 +9,14 @@
 //! terrain, [`world`] the state, [`sense`] line of sight and vision,
 //! [`records`] what programs read, [`host`] the game builtins as the
 //! language's host, [`tick`] the nine steps and the state hash,
-//! [`snapshot`] what the renderer reads, [`script`] scripted teams, and
-//! [`command`] the one way in.
+//! [`snapshot`] what the renderer reads, [`script`] scripted teams,
+//! [`command`] the one way in, and [`fork`] a private copy of the world
+//! for the debugger and a replay's playback, with entry points the match's
+//! sim does not have.
 
 pub mod command;
 pub mod data;
+pub mod fork;
 pub mod hash;
 pub mod host;
 pub mod map;
@@ -27,6 +30,7 @@ pub mod world;
 
 pub use command::{Bundle, Command, CommandKind, PlanKind, TeamId};
 pub use data::Data;
+pub use fork::{Cause, Flags, Fork, Hit, Inspected, Position, Saved, Step, Stop, Timeline, Watch};
 pub use map::{Map, TilePos};
 pub use snapshot::Snapshot;
 pub use tick::{Sim, StepReport, bundle_of, load_bundle};

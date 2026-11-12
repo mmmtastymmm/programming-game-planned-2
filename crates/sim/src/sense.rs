@@ -28,7 +28,7 @@ type Basis = Vec<(EntityId, TilePos, Model, TeamId)>;
 /// stale, so a build with debug assertions still keeps the basis and
 /// compares it on every use: every test, the golden replay among them,
 /// fails on a site that forgot.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SightCache {
     /// `World::generation` when `teams` was last emptied.
     built_at: u64,
