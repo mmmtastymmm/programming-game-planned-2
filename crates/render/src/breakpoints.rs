@@ -95,33 +95,40 @@ impl Catalog {
             return;
         }
         self.read = deploys.len();
-        let limits = Limits::parse(lang::data::LIMITS_TOML).expect("limits");
         for bundle in deploys {
-            let key: Vec<(String, u64)> = bundle
-                .files
-                .iter()
-                .map(|(n, s)| (n.clone(), lang::content_hash(s.as_bytes())))
-                .collect();
-            if !self.seen.insert(key) {
-                continue;
-            }
-            let Ok(loaded) = sim::load_bundle(bundle, &limits) else {
+            self.add(bundle);
+        }
+    }
+
+    /// Take in one bundle of the team's: a deploy of its log, or one a
+    /// *try* sent into a fork, which no log of the match carries
+    /// (`docs/07`, What-if). A bundle already taken in is not loaded again.
+    pub fn add(&mut self, bundle: &Bundle) {
+        let key: Vec<(String, u64)> = bundle
+            .files
+            .iter()
+            .map(|(n, s)| (n.clone(), lang::content_hash(s.as_bytes())))
+            .collect();
+        if !self.seen.insert(key) {
+            return;
+        }
+        let limits = Limits::parse(lang::data::LIMITS_TOML).expect("limits");
+        let Ok(loaded) = sim::load_bundle(bundle, &limits) else {
+            return;
+        };
+        for (name, text) in &bundle.files {
+            let Some(content) = loaded.program.content.get(name).copied() else {
                 continue;
             };
-            for (name, text) in &bundle.files {
-                let Some(content) = loaded.program.content.get(name).copied() else {
-                    continue;
-                };
-                self.listings
-                    .entry((name.clone(), content))
-                    .or_insert_with(|| Listing {
-                        text: text.clone(),
-                        begins: loaded.program.begin_lines(name),
-                    });
-            }
-            self.versions
-                .insert(loaded.version, (*loaded.program.content).clone());
+            self.listings
+                .entry((name.clone(), content))
+                .or_insert_with(|| Listing {
+                    text: text.clone(),
+                    begins: loaded.program.begin_lines(name),
+                });
         }
+        self.versions
+            .insert(loaded.version, (*loaded.program.content).clone());
     }
 
     /// The text of a version, if the team deployed it.

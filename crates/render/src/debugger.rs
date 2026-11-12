@@ -13,11 +13,12 @@ use crate::breakpoints::{self, Breakpoints, Catalog, Text};
 use crate::debug::{flags_text, position_text, stop_text};
 use crate::driver::Driver;
 use crate::editor;
+use crate::whatif::Tried;
 use bevy::prelude::KeyCode;
 use bevy_egui::egui;
 use lang::EditTarget;
 use sim::{EntityId, Hit, Inspected, Step};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 /// The debugger window's name in the layout and the dock.
@@ -46,6 +47,10 @@ pub struct DebugUi {
     /// The fork's selected machine as the fork holds it, read once a
     /// frame.
     pub inspected: Option<Inspected>,
+    /// What each file's last *try* sent into the open fork, by tree path
+    /// (`docs/07`, What-if): what *take it* deploys. It goes with the
+    /// fork.
+    pub tried: BTreeMap<String, Tried>,
     /// The forks opened when the windows last looked, to notice a new one.
     opened_seen: u64,
     /// The speed ladder a run steps along, read once from `data/`.
@@ -195,6 +200,7 @@ pub fn sync(d: &mut Driver, state: &mut ViewState) -> bool {
     if fresh || d.debug.session.is_none() {
         state.debug.editing = None;
         state.debug.confirm = None;
+        state.debug.tried.clear();
     }
     if fresh {
         state.debug.note.clear();
@@ -949,7 +955,6 @@ mod tests {
     use crate::editor::Editor;
     use sim::script::Tree;
     use sim::{Cause, PlanKind, Position, Watch};
-    use std::collections::BTreeMap;
 
     /// The rival's printer.
     const RIVAL: EntityId = EntityId(2);
