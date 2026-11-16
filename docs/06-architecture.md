@@ -22,15 +22,15 @@ Rulings this doc owns, moved here from the overview when it was written.
   the map sets the starting speed. The renderer interpolates between
   completed ticks.
 - **The player may mark the map, and everything the player does enters one
-  ordered command log (Q10, as amended by Q26, Q27, Q28 and Q59).** Besides
+  ordered command log (Q10, as amended by Q26, Q27, Q28 and Q62).** Besides
   `Deploy`, the log carries `Mark` and `Unmark`, which place and withdraw
   plans that only a bot makes real, `SetSpeed` (Q6) and `Resign`, which
   removes the sender's team on the agreed tick. A mark changes what a
   program can read about a tile and never what a machine does: the player
   authors programs and marks the map, and never commands a machine. Every
   command carries its sender and its tick; one that cannot apply is
-  dropped. A plan is of four kinds — paint, overlay, building and, as Q59
-  added, wire. What a mark is and does is [02-machines](02-machines.md)'s
+  dropped. A plan is of four kinds — paint, overlay, building and, as Q62
+  rules, wire. What a mark is and does is [02-machines](02-machines.md)'s
   and [03-world](03-world.md)'s.
 - **A fixed delay, and a stall for a late peer (Q12).** A command entered
   at tick `t` is agreed for `t + delay`, a tuning constant in ticks fixed
@@ -192,19 +192,20 @@ loop:
    applies.
 2. **Every machine's slice**, in ascending entity id: its main flow or
    handler runs until its tick budget is spent or it yields at a restart
-   (`01`, Metering), with interrupts delivered at its boundaries; an
-   unpowered bot's main flow does not run, though a handler does (`02`,
-   Power; Q59). Actions begun in a slice begin in this order, and actions
+   (`01`, Metering), with interrupts delivered at its boundaries; a dark
+   building's main flow does not run and a flat bot's waits at the call
+   it cannot pay for, though a handler always runs (`08`; Q62). Actions begun in a slice begin in this order, and actions
    completing on this tick complete in ascending entity id after every
    slice has run.
 3. **Action completions**, in ascending entity id: moves land, transfers
    happen, prints count down and place bots, sites complete,
-   deconstructions finish, wires are laid and removed (`02`); an unpowered
-   bot's main-flow action does not count down (`02`, Power). A bot printed
+   deconstructions finish, recharges move charge, wires are laid and
+   removed (`02`); a dark building's main-flow action and a dark
+   printer's print do not count down (`08`). A bot printed
    this tick has its first slice next tick.
 4. **Damage and death**: health changes from this tick's causes are applied
-   — attacks that completed, and every printer's defence against adjacent
-   enemy bots (Q30) — `dying` and `death` are raised where Q24 says, and
+   — attacks that completed, and every powered printer's defence against
+   adjacent enemy bots (Q30; `08`) — `dying` and `death` are raised where Q24 says, and
    `death` epilogues remove machines; a printer left at or below zero health
    loses its print in progress (`02`, Printing). Every machine whose `death`
    epilogue ran this tick — here, or earlier in its own step-2 slice — is
@@ -213,19 +214,21 @@ loop:
    here is absent from everything below.
 5. **Out teams**: every team that is out — it resigned this tick, or steps
    3 and 4 left it with no printer, by deconstruction or death (`04`) — has
-   its machines removed, its plans and its wires (Q59) cleared and its log
+   its machines removed, its plans and its wires (Q62) cleared and its log
    closed, in team order.
-6. **Power and printing**: in team order, every team's — an out team's
-   too, whose figures are then all zero — grid is traced, its
-   supply summed and its bots powered, oldest first, which holds until the
-   next tick's step 6 (Q59; `02`, Power) — the match is built with this
-   half already run at tick 0; then its printers that are ready and above
-   zero health begin prints by turns until its bots and prints in progress
-   reach its cap or its spare power runs out (Q42; `02`, Printing), and its
-   supply, demand and spare are kept.
+6. **Power and printing**: in team order, every team's grids are traced
+   and served, oldest building first, which sets each building's
+   `powered` and `grid` until the next tick's step 6; every bot's solar is
+   added; its printers that are ready, powered and above zero health begin
+   prints by turns until its bots and prints in progress reach its cap
+   (Q42; `02`, Printing); and its grids' figures are kept (Q62). The order
+   inside this step is `08`'s, The power step, and is stated there alone.
+   An out team has no grids. The match is built with its grids traced and
+   every building powered at tick 0.
 7. **Regrowth**: every deposit grows (`03`).
-8. **The vision pass**: each team's visible tiles are computed and their
-   snapshots refreshed (Q21).
+8. **The vision pass**: each team's visible tiles are computed, from every
+   machine of the team but a dark building (`08`), and their snapshots
+   refreshed (Q21).
 9. **The state hash** over everything below.
 
 Nothing else happens in a tick. A rule that needs another step is a change
@@ -248,11 +251,12 @@ A **command** is:
   never ambiguous.
 - **Validation at submission** refuses what can never apply — a tile off
   the map, a step not in the list, a `Deploy` naming a deployment other
-  than `bot`, `printer`, `depot` or `solar` (Q42, Q59), a bundle that fails
+  than `bot`, `printer`, `depot`, `solar` or `charger` (Q42, Q62), a bundle
+  that fails
   to load (`01`) — so the log holds only commands every peer would accept.
   A command that cannot apply *on its tick* — a `Mark` on a tile the sender
   has since lost the right to, or a paint, overlay or wire plan on a tile
-  that is not ground the sender has seen (Q49, Q59), a wire plan asking for
+  that is not ground the sender has seen (Q49, Q62), a wire plan asking for
   what the tile already has (`03`), a `Resign` from a team already out — is
   dropped in `sim.step` and recorded nowhere.
 - **The log is append-only and complete**: every command every peer ever
@@ -283,10 +287,10 @@ value with no reference into the sim:
 |---|---|
 | `tick` | the tick just completed, and the speed in force — the driver's number, carried for the renderer, not the sim's |
 | `machines` | every machine's attribute record (`02`), the version of the bundle its program runs, which a deploy since may have left behind (Q11), plus its diagnostic log entries from this tick |
-| `tiles`, per team | every tile's record as that team sees it: state, terrain, deposit, paint, overlay, wires, building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is on its grid (Q59) |
+| `tiles`, per team | every tile's record as that team sees it: state, terrain, deposit, paint, overlay, wires, building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is part of a grid (Q62; `08`) |
 | `sounds` | every sound emitted this tick, with its cause, position, loudness and tick |
 | `faults` | every machine's fault record (`01`) |
-| `teams` | each team's deployments, their bundles' versions, its cap, its bot count, and the supply, demand and spare its last power step kept (Q59) |
+| `teams` | each team's deployments, their bundles' versions, its cap, its bot count, and the figures of each of its grids as its last power step kept them (Q62; `08`) |
 
 The renderer reads it and builds its own entities; nothing in it is shared
 with the sim, and nothing the renderer does to it reaches the sim. It is
@@ -299,11 +303,11 @@ snapshot and **not** of the state hash.
 The hash is FNV-1a 64-bit over a canonical encoding of the world after step
 8, in this order: the tick; every team in order — whether it is out, its
 deployments, the version of each bundle, its cap, its print turn (Q42), its
-supply, demand and spare (Q59), its plans by tile in row-then-column order,
+grids' figures in label order (Q62), its plans by tile in row-then-column order,
 its memory table by tile; every tile in row-then-column order — terrain,
-deposit, paint, overlay, its wires' teams in order (Q59); the next entity
+deposit, paint, overlay, its wires' teams in order (Q62); the next entity
 id; every machine in ascending entity id — every attribute, whether it is
-`dying`, its action in progress and `progress`, a site's construction ticks
+`dying`, whether a bot is armed for `low_power` (Q62), its action in progress and `progress`, a site's construction ticks
 and the model it becomes, its store capacity, which for a site is its
 price, fixed at placement (Q42), its fault record, and its **execution
 state**: the program counter, every frame's locals, every global, the
@@ -430,8 +434,8 @@ replay's playback drive one, and `replay` builds one from a replay file.
   at the end of the tick in progress, with the cause *paused*. *Line* and
   *over* need a selected machine; the others do not. *Line*, *over*,
   *continue* and *run* also stop when the selected machine is delivered
-  `dying`, when its program restarts (a fault, a redeploy, or main flow
-  running off its end), when its `death` runs — inside its slice, at that
+  `dying`, when its program restarts (a fault, a `low_power`, a redeploy,
+  or main flow running off its end), when its `death` runs — inside its slice, at that
   position, or in step 4, at `(tick, damage, machine)` — and when its team
   is out and step 5 removes it, at `(tick, end)`, the machine named though
   gone. Every step but *run* stops after a number of ticks with no other

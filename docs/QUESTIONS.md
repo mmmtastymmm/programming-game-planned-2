@@ -26,7 +26,7 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-10-15.** Every question this file has issued, Q1 through Q61,
+**Status 2026-11-15.** Every question this file has issued, Q1 through Q62,
 is answered. Q33 through Q39 and Q41 were each opened and answered in one
 commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
@@ -54,12 +54,18 @@ and is [01-language](01-language.md)'s syntax part; Q57, a name's signature
 and docstring on hover, is `07`'s; Q58, going from a hover to the
 definition, amends Q57 and is `07`'s. Q59, power from printers and solar
 panels wired to a printer, with the newest bots stopping when a team is
-short, was opened and answered in one commit, amends Q10, Q27, Q37, Q42,
-Q49, Q53 and Q56, and is `02`'s, `03`'s, `05`'s and `07`'s; Q60, a replay
+short, amended Q10, Q27, Q37, Q42, Q49, Q53 and Q56, and was withdrawn
+outright by Q62 before any of it was built, so it has no Decided entry
+anywhere; Q60, a replay
 tied to the version that wrote it, was opened and answered in one commit
 from I3, amends Q36 and Q55, and is `07`'s; Q61, the editor's red
-underlines for types that cannot fit, is `07`'s. The rulings of Q7, Q9, Q21,
-Q22, Q23, Q24, Q25, Q30, Q42, Q43 and Q59 are
+underlines for types that cannot fit, is `07`'s. Q62 — batteries on bots,
+the `low_power` interrupt, buildings that generate and drain, grids served
+oldest first, chargers, pylons and underground wire — withdraws Q59,
+amends Q8, Q10, Q16, Q23, Q27, Q37, Q41, Q42, Q49, Q53 and Q56, and is
+[08-power](08-power.md)'s, with entries in `01`'s execution part, `02`,
+`03`, `05` and `07`. The rulings of Q7, Q9, Q21,
+Q22, Q23, Q24, Q25, Q30, Q42, Q43 and Q62 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and
 Q55 are [06-architecture](06-architecture.md)'s, Q4 and Q29 are
@@ -80,7 +86,8 @@ attached to the commit that changed it.
 **Every numbered doc is written** — [01-language](01-language.md),
 [02-machines](02-machines.md), [03-world](03-world.md),
 [04-opposition](04-opposition.md), [05-progression](05-progression.md),
-[06-architecture](06-architecture.md) and [07-interface](07-interface.md),
+[06-architecture](06-architecture.md), [07-interface](07-interface.md) and
+[08-power](08-power.md), which Q62 added,
 each with the rulings it waited on as its Decided entries or citing them
 from `02`. `02` opened Q24 and `04` opened Q29 in the writing, and both are
 answered; `05` was written from Q30, opened and answered for it, and

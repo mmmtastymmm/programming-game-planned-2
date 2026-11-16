@@ -80,18 +80,22 @@ pass.
   which byte-exact program version a machine runs is part of the state hash.
 - **The language's rulings live in [01-language](01-language.md)** — Q5 and
   Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
-  interrupts), Q14 and Q19 (numbers), Q41's hook sources, Q52 (free
-  docstrings) and Q56 (type annotations) are the Decided entries of the
+  interrupts), Q62's fifth interrupt and its wait for charge, Q14 and Q19
+  (numbers), Q41's hook sources, Q52 (free docstrings) and Q56 (type
+  annotations) are the Decided entries of the
   parts that elaborate them, and they are not repeated here.
 - **The machines' rulings live in [02-machines](02-machines.md)** — Q7 and
   Q21 (sensing and memory), Q9 (production), Q22 and Q23 (the economy,
   which `docs/03` cites, and what it prices), Q24 (health and the cap), Q25
   (combat), Q30 (a printer's defence), Q42 (building printers, printing and
-  the deployments), Q43 (a bot's color) and Q59 (power, wires and the solar
-  panel) are its Decided entries, and they are not repeated here; Q31 and
-  Q40, which Q42 withdrew, have none.
+  the deployments), Q43 (a bot's color) and Q62 (what power adds to a
+  machine) are its Decided entries, and they are not repeated here; Q31
+  and Q40, which Q42 withdrew, and Q59, which Q62 withdrew, have none.
+- **Power's ruling lives in [08-power](08-power.md)** — Q62 (batteries,
+  grids, chargers, pylons and wire) is its Decided entry, and it is not
+  repeated here.
 - **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint,
-  overlays and, as Q59 extended it, wires only on ground the team has seen)
+  overlays and, as Q62 extends it, wires only on ground the team has seen)
   is its Decided entry, and it is not repeated here; Q21 and Q22, which
   `03` cites, are `02`'s.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
@@ -108,13 +112,14 @@ pass.
   clear, amending Q37), Q45, Q47 and Q48 (a team shown by lights and trim),
   Q46 (a bot's id on its top), Q50, Q51 and Q54 (plan previews), Q53 (the
   starter library), Q55 (the debugger and what-if), Q57 and Q58 (a name's
-  hover and going to its definition), Q59 (power on the map) and Q60 (a
+  hover and going to its definition), Q62 (power on the map) and Q60 (a
   replay's version) are its Decided entries, and they are not repeated
   here.
 - **The opposition's ruling lives in [04-opposition](04-opposition.md)** —
   Q4 (PvE before PvP) and Q29 (the roster) are its Decided entries — and
-  **progression's in [05-progression](05-progression.md)** — Q42 and Q59
-  (building printers and powering them); neither is repeated here.
+  **progression's in [05-progression](05-progression.md)** — Q42 and Q62
+  (building printers and powering what they print); neither is repeated
+  here.
 
 ## What the numbered docs will hold
 
@@ -128,9 +133,10 @@ inserted without renumbering:
 | `02` | Machines — what they are, what they sense, what they do | — |
 | `03` | The world — tiles, terrain, deposits, line of sight, the map | — |
 | `04` | Opposition — teams, scripted teams, how a match ends, PvE now, PvP later | — |
-| `05` | Progression — building printers and powering them inside a match; nothing between matches | — |
+| `05` | Progression — building printers and powering what they print inside a match; nothing between matches | — |
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 | `07` | Interface — the screen, the editor, how a fault reaches the player, how a machine on the map reads | — |
+| `08` | Power — batteries and charge, a bot's low power, grids and how they are served, dark buildings, pylons and wire | — |
 
 Each becomes a doorway plus a parts directory only when it outgrows one file
 (CLAUDE.md, *Splitting a doc*).
@@ -142,7 +148,7 @@ numbering is append-only, so it is not a reading order. The table above is the
 map from question to doc. **Every numbered doc is written** —
 [01-language](01-language.md), [02-machines](02-machines.md),
 [03-world](03-world.md), [04-opposition](04-opposition.md),
-[05-progression](05-progression.md), [06-architecture](06-architecture.md)
-and [07-interface](07-interface.md) — and the table
+[05-progression](05-progression.md), [06-architecture](06-architecture.md),
+[07-interface](07-interface.md) and [08-power](08-power.md) — and the table
 above, not this sentence, is the authority on what blocks the rest: earlier
 passes misread `01` as having a single blocker while it had three.
