@@ -26,7 +26,7 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-11-15.** Every question this file has issued, Q1 through Q62,
+**Status 2026-11-16.** Every question this file has issued, Q1 through Q63,
 is answered. Q33 through Q39 and Q41 were each opened and answered in one
 commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
@@ -64,7 +64,10 @@ the `low_power` interrupt, buildings that generate and drain, grids served
 oldest first, chargers, pylons and underground wire — withdraws Q59,
 amends Q8, Q10, Q16, Q23, Q27, Q37, Q41, Q42, Q49, Q53 and Q56, and is
 [08-power](08-power.md)'s, with entries in `01`'s execution part, `02`,
-`03`, `05` and `07`. The rulings of Q7, Q9, Q21,
+`03`, `05` and `07`. Q63 — a `low_power` that sets main flow aside and
+returns to it, and a bot out of power until its solar has brought it back
+to a wake level — amends Q62 and Q8, and is `08`'s and `01`'s execution
+part's. The rulings of Q7, Q9, Q21,
 Q22, Q23, Q24, Q25, Q30, Q42, Q43 and Q62 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and

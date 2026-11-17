@@ -141,7 +141,7 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   repairs, and the world deals no damage; each is a new question number if
   wanted.
 - **Power is stored in batteries and shared across grids (Q62, which
-  withdrew Q59).** The ruling and every rule of it are
+  withdrew Q59, as Q63 amended).** The ruling and every rule of it are
   [08-power](08-power.md)'s and are not repeated here. This doc carries
   what it adds to a machine: the `charger` and `pylon` models and the
   `solar` panel; the attributes `charge`, `battery`, `flat`, `powered` and
@@ -314,7 +314,7 @@ writable except through an action.
 | `store` | `dict` of kind to `num` | a building's held resources, every kind present; absent on a bot |
 | `progress` | `num` | ticks remaining on `busy`, or on a site's construction; `0` when idle |
 | `printing` | `num` | a printer's ticks remaining on its print in progress, `0` when not printing (Printing, below); absent on every other model |
-| `flat` | `bool` | whether the bot's main flow is waiting for charge (`08`); absent on a building |
+| `flat` | `bool` | whether the bot is out of power, from a call it could not pay for until it wakes (`08`, Q63); absent on a building |
 | `powered` | `bool` | whether the last power step powered the building or left it dark (`08`); `False` on a site; absent on a bot |
 | `grid` | `num`, integral, or `None` | the label of the grid the last power step found the building on (`08`); `None` on a site; absent on a bot |
 
@@ -403,8 +403,9 @@ sound.
 
 **Charge.** A bot's call of any builtin in this doc, a sense included,
 takes the builtin's charge cost from the bot's battery as it begins, and a
-bot whose charge is short of it waits, flat, at the call (`08`, Charge
-costs). A failed precondition takes none.
+bot whose charge is short of it is out of power: it waits, flat, at the
+call until its solar has woken it (`08`, Charge costs and Out of power).
+A failed precondition takes none.
 
 | Action | Who | Does | Takes | Noisy |
 |---|---|---|---|---|
@@ -516,7 +517,7 @@ is what the prologues and epilogues do beyond the language's rules.
 | `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine, at the end of the tick's damage step even when the epilogue ran in its own slice (`06`, step 4); its load or store, and a printer's print, is lost; its tile is then free; a site it was building stays; the team's cap updates if it was a printer |
 | `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress; freezes health (a printer's print was already lost when its health fell, Printing) | call the senses, `log`, `wait`, `rename`, `set_color` (Q43) and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
-| `low_power` | a bot's charge falling to the level (Q62; `08`, Low power) | cancels the action in progress | anything | nothing beyond the restart |
+| `low_power` | a bot's charge falling to the level, or the bot waking from being out of power (Q62, Q63; `08`, Low power) | nothing: it is delivered only once the action in progress has completed | anything | nothing: main flow goes on where it was |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 
 ## Game modules and builtins

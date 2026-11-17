@@ -38,14 +38,16 @@ repeated here.
    located at the operation that raised it — or, if an interrupt cuts off its
    unwinding, a fault record written as if it had escaped. Nothing is silent,
    nothing wraps, nothing is undefined behavior.
-3. **Nothing resumes across an interrupt.** A `fault` and a `low_power`
-   (Q62) restart main flow, a `redeploy` swaps it, `dying` and `death` end
-   it. The only resumption the
+3. **Nothing resumes across an interrupt but `low_power`.** A `fault`
+   restarts main flow, a `redeploy` swaps it, `dying` and `death` end it;
+   `low_power` alone sets main flow aside and returns to it, at the
+   boundary it was delivered at, with every variable intact (Q63). The
+   only other resumption the
    language has is metering: main flow or a hook paused at an operation
    boundary when the tick's budget runs out continues from that boundary
-   next tick, in the same program, with the same state — or, for a bot's
-   main flow waiting flat at a call it cannot pay for and for a dark
-   building's (Q62, `docs/08`), on the first tick the wait ends, as
+   next tick, in the same program, with the same state — or, for a bot
+   out of power at a call it cannot pay for and for a dark building's
+   main flow (Q62, Q63, `docs/08`), on the first tick the wait ends, as
    metering's pause is. A debugging fork (Q55,
    `docs/06` Forks) may also stop a machine at any boundary, resume it
    there, and set a variable while it is stopped; that is a tool acting on

@@ -8,7 +8,8 @@ bound all of it. Every rule here is hash-affecting.
 
 ## Decided
 
-- **An uncaught exception is an interrupt (Q8, as amended by Q18 and Q62).** A machine
+- **An uncaught exception is an interrupt (Q8, as amended by Q18, Q62 and
+  Q63).** A machine
   runs in main flow until an interrupt is delivered. A handler is a locked
   system prologue, the player's hook if the kind has one, then a locked system
   epilogue. Interrupt kinds are a closed, totally ordered set, and higher
@@ -21,9 +22,10 @@ bound all of it. Every rule here is hash-affecting.
   system default handler: a machine with no `on_fault` runs the fault prologue and
   epilogue back to back, and Q8's halt state is withdrawn by Q18. A fault
   inside `on_fault` escalates to `dying`. `try`/`except`/`raise` are in,
-  Python-shaped. Nothing resumes across an interrupt, which is what keeps Q13's
-  boundary intact; pushed world events, which would resume, were Q16, which
-  ruled them out. The
+  Python-shaped. Nothing resumes across any of those four, which is what
+  keeps Q13's boundary intact; pushed world events, which would resume, were
+  Q16, which ruled them out, and `low_power`, which does resume, is Q63's
+  entry below. The
   mechanism is this doc's; what each prologue and epilogue does is `docs/02`'s.
 - **Death is two kinds, and every hook has a budget (Q17, as amended by
   Q18).** `dying` is where last words live: its hook `on_dying()` may act
@@ -70,20 +72,28 @@ bound all of it. Every rule here is hash-affecting.
   machine; a program that wants to react to the world reads it, in a loop it
   writes. Adding a kind — an event, a timer, a message — is a new question
   number, and Q62 was one: it made the kinds five, and its `low_power`
-  tells a bot of its own battery, never of the world around it. The list a program
+  tells a bot of its own battery, never of the world around it. Q63 let
+  that one kind resume main flow. The list a program
   reads is live: what the colony senses now, and nothing it sensed before,
   which Q21 ruled: tiles are remembered, machines are not.
-- **`low_power` is the fifth kind, and a bot short of charge waits (Q62).**
-  It ranks between `fault` and `redeploy`. The world raises it for a bot
-  whose battery falls to a level (`docs/08`); its hook `on_low_power()`
-  takes no parameter and has a budget; its epilogue restarts main flow from
-  the top with all variables cleared, as `fault`'s does, and it writes no
-  fault record, since nothing failed. A fault inside `on_low_power`, or its
-  budget running out, escalates to `fault`. Apart from the interrupt, a
-  bot's main flow that reaches a call of a game builtin it has not the
-  charge for waits at the boundary before the call, and a dark building's
-  main flow does not run (`docs/08`); both continue from where they
-  waited, as metering's pause does, and a handler is never held.
+- **`low_power` is the fifth kind, and the one that resumes (Q62, as Q63
+  amended).** It ranks between `fault` and `redeploy`. The world raises it
+  for a bot whose battery falls to a level, and for one waking from having
+  none (`docs/08`). It is not delivered inside main flow's wait on an
+  action, so the action in progress finishes first. Its delivery abandons
+  nothing: main flow is set aside as it stands, the hook `on_low_power()`
+  — no parameter, the largest budget — runs, and the epilogue puts main
+  flow back, which continues from where it was with every variable intact.
+  It writes no fault record, since nothing failed, and a missing hook,
+  being an empty one, leaves the machine undisturbed. A fault inside
+  `on_low_power`, or its budget running out, escalates to `fault`, which
+  restarts main flow.
+- **A program can be held for power (Q62, as Q63 amended).** A bot's main
+  flow, or its `on_low_power`, that reaches a call of a game builtin the
+  bot has not the charge for waits at the boundary before the call, and a
+  dark building's main flow does not run (`docs/08`); each continues from
+  where it waited, as metering's pause does. `on_fault` and `on_dying`
+  are never held.
 - **A hook's wait spends its budget (Q32).** Every tick a hook spends waiting
   on an action (`docs/02`) debits `wait_per_tick` from the hook budget,
   so `wait` inside `on_dying` cannot hold a machine in the world forever;
@@ -103,7 +113,7 @@ world and therefore of the state hash:
 | State | Meaning | Leaves it when |
 |---|---|---|
 | **main flow** | executing `main.py`, top to bottom, across as many ticks as it takes; on reaching the end, starting again from the top | an interrupt is delivered |
-| **handler** | executing one interrupt's prologue, hook and epilogue | the epilogue completes; the hook escalates; or a higher-priority interrupt preempts |
+| **handler** | executing one interrupt's prologue, hook and epilogue — for `low_power`, with main flow set aside beneath it (Q63), which is state and hashed too | the epilogue completes; the hook escalates; or a higher-priority interrupt preempts |
 
 There is no idle state and no halted state (Q18). A "dying machine" is one in
 the `dying` handler. A machine's **fault record** is world state, so any renderer
@@ -113,13 +123,14 @@ the `fault` prologue when an exception escapes main flow; by the escalation
 when an exception escapes a hook or a hook's budget runs out; and by the
 abandonment when an interrupt cuts off an exception's unwinding, before that
 interrupt's prologue. It holds the exception's class and arguments — or the
-kind of hook whose budget ran out — the `file` and `line` of the raising
+kind of hook whose budget ran out, `on_low_power`'s excepted, whose record
+is the `LimitError` its escalation makes ([escalation](#escalation)) — the `file` and `line` of the raising
 operation, or of the last operation the hook completed, the tick of the raise,
 and the version of the bundle it belongs to. Nothing clears it: not a restart,
 not a `redeploy`, not `dying`. The next write replaces it.
 
 **Starting main flow** — at match start, after main flow's last statement,
-after a `fault`'s epilogue, a `low_power`'s, or a `redeploy`'s — means: every global of
+after a `fault`'s epilogue, or after a `redeploy`'s — means: every global of
 every module is cleared, the set of modules already run in this run is
 emptied, and `main.py` begins at its first statement. Imports re-run as they are reached
 ([syntax](syntax.md#import-and-modules)). A program is therefore a body the
@@ -131,9 +142,10 @@ machine runs over and over; one that wants memory across runs writes a
 Main flow does not run to completion inside a tick; it runs until it has
 spent the machine's **tick budget** and then yields, resuming from the same
 operation boundary next tick with every variable intact — or, for a bot
-waiting flat at a call it cannot pay for and for a dark building
-(`docs/08`, Q62), on the first tick the wait ends. This is the one
-resumption the language has (doorway invariant 3)
+out of power at a call it cannot pay for and for a dark building
+(`docs/08`, Q62, Q63), on the first tick the wait ends. With `low_power`'s
+return to main flow (Q63), this is the resumption the language has
+(doorway invariant 3)
 and the one divergence a Python programmer has to learn rather than avoid.
 
 - **An operation** is one evaluated expression node or one executed statement:
@@ -154,9 +166,9 @@ and the one divergence a Python programmer has to learn rather than avoid.
   an action and the machine yields at the boundary after it until the action
   completes, interrupts delivering at the boundaries inside the wait as
   anywhere. A bot's call of a game builtin whose charge cost its battery
-  does not cover waits at the boundary **before** the call instead, and
-  runs in the first slice that finds the charge there (`docs/08`, Charge
-  costs). Main flow restarts at most once per tick: a `main.py` with no
+  does not cover, in main flow or in `on_low_power`, waits at the boundary
+  **before** the call instead, and runs in the first slice after the bot
+  has woken (`docs/08`, Out of power). Main flow restarts at most once per tick: a `main.py` with no
   operations reaches its end boundary, restarts, and yields.
 - **The tick budget** is a per-machine tuning constant. Each tick, every
   machine runs its slice in turn until its budget is spent or it yields at
@@ -170,9 +182,11 @@ and the one divergence a Python programmer has to learn rather than avoid.
   traversal costs its full price however the ticks fall. A slice whose
   budget opens at or below zero still opens with its boundary, so
   interrupts are delivered to a machine in deficit; only operations wait. A
-  flat bot and a dark building (`docs/08`, Q62) open their slices and
+  flat bot and a dark building (`docs/08`, Q62, Q63) open their slices and
   budgets the same way, so such a tick pays down a deficit as any tick
-  does; main flow does not run on it, and a hook does. Inside a hook the same
+  does; what is held does not run on it — a flat bot's main flow or its
+  `on_low_power`, a dark building's main flow — and any other handler
+  does. Inside a hook the same
   cost is debited in full from the hook budget as well, and at a boundary
   inside a hook the hook budget is checked before the tick budget, so
   exhaustion escalates before a yield could hide it.
@@ -225,7 +239,7 @@ Highest priority first. The set is closed; adding a kind is a new question.
 | `death` | the world, when things are bad enough (`docs/02`); `dying`'s epilogue; a fault inside `on_dying` or its budget running out | none | — | the machine leaves the world |
 | `dying` | the world, when the machine is destroyed in the ordinary way (`docs/02`); a fault inside `on_fault` or its budget running out | `on_dying()` | yes | raises `death` |
 | `fault` | the machine's own code: an exception nothing caught | `on_fault(e)` | yes | main flow starts over, all variables cleared |
-| `low_power` | the world, when a bot's battery falls to its level (`docs/08`, Q62) | `on_low_power()` | yes | main flow starts over, all variables cleared |
+| `low_power` | the world, when a bot's battery falls to its level or the bot wakes from having none (`docs/08`, Q62, Q63) | `on_low_power()` | yes | main flow, set aside at delivery, continues from where it was, every variable intact |
 | `redeploy` | the command log: a program update agreed for a tick (Q12) | none | — | the machine takes its deployment's current bundle, all variables cleared, main flow starts over |
 
 What each prologue and epilogue does to the machine's *body* — whether a dying
@@ -257,13 +271,16 @@ def on_dying():
     drop("ore")                           # one of the actions docs/02 lets a dying machine take
 
 def on_low_power():
-    log("battery low", level="warn")      # main flow then starts over, and decides where to recharge
+    log("battery low", level="warn")      # recharge here; main flow then goes on where it was
 ```
 
 - `on_fault(e)` receives the exception object exactly as an `except` clause
   would have, with `file` and `line` locating the operation that raised it.
 - Hooks see globals as they were when the interrupt was delivered. Main flow's
-  locals are gone: a `fault` abandoned the frame that held them.
+  locals are gone: a `fault` abandoned the frame that held them. `low_power`
+  abandons nothing (Q63): main flow's frames wait, out of the hook's reach,
+  and what `on_low_power` does to a global main flow finds done when it
+  continues — between two of its operations, wherever the delivery fell.
 - A hook's code is metered like main flow and may span ticks; its **hook
   budget** is a total per invocation, a tuning constant per kind, debited in
   full for every operation alongside the tick budget. It is exhausted when the
@@ -294,12 +311,16 @@ def on_low_power():
    record. A `finally` that raises replaces the exception being unwound, as in
    Python.
 2. **A world-raised interrupt** (`dying`, `death`, `low_power`) **and a
-   `redeploy`** are
+   `redeploy`** — `low_power` with the one exception below — are
    delivered at the machine's **next operation boundary** — within the same tick
    if the machine still has budget, otherwise at the start of its next slice. The
    boundary before the first operation counts, so a machine whose main flow was
    just restarted takes a pending `redeploy` before executing anything. Every
    machine is always running something, so every machine has a next boundary.
+   **`low_power` lets the action in progress finish** (Q63): at a boundary
+   inside main flow's wait on an action it is not delivered and stays
+   pending, while any other pending kind is delivered there as always; the
+   first boundary after the action completes delivers it.
 3. **Priority.** If a handler is running, an interrupt of higher priority
    **preempts** it: the running handler is abandoned where it stands, hook and
    epilogue both, and the new handler's prologue runs. There is no handler
@@ -307,18 +328,22 @@ def on_low_power():
    higher kind preempts a `fault` handler there — after the record is written,
    before the epilogue restarts anything. An interrupt of equal or lower priority
    **waits** until the running handler's epilogue completes, then is delivered
-   at the next boundary. An exception raised by the running hook's *own* code
+   at the next boundary. One equal does not wait (Q63): a `low_power` that
+   finds `on_low_power` held for power — the bot waking, `docs/08` — is
+   delivered at that boundary and **starts the hook over**, its budget
+   anew, with main flow still set aside. An exception raised by the running hook's *own* code
    is not an arriving interrupt: it is delivered at once by rule 1 and goes
    where [escalation](#escalation) says, whatever its rank against the hook.
 4. **Coalescing.** At most one pending entry per kind: a second `dying`,
    `death`, `low_power` or `redeploy` arriving while one is pending or
-   running merges into it. A `redeploy` carries no bundle of its own — its epilogue loads whatever
+   running merges into it — a `low_power` arriving while `on_low_power`
+   runs and is not held is simply dropped. A `redeploy` carries no bundle of its own — its epilogue loads whatever
    the deployment's slot holds at swap time — so coalescing cannot deliver a stale
    version. A `fault` is never pending: it exists at the moment an exception
    escapes and is delivered at that moment (rule 1).
 5. **The pending set survives everything except `death`.** A `fault`'s
-   epilogue, a `low_power`'s and a `redeploy`'s clear variables, not
-   pending interrupts. Since nothing ranks below `redeploy`, a pending entry at a
+   epilogue and a `redeploy`'s clear variables, not pending interrupts,
+   and a `low_power`'s clears neither. Since nothing ranks below `redeploy`, a pending entry at a
    `redeploy` is always higher and takes effect at the next boundary.
 
 ### Escalation
@@ -337,7 +362,13 @@ strictly increasing, so it terminates.
 - A fault inside **`on_low_power`**, or its budget running out, escalates
   to **`fault`** (Q62): the record is written for it, `on_fault` runs if it
   is defined, and `fault`'s epilogue restarts main flow. `low_power`'s own
-  epilogue does not run, and would have done the same.
+  epilogue does not run, so the main flow set aside is abandoned with the
+  hook (Q63). `on_fault(e)` takes
+  an exception, so here a budget that ran out is one: a `LimitError` whose
+  one argument is the string `on_low_power exhausted its budget`, located
+  at the last operation the hook completed, on the tick it ran out. It is
+  what `on_fault` receives and what the record holds; no code raised it,
+  so nothing could have caught it.
 - A fault inside **`on_fault`**, or its budget running out, escalates to
   **`dying`**. The fault record is rewritten for it (Q20); `fault`'s epilogue
   does not run — the machine is dying, and a software failure still gets last
@@ -351,7 +382,12 @@ strictly increasing, so it terminates.
 - **`death` during `on_dying`** preempts it: `on_dying` and `dying`'s epilogue
   are abandoned, and `death`'s prologue and epilogue run.
 - **`redeploy` during `on_fault`** waits, and during `on_low_power` the
-  same. `on_fault` returns, its epilogue
+  same: the hook returns, main flow is put back, and the swap is delivered
+  at its next boundary.
+- **A higher kind during `on_low_power`** preempts it, and the main flow
+  set aside is abandoned with the hook; an exception main flow was
+  unwinding when it was set aside is then written to the fault record as
+  if it had escaped ([delivery](#delivery) rule 1). `on_fault` returns, its epilogue
   restarts the old main flow, and delivery rule 2 delivers the swap at the
   boundary before the first operation, so the old program executes nothing
   further. If `on_fault` escalates instead, the machine is dying and the

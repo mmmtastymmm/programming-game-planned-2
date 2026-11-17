@@ -193,8 +193,9 @@ loop:
 2. **Every machine's slice**, in ascending entity id: its main flow or
    handler runs until its tick budget is spent or it yields at a restart
    (`01`, Metering), with interrupts delivered at its boundaries; a dark
-   building's main flow does not run and a flat bot's waits at the call
-   it cannot pay for, though a handler always runs (`08`; Q62). Actions begun in a slice begin in this order, and actions
+   building's main flow does not run, and a flat bot's main flow or
+   `on_low_power` waits at the call it could not pay for, though any
+   other handler runs (`08`; Q62, Q63). Actions begun in a slice begin in this order, and actions
    completing on this tick complete in ascending entity id after every
    slice has run.
 3. **Action completions**, in ascending entity id: moves land, transfers
@@ -219,7 +220,8 @@ loop:
 6. **Power and printing**: in team order, every team's grids are traced
    and served, oldest building first, which sets each building's
    `powered` and `grid` until the next tick's step 6; every bot's solar is
-   added; its printers that are ready, powered and above zero health begin
+   added and its flat bots that have the charge wake (Q63); its printers
+   that are ready, powered and above zero health begin
    prints by turns until its bots and prints in progress reach its cap
    (Q42; `02`, Printing); and its grids' figures are kept (Q62). The order
    inside this step is `08`'s, The power step, and is stated there alone.
@@ -312,8 +314,10 @@ and the model it becomes, its store capacity, which for a site is its
 price, fixed at placement (Q42), its fault record, and its **execution
 state**: the program counter, every frame's locals, every global, the
 deficit, the pending interrupt set, whether it is in main flow or a handler
-and which kind, the hook budget spent so far in that handler, and the set
-of modules already run in this run (`01`). Every `num` is its i128; every
+and which kind, the hook budget spent so far in that handler, the main
+flow set aside while `on_low_power` runs and the call a flat bot is held
+before (Q63, `01`), and the set of modules already run in this run
+(`01`). Every `num` is its i128; every
 `str` its UTF-8 bytes length-prefixed; every collection its elements in
 iteration order.
 
@@ -434,8 +438,8 @@ replay's playback drive one, and `replay` builds one from a replay file.
   at the end of the tick in progress, with the cause *paused*. *Line* and
   *over* need a selected machine; the others do not. *Line*, *over*,
   *continue* and *run* also stop when the selected machine is delivered
-  `dying`, when its program restarts (a fault, a `low_power`, a redeploy,
-  or main flow running off its end), when its `death` runs — inside its slice, at that
+  `dying`, when its program restarts (a fault, a redeploy, or main flow
+  running off its end — not a `low_power`, which restarts nothing, Q63), when its `death` runs — inside its slice, at that
   position, or in step 4, at `(tick, damage, machine)` — and when its team
   is out and step 5 removes it, at `(tick, end)`, the machine named though
   gone. Every step but *run* stops after a number of ticks with no other

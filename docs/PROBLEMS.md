@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-15: 9 opened, 7 fixed — 2 open.**
+**Status 2026-11-16: 9 opened, 7 fixed — 2 open.**
 
 ## Open
 
@@ -55,15 +55,18 @@ the commit that changes the numbers or the rule.
 **P8 — The code lags Q62: no batteries, charge costs, grids, chargers, pylons or wire**
 
 This entry was opened against Q59, whose power was never built; Q62
-withdrew Q59 and ruled power again, so the gap is now Q62's. Q62 ruled
-that every bot has a battery its calls run down and its own solar
-refills, that `low_power` is a fifth interrupt, that buildings generate
+withdrew Q59 and ruled power again, and Q63 amended it, so the gap is
+now theirs. They ruled that every bot has a battery its calls run down
+and its own solar refills, that a bot out of power waits to be charged
+back to a level, that `low_power` is a fifth interrupt, which returns to
+main flow, that buildings generate
 and drain and share power as grids served oldest first, that a building
 a grid cannot cover goes dark, and that grids are joined by pylons or by
 underground wire; `01`, `02`, `03`, `05`, `06`, `07` and `08` state it as
-current. None of it exists: the interpreter has four interrupt kinds and
-no wait before a call, the sim has no charge, no grid, no power step and
-no `charger`, `solar` or `pylon` model, a print needs no power, and the
-renderer draws none of it. The work is [T39](TASKS.md), [T31](TASKS.md)
+current. None of it reaches a match: the interpreter has the fifth kind,
+its return to main flow and the wait before a call, from T39's work, which nothing yet raises or
+asks for; the sim has no charge, no grid, no power step and no `charger`,
+`solar` or `pylon` model, a print needs no power, and the renderer draws
+none of it. The work is [T39](TASKS.md), [T31](TASKS.md)
 and [T32](TASKS.md); this entry closes with the commit that finishes
 whichever lands last.

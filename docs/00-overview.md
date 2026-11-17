@@ -80,7 +80,8 @@ pass.
   which byte-exact program version a machine runs is part of the state hash.
 - **The language's rulings live in [01-language](01-language.md)** — Q5 and
   Q13 (the boundary), Q8, Q11, Q16, Q17, Q18 and Q20 (execution and
-  interrupts), Q62's fifth interrupt and its wait for charge, Q14 and Q19
+  interrupts), Q62's fifth interrupt, which Q63 has return to main flow,
+  and their wait for charge, Q14 and Q19
   (numbers), Q41's hook sources, Q52 (free docstrings) and Q56 (type
   annotations) are the Decided entries of the
   parts that elaborate them, and they are not repeated here.
@@ -91,8 +92,9 @@ pass.
   the deployments), Q43 (a bot's color) and Q62 (what power adds to a
   machine) are its Decided entries, and they are not repeated here; Q31
   and Q40, which Q42 withdrew, and Q59, which Q62 withdrew, have none.
-- **Power's ruling lives in [08-power](08-power.md)** — Q62 (batteries,
-  grids, chargers, pylons and wire) is its Decided entry, and it is not
+- **Power's rulings live in [08-power](08-power.md)** — Q62 (batteries,
+  grids, chargers, pylons and wire) and Q63 (a `low_power` that returns,
+  and a bot out of power) are its Decided entries, and they are not
   repeated here.
 - **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint,
   overlays and, as Q62 extends it, wires only on ground the team has seen)

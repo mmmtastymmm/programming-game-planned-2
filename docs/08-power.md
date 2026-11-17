@@ -14,12 +14,13 @@ cites this doc for the rule.
   own solar refills, buildings generate and drain, connected buildings
   share what they make as a grid, and a line between them is a row of
   pylons or a wire underground (Q62, withdrawing Q59 and amending Q8, Q10,
-  Q16, Q23, Q27, Q37, Q41, Q42, Q49, Q53 and Q56).** A battery holds
+  Q16, Q23, Q27, Q37, Q41, Q42, Q49, Q53 and Q56; its flat bot and its
+  `low_power` as Q63 amended them, below).** A battery holds
   **charge**, a `num`. Every game builtin a bot calls has a charge cost in
   data, which may be zero; a bot whose charge does not cover the call it
   has reached is **flat** and waits there, and its solar wakes it. At a
   level of its battery set in data, a fifth, a bot takes the `low_power`
-  interrupt, the fifth kind, and its main flow starts over. Every building model has a
+  interrupt, the fifth kind. Every building model has a
   generation and a drain per tick; a team's buildings that touch, or are
   joined by its wire or its pylons, are a **grid**, served oldest first,
   each building keeping its own battery; a building the grid cannot cover
@@ -31,6 +32,17 @@ cites this doc for the rule.
   it. Q59's flow, its printer at the root of every grid, its newest bots
   stopping and its spare power for a print are withdrawn and have no entry
   anywhere.
+- **`low_power` returns to main flow, and a bot out of power charges back
+  to a level before it acts (Q63, amending Q62 and Q8).** `low_power`
+  waits for the action in progress, sets main flow aside, runs
+  `on_low_power`, which may do anything — a whole trip to a charger — and
+  puts main flow back where it was, every variable intact; a bot with no
+  hook is not disturbed. A bot whose main flow or whose `on_low_power`
+  reaches a call it cannot pay for is out of power: flat until its solar
+  has brought it to a **wake level** in data, which starts equal to the
+  low-power level. Waking raises `low_power`, so the hook runs first — or
+  starts over, if it was the hook that ran dry. `on_fault` and `on_dying`
+  are never held for power.
 
 ## Charge and batteries
 
@@ -61,11 +73,12 @@ to anything. A printer the map places starts full. A building a site
 becomes starts with none.
 
 **The sim refuses data** in which the bot's `generation` or `battery` is
-not above zero; in which any charge cost (below) is above the bot's
-`battery`; in which the printer's `generation` is below its `drain` plus
-its `print_drain`; or in which `low_power_level` is not above zero and
-below one. The first two mean a flat bot always wakes; the third, that a
-printer is never dark.
+not above zero; in which `low_power_level` is not above zero and below
+one, or `wake_level` is not above zero and at most one; in which any
+charge cost (below) is above `wake_level × battery` for the bot; or in
+which the printer's `generation` is below its `drain` plus its
+`print_drain`. The first three mean a flat bot always wakes and can then
+pay for any one call (Q63); the last, that a printer is never dark.
 
 ## A bot's battery
 
@@ -76,25 +89,28 @@ table in data named for the builtin, zero or more. It is what a **bot's**
 call of that builtin takes from the bot's battery; a building's calls take
 nothing, since a building pays by its drain.
 
-In main flow, a call whose cost is zero runs as it always did. For any
-other:
+In main flow and in `on_low_power`, a call whose cost is zero runs as it
+always did. For any other:
 
-1. **If the bot's `charge` is below the cost, the call does not begin.**
-   The bot is **flat** — its `flat` attribute is `True` — and main flow
-   waits at the boundary before the call, as it waits on an action
-   (`01`, Metering), with interrupts delivered there as at any boundary.
-2. **In the first slice whose opening finds the charge at or above the
-   cost**, `flat` becomes `False` and the call runs as if first reached in
-   that slice: its preconditions are checked then, and a failure is the
+1. **If the bot is flat, or its `charge` is below the cost, the call does
+   not begin.** The bot is **out of power** (below) — its `flat`
+   attribute is `True` — and the program waits at the boundary before the
+   call, as it waits on an action (`01`, Metering), with interrupts
+   delivered there as at any boundary. Nothing of the call is charged, in
+   charge or in cycles; what evaluating its arguments cost was spent
+   before it, as any earlier operation's is — `log`'s rendering of an
+   instance through `__str__` included.
+2. **In the first slice that reaches that boundary with the bot awake**,
+   the call runs as if first reached in that slice: the test above is
+   made again, then its preconditions are checked, and a failure is the
    builtin's `ValueError`, which takes no charge.
 3. **Otherwise the cost leaves the battery as the builtin begins**, with
    its cost in cycles (`01`, costs). An action, once begun, is never held
    for power: its ticks count down whatever the battery holds.
 
-A call inside a **hook** is never held: it takes `min(cost, charge)` and
-runs, so `dying` still ends in `death` and a flat bot's `on_fault` still
-runs. A handler delivered while a bot is flat abandons the wait with the
-main flow it belonged to, and `flat` becomes `False`.
+A call inside **`on_fault` or `on_dying`** is never held: it takes
+`min(cost, charge)` and runs, whether or not the bot is flat, so `dying`
+still ends in `death` and a flat bot's `on_fault` still runs.
 
 ### Solar
 
@@ -103,6 +119,32 @@ In the tick's power step (below), every bot's charge rises by its model's
 charges a bot without its acting, and since data keeps it above zero, a
 flat bot is flat for a bounded number of ticks: no team can lock itself by
 running its bots down.
+
+### Out of power
+
+A bot is **out of power** (Q63) from the moment its main flow or its
+`on_low_power` reaches a call it cannot pay for (Charge costs) until it
+**wakes**; its `flat` attribute says so. While it is flat:
+
+- **No call with a charge cost begins** in main flow or in
+  `on_low_power`, whatever the battery has since come to hold; each waits
+  at the boundary before it. A call that costs nothing runs.
+- **Everything else goes on.** Interrupts are delivered; a `redeploy`
+  swaps the program, and a restart of main flow, by a fault or a
+  redeploy, leaves the bot flat. `on_fault` and `on_dying` run and are not
+  held. The bot keeps its tile, its load and its health, and can be
+  attacked.
+- **Its solar charges it**, in the power step, like any bot's.
+
+**Waking.** In the power step, straight after the bots' solar, every flat
+bot whose charge is at least `wake_level × battery`, both from data, in
+ascending entity id: it is no longer flat, and `low_power` is raised for
+it, armed or not (Low power, below). What follows is `01`'s: if main flow
+was what stopped, `on_low_power` runs first and main flow then makes the
+call it stopped at; if `on_low_power` was what stopped, it starts over
+from its first line, with main flow still set aside beneath it; and a bot
+with no hook simply goes on. Data starts `wake_level` equal to
+`low_power_level`, and the two are tuned apart freely.
 
 ### Recharging
 
@@ -114,21 +156,28 @@ charger's is high, the printer's lower.
 
 ### Low power
 
-`low_power` is the fifth interrupt kind, between `fault` and `redeploy`;
-what it does to execution is [01-language](01-language/execution.md)'s,
-and to the body, `02`'s. The world raises it from a bot's battery alone:
+`low_power` is the fifth interrupt kind, between `fault` and `redeploy`,
+and the one that returns to main flow (Q63): it waits for the action in
+progress, runs `on_low_power` with main flow set aside, and puts main
+flow back where it was. What that is in execution is
+[01-language](01-language/execution.md)'s, and what it does to the body
+— nothing — is `02`'s. The hook may do anything, and is where a program
+goes to recharge. The world raises the kind from a bot's battery alone,
+in two cases:
 
-- A bot is **armed** when it is printed.
-- Whenever a bot's charge changes — a call's cost, a `recharge`, the
+- **Falling to the level.** A bot is **armed** when it is printed.
+  Whenever a bot's charge changes — a call's cost, a `recharge`, the
   solar — the level `low_power_level × battery` is compared, both from
   data. An armed bot whose charge is **at or below** the level has
   `low_power` raised for it and is no longer armed. A bot that is not
   armed and whose charge is **above** the level is armed again.
+- **Waking** from being out of power (above), armed or not, which leaves
+  whether it is armed as it was.
 
-So the interrupt comes once each time the battery falls through the level,
-however long it then stays low, and not again until the bot has been above
-it. Whether a bot is armed is its state, in the hash. A building is never
-armed and never takes the interrupt.
+So the interrupt comes once each time the battery falls through the
+level, however long it then stays low, once each time the bot wakes, and
+not otherwise. Whether a bot is armed is its state, in the hash. A
+building is never armed and never takes the interrupt.
 
 ## Grids
 
@@ -168,8 +217,9 @@ In step 6 of the tick (`06`), for each team in order:
    3. *What is left.* The pool fills the grid's batteries in ascending
       entity id, each to its `battery`, and whatever then remains is lost.
 3. **Every bot's solar** is added (Solar, above), in ascending entity id.
-4. **Prints begin** (`02`, Printing).
-5. **The figures are kept**: for each grid its label and four sums over
+4. **Flat bots wake** that have the charge to (Out of power, above).
+5. **Prints begin** (`02`, Printing).
+6. **The figures are kept**: for each grid its label and four sums over
    its buildings — `generation`; `drain`, every need, powered or dark;
    `stored`, the charge held after the step; and `capacity`, the
    batteries' — as team state, in the hash, which `power()` (`02`) returns.

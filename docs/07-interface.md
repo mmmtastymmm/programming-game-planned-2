@@ -39,7 +39,8 @@ hash; a peer with a different renderer sees the same match.
   of jobs between bots by rank) and `jobs` (the starter bot's build,
   paint, wire, recharge and patrol steps — the wire step, carrying out the
   team's wire plans, and the recharge step, taking a bot low on charge to
-  the nearest powered building that holds some, as Q62 added). `robots/bot.py` imports `jobs` and is the loop
+  the nearest powered building that holds some, which the starter's
+  `interrupts/on_low_power.py` calls, as Q62 and Q63 added). `robots/bot.py` imports `jobs` and is the loop
   alone. The player may read, edit, replace or delete any of it; none of
   it is a game module (`02`), and nothing in the sim knows it exists.
 - **Everything floats over the map, as windows (Q39, amending Q33 and the
