@@ -60,6 +60,9 @@ pub struct Inspection {
     pub handler: Option<HandlerView>,
     /// A host call is waiting on an action.
     pub waiting: bool,
+    /// Main flow is held before a game builtin's call the host is not
+    /// ready for (`docs/08`: a flat bot).
+    pub held: bool,
     pub dead: bool,
 }
 
@@ -268,6 +271,7 @@ impl Machine {
                 }),
             },
             waiting: self.waiting,
+            held: self.held.is_some(),
             dead: self.dead,
         }
     }

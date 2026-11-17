@@ -1,0 +1,97 @@
+version de304f91cf20ad41
+  call wait()
+tick 1: Wait mode=main spent=5 deficit=0
+  call log(main, 1)
+  flat at move(), charge 2
+tick 2: Held mode=main spent=14 deficit=0
+  call move(n)
+  call log(moved, 1, 0)
+  flat at move(), charge 0
+tick 3: Held mode=main spent=20 deficit=0
+  flat at move(), charge 1
+tick 4: Held mode=main spent=0 deficit=0
+tick 5: raise low_power
+  call log(on_low_power starts, 0)
+  flat at move(), charge 2
+  event LowPower
+tick 5: Held mode=low_power spent=10 deficit=0
+  call move(s)
+  call wait()
+tick 6: Wait mode=low_power spent=4 deficit=0
+  call log(on_low_power done, 6)
+  flat at move(), charge 1
+tick 7: Held mode=main spent=15 deficit=0
+  flat at move(), charge 2
+tick 8: Held mode=main spent=0 deficit=0
+  call move(n)
+  call log(moved, 2, 1)
+  flat at move(), charge 0
+tick 9: Held mode=main spent=20 deficit=0
+  flat at move(), charge 1
+tick 10: Held mode=main spent=0 deficit=0
+  flat at move(), charge 2
+tick 11: Held mode=main spent=0 deficit=0
+  call move(n)
+  call log(moved, 3, 1)
+tick 12: Restarted mode=main spent=22 deficit=0
+  call wait()
+tick 13: Wait mode=main spent=5 deficit=0
+tick 14: raise low_power
+tick 14: raise redeploy
+  call log(on_low_power starts, 0)
+  flat at move(), charge 2
+  event LowPower
+tick 14: Held mode=low_power spent=10 deficit=0
+  call move(s)
+  call wait()
+tick 15: Wait mode=low_power spent=4 deficit=0
+  call log(on_fault, IndexError: 15, 21, 16)
+  event Escalated { from: LowPower, to: Fault }
+  event Fault(Exception { class: IndexError, args: [Num(num(15))], file: Some("main.py"), line: 21, tick: 16, user: None })
+tick 16: Restarted mode=main spent=39 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call wait()
+  event Redeploy { swapped: true }
+tick 17: Wait mode=main spent=5 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call log(main, 17)
+  call move(n)
+  call log(moved, 1, 0)
+  flat at move(), charge 0
+tick 18: Held mode=main spent=34 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  flat at move(), charge 1
+tick 19: Held mode=main spent=0 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  flat at move(), charge 2
+tick 20: Held mode=main spent=0 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call move(n)
+  call log(moved, 2, 0)
+  flat at move(), charge 0
+tick 21: Held mode=main spent=20 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+tick 22: raise low_power
+  call log(on_low_power starts, 0)
+  flat at move(), charge 1
+  event LowPower
+tick 22: Held mode=low_power spent=10 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+tick 23: raise low_power
+  call log(on_low_power starts, 0)
+  flat at move(), charge 2
+  event LowPower
+tick 23: Held mode=low_power spent=10 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call move(s)
+  call wait()
+tick 24: Wait mode=low_power spent=4 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call log(on_low_power done, 24)
+  flat at move(), charge 1
+tick 25: Held mode=main spent=15 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  flat at move(), charge 2
+tick 26: Held mode=main spent=0 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call move(n)
+  call log(moved, 3, 1)
+tick 27: Restarted mode=main spent=22 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call wait()
+tick 28: Wait mode=main spent=5 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call log(main, 28)
+  flat at move(), charge 2
+tick 29: Held mode=main spent=14 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41
+  call move(n)
+  call log(moved, 1, 0)
+  flat at move(), charge 0
+tick 30: Held mode=main spent=20 deficit=0 record=IndexError: 15@main.py:21 tick 16 vde304f91cf20ad41

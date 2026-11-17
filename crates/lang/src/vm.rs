@@ -6,8 +6,8 @@
 //!
 //! This is T10's slice of the interrupt model: main flow, metering, the
 //! restart at the end of `main.py`, and a `fault` that writes its record and
-//! restarts. Hooks, `dying`, `death` and `redeploy` are raised by the sim
-//! (T7) and land there.
+//! restarts. Hooks, `dying`, `death`, `low_power` and `redeploy` are raised
+//! by the sim (T7, T31) and land there.
 
 use crate::ast::{BinOp, CmpOp, Stmt, StmtKind, UnaryOp};
 use crate::builtins::{self, Outcome};
@@ -33,21 +33,23 @@ pub use debug::{EditTarget, FrameView, HandlerView, Inspection, ModuleView};
 /// A loaded bundle: `main.py` and the modules it may import, each compiled,
 /// with the import graph checked for cycles.
 /// A hook's code, and the module it was defined in when that is not
-/// `main.py` — the interrupt file `on_fault.py` or `on_dying.py` (Q41),
-/// whose body runs before the hook the first time, as an import would.
+/// `main.py` — the interrupt file `on_fault.py`, `on_dying.py` or
+/// `on_low_power.py` (Q41, Q62), whose body runs before the hook the first
+/// time, as an import would.
 #[derive(Debug, Clone)]
 pub struct Hook {
     pub code: Rc<Code>,
     pub module: Option<String>,
 }
 
-/// The two hooks, bound at load from `main.py`'s top-level `def`s, else
-/// from the interrupt file of the same name (`execution.md`, Hooks, Q41):
-/// a property of the bundle, not of how far the program has run.
+/// The three hooks, bound at load from `main.py`'s top-level `def`s, else
+/// from the interrupt file of the same name (`execution.md`, Hooks, Q41,
+/// Q62): a property of the bundle, not of how far the program has run.
 #[derive(Debug, Clone, Default)]
 pub struct Hooks {
     pub on_fault: Option<Hook>,
     pub on_dying: Option<Hook>,
+    pub on_low_power: Option<Hook>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +145,9 @@ impl Program {
             if stem == "on_dying" && hooks.on_dying.is_none() {
                 hooks.on_dying = from_file.on_dying;
             }
+            if stem == "on_low_power" && hooks.on_low_power.is_none() {
+                hooks.on_low_power = from_file.on_low_power;
+            }
         }
         // The module set is closed and known at load: every import names a
         // bundle file or a game module, and the graph has no cycle.
@@ -173,11 +178,12 @@ impl Program {
 }
 
 /// The hook names, which are also the interrupt files' stems (Q41).
-const HOOK_NAMES: [&str; 2] = ["on_fault", "on_dying"];
+const HOOK_NAMES: [&str; 3] = ["on_fault", "on_dying", "on_low_power"];
 
-/// Find `on_fault` and `on_dying` among a file's top-level `def`s and
-/// check their shape: `on_fault` takes exactly one parameter, `on_dying`
-/// none; two top-level `def`s of one hook name are a load error. `module`
+/// Find the hook names among a file's top-level `def`s and check their
+/// shape: `on_fault` takes exactly one parameter, `on_dying` and
+/// `on_low_power` none; two top-level `def`s of one hook name are a load
+/// error. `module`
 /// is the interrupt file's stem when the file is one, `None` for
 /// `main.py`; an interrupt file binds only its own name.
 fn bind_hooks(
@@ -194,7 +200,7 @@ fn bind_hooks(
         };
         let want = match name.as_str() {
             "on_fault" => 1,
-            "on_dying" => 0,
+            "on_dying" | "on_low_power" => 0,
             _ => continue,
         };
         if module.is_some_and(|m| m != name) {
@@ -226,10 +232,10 @@ fn bind_hooks(
             code,
             module: module.map(str::to_string),
         };
-        if name == "on_fault" {
-            hooks.on_fault = Some(hook);
-        } else {
-            hooks.on_dying = Some(hook);
+        match name.as_str() {
+            "on_fault" => hooks.on_fault = Some(hook),
+            "on_dying" => hooks.on_dying = Some(hook),
+            _ => hooks.on_low_power = Some(hook),
         }
     }
     Ok(hooks)
@@ -326,14 +332,25 @@ pub trait Host {
     fn on_prologue(&mut self, _kind: Interrupt) -> Option<Interrupt> {
         None
     }
+
+    /// Whether the machine may begin the game builtin `name` now, asked
+    /// before a call of it in main flow and in `on_low_power`, and in no
+    /// other hook (`docs/08`: a bot out of power waits at the boundary
+    /// before the call it cannot pay for). `false` holds main flow there: nothing of the
+    /// call is charged or begun, the slice ends [`Slice::Held`], and the
+    /// question is put again when the next slice reaches that boundary.
+    fn ready(&mut self, _name: &str) -> bool {
+        true
+    }
 }
 
 /// The interrupt kinds, ascending priority (`execution.md`, Kinds). A
 /// `fault` is never pending: it is delivered the instant an exception
-/// escapes; the other three are raised by the world or the command log.
+/// escapes; the other four are raised by the world or the command log.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Interrupt {
     Redeploy,
+    LowPower,
     Fault,
     Dying,
     Death,
@@ -343,9 +360,24 @@ impl Interrupt {
     pub fn name(self) -> &'static str {
         match self {
             Interrupt::Redeploy => "redeploy",
+            Interrupt::LowPower => "low_power",
             Interrupt::Fault => "fault",
             Interrupt::Dying => "dying",
             Interrupt::Death => "death",
+        }
+    }
+
+    /// The kind's byte in the state hash. It is not the kind's rank: Q62
+    /// put `low_power` between two older kinds, and numbering by rank
+    /// would have changed the byte of every kind above it, and with it
+    /// every hash taken while one was pending or being handled.
+    pub fn code(self) -> u8 {
+        match self {
+            Interrupt::Redeploy => 0,
+            Interrupt::Fault => 1,
+            Interrupt::Dying => 2,
+            Interrupt::Death => 3,
+            Interrupt::LowPower => 4,
         }
     }
 }
@@ -365,6 +397,9 @@ pub enum Event {
     Escalated { from: Interrupt, to: Interrupt },
     /// The `dying` prologue ran.
     Dying,
+    /// `low_power` was delivered (Q62, Q63): main flow is set aside, the
+    /// hook runs, and main flow goes on from where it was when it returns.
+    LowPower,
     /// The `death` epilogue ran: the machine leaves the world.
     Death,
     /// The `redeploy` epilogue ran; `swapped` if the host supplied a bundle.
@@ -430,6 +465,12 @@ pub enum Slice {
     Yield,
     /// A game builtin began a waiting action; call `resume` when it is done.
     Wait,
+    /// The program is held and ran nothing further: the host is not ready
+    /// for the game builtin main flow or `on_low_power` has reached
+    /// ([`Host::ready`]), or the host held main flow for the whole slice
+    /// ([`Machine::run_slice_held`]). Interrupts were delivered as in any
+    /// slice.
+    Held,
     /// Main flow started again from the top — after its last statement,
     /// or a `fault`'s epilogue. What happened on the way is in the events.
     Restarted,
@@ -562,6 +603,15 @@ pub struct Machine {
     /// result goes to the native, not the frame's stack.
     native_waiting: bool,
     native_input: Option<Value>,
+    /// The game builtin's call main flow is held before (`Host::ready`
+    /// said no): made when a later slice finds the host ready, abandoned
+    /// with main flow by any interrupt.
+    held: Option<Held>,
+    /// Main flow as `low_power` found it, set aside while `on_low_power`
+    /// runs and taken up again when the hook returns (Q63).
+    suspended: Option<Suspended>,
+    /// The host holds main flow for this whole slice (`run_slice_held`).
+    main_held: bool,
     /// The live-values limit (`execution.md`, Limits) is exact but not
     /// walked at every store: `live_pressure` counts every value created
     /// or reference stored since the last walk, an upper bound on growth,
@@ -609,6 +659,9 @@ impl Machine {
             waiting: false,
             native_waiting: false,
             native_input: None,
+            held: None,
+            suspended: None,
+            main_held: false,
             live_measured: 0,
             live_pressure: 0,
             fault_record: None,
@@ -644,6 +697,8 @@ impl Machine {
         self.waiting = false;
         self.native_waiting = false;
         self.native_input = None;
+        self.held = None;
+        self.suspended = None;
     }
 
     /// Replace the program (a `redeploy`'s swap) and start it from the top.
@@ -710,9 +765,26 @@ impl Machine {
     /// machine's next boundary, coalescing with one already pending. A
     /// `fault` cannot be raised: it exists only when an exception escapes.
     pub fn raise(&mut self, kind: Interrupt) {
-        if kind != Interrupt::Fault && !self.dead {
-            self.pending.insert(kind);
+        if kind == Interrupt::Fault || self.dead {
+            return;
         }
+        // A `low_power` arriving while `on_low_power` runs merges into it
+        // — unless the hook is held for power, when it is the bot waking
+        // and the hook starts over (`docs/08`, Out of power).
+        if kind == Interrupt::LowPower && self.in_low_power() && self.held.is_none() {
+            return;
+        }
+        self.pending.insert(kind);
+    }
+
+    fn in_low_power(&self) -> bool {
+        matches!(
+            self.mode,
+            Mode::Handler {
+                kind: Interrupt::LowPower,
+                ..
+            }
+        )
     }
 
     /// The lifecycle events since the last call, in order.
@@ -741,25 +813,7 @@ impl Machine {
     pub fn state_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         let mut seen = BTreeSet::new();
-        out.extend_from_slice(&(self.frames.len() as u64).to_le_bytes());
-        for f in &self.frames {
-            write_str(&mut out, &f.code.name);
-            out.extend_from_slice(&(f.pc as u64).to_le_bytes());
-            out.extend_from_slice(&(f.locals.len() as u64).to_le_bytes());
-            for l in &f.locals {
-                match l {
-                    Some(v) => {
-                        out.push(1);
-                        hash_value(v, &mut out, &mut seen);
-                    }
-                    None => out.push(0),
-                }
-            }
-            out.extend_from_slice(&(f.stack.len() as u64).to_le_bytes());
-            for v in &f.stack {
-                hash_value(v, &mut out, &mut seen);
-            }
-        }
+        write_frames(&mut out, &self.frames, &mut seen);
         let globals = self.globals.borrow();
         out.extend_from_slice(&(globals.len() as u64).to_le_bytes());
         for (k, v) in globals.iter() {
@@ -769,7 +823,7 @@ impl Machine {
         out.extend_from_slice(&self.deficit.to_le_bytes());
         out.push(self.pending.len() as u8);
         for p in &self.pending {
-            out.push(*p as u8);
+            out.push(p.code());
         }
         match self.mode {
             Mode::Main => out.push(0),
@@ -780,7 +834,7 @@ impl Machine {
                 hook_running,
             } => {
                 out.push(1);
-                out.push(kind as u8);
+                out.push(kind.code());
                 out.extend_from_slice(&hook_spent.to_le_bytes());
                 out.extend_from_slice(&hook_budget.to_le_bytes());
                 out.push(u8::from(hook_running));
@@ -798,7 +852,32 @@ impl Machine {
                 hash_value(v, &mut out, &mut seen);
             }
         }
+        // A held call's arguments are on no stack, so they are written
+        // here — and only when there is one, so that a machine never held
+        // hashes as it did before the hold existed (T39).
+        if let Some(h) = &self.held {
+            out.push(1);
+            write_held(&mut out, h, &mut seen);
+        }
+        // Main flow set aside for `on_low_power` (Q63), on the same terms.
+        if let Some(s) = &self.suspended {
+            out.push(2);
+            write_frames(&mut out, &s.frames, &mut seen);
+            match &s.held {
+                Some(h) => {
+                    out.push(1);
+                    write_held(&mut out, h, &mut seen);
+                }
+                None => out.push(0),
+            }
+        }
         out
+    }
+
+    /// Whether main flow is held before a game builtin's call the host is
+    /// not ready for (`docs/08`: a flat bot).
+    pub fn is_held(&self) -> bool {
+        self.held.is_some()
     }
 
     /// `main` or the running handler's kind, for a transcript.
@@ -811,11 +890,24 @@ impl Machine {
 
     /// The pending interrupt that outranks what is running, if any.
     fn deliverable(&self) -> Option<Interrupt> {
-        let top = *self.pending.iter().next_back()?;
-        match self.mode {
-            Mode::Main => Some(top),
-            Mode::Handler { kind, .. } => (top > kind).then_some(top),
-        }
+        self.pending
+            .iter()
+            .rev()
+            .copied()
+            .find(|&k| match self.mode {
+                // `low_power` lets the action in progress finish (Q63): it is
+                // not delivered inside main flow's wait on one, where a
+                // `redeploy` pending beside it still is.
+                Mode::Main => !(k == Interrupt::LowPower && self.waiting),
+                // Higher preempts; and a `low_power` that finds its own hook
+                // held for power is the bot waking, which starts the hook over.
+                Mode::Handler { kind, .. } => {
+                    k > kind
+                        || (k == Interrupt::LowPower
+                            && kind == Interrupt::LowPower
+                            && self.held.is_some())
+                }
+            })
     }
 
     fn record_exception(&mut self, exc: &Exception) {
@@ -833,7 +925,18 @@ impl Machine {
     /// handler. An exception mid-unwind is recorded as if it had escaped.
     /// `Some` ends the slice.
     fn deliver(&mut self, host: &mut dyn Host, kind: Interrupt) -> Option<Slice> {
-        if let Some(unwinding) = self.frames.iter().find_map(|f| f.pending.clone()) {
+        if kind == Interrupt::LowPower {
+            return self.deliver_low_power(host);
+        }
+        // Main flow set aside for `on_low_power` is abandoned with the
+        // hook, and an exception it was unwinding is cut off like any.
+        let suspended = self.suspended.take();
+        let unwinding = suspended
+            .iter()
+            .flat_map(|s| s.frames.iter())
+            .chain(self.frames.iter())
+            .find_map(|f| f.pending.clone());
+        if let Some(unwinding) = unwinding {
             self.record_exception(&unwinding);
             self.events.push(Event::Abandoned(unwinding));
         }
@@ -843,6 +946,7 @@ impl Machine {
         self.waiting = false;
         self.native_waiting = false;
         self.native_input = None;
+        self.held = None;
         match kind {
             Interrupt::Death => {
                 self.events.push(Event::Death);
@@ -892,8 +996,46 @@ impl Machine {
                 self.start_main();
                 None
             }
-            Interrupt::Fault => None,
+            // `low_power` returned above; `fault` is never pending.
+            Interrupt::LowPower | Interrupt::Fault => None,
         }
+    }
+
+    /// `low_power` (Q62, Q63) abandons nothing: main flow is set aside as
+    /// it stands, `on_low_power` runs, and its epilogue puts main flow
+    /// back. A missing hook is an empty one, so there is nothing to do.
+    /// Delivered to its own hook held for power, it starts the hook over
+    /// and leaves the main flow already set aside where it is.
+    fn deliver_low_power(&mut self, host: &mut dyn Host) -> Option<Slice> {
+        self.pending.remove(&Interrupt::LowPower);
+        self.events.push(Event::LowPower);
+        // With no hook there is nothing to run and nothing to set aside.
+        let hook = self.program.hooks.on_low_power.clone()?;
+        if self.in_low_power() {
+            self.frames.clear();
+            self.held = None;
+        } else {
+            self.suspended = Some(Suspended {
+                frames: std::mem::take(&mut self.frames),
+                held: self.held.take(),
+                native_input: self.native_input.take(),
+            });
+        }
+        self.trace.abandons = self.trace.abandons.wrapping_add(1);
+        self.waiting = false;
+        self.native_waiting = false;
+        self.native_input = None;
+        if let Some(k) = host.on_prologue(Interrupt::LowPower) {
+            self.pending.insert(k);
+        }
+        self.mode = Mode::Handler {
+            kind: Interrupt::LowPower,
+            hook_spent: 0,
+            hook_budget: self.limits.budget_hook_low_power,
+            hook_running: false,
+        };
+        self.start_hook(hook, vec![]);
+        None
     }
 
     /// Push a hook's frame and start debiting its budget.
@@ -951,6 +1093,10 @@ impl Machine {
             hook_running: false,
         };
         self.frames.clear();
+        // Reached from `on_low_power` by escalation, a fault abandons the
+        // main flow that was set aside for it.
+        self.suspended = None;
+        self.held = None;
         self.trace.abandons = self.trace.abandons.wrapping_add(1);
         match self.program.hooks.on_fault.clone() {
             Some(hook) => {
@@ -966,7 +1112,7 @@ impl Machine {
 
     /// The running handler's hook returned: its epilogue, unless the budget
     /// check at the hook's last boundary escalates instead.
-    fn hook_returned(&mut self) -> Option<Slice> {
+    fn hook_returned(&mut self, host: &mut dyn Host) -> Option<Slice> {
         if let Mode::Handler {
             hook_spent,
             hook_budget,
@@ -974,13 +1120,14 @@ impl Machine {
         } = self.mode
             && hook_spent > hook_budget
         {
-            return self.escalate(None);
+            return self.escalate(host, None);
         }
         self.epilogue()
     }
 
     /// The running handler's epilogue. A `fault`'s restarts main flow, which
-    /// ends the slice at its next boundary (`slice_end`).
+    /// ends the slice at its next boundary (`slice_end`); a `low_power`'s
+    /// puts main flow back as it was set aside, and the slice goes on.
     fn epilogue(&mut self) -> Option<Slice> {
         let Mode::Handler { kind, .. } = self.mode else {
             return None;
@@ -990,6 +1137,20 @@ impl Machine {
             Interrupt::Fault => {
                 self.start_main();
                 self.slice_end = Some(self.restart_slice());
+                None
+            }
+            Interrupt::LowPower => {
+                self.trace.abandons = self.trace.abandons.wrapping_add(1);
+                match self.suspended.take() {
+                    Some(s) => {
+                        self.frames = s.frames;
+                        self.held = s.held;
+                        self.native_input = s.native_input;
+                    }
+                    // Unreachable while the handler holds its main flow;
+                    // a machine with none starts one.
+                    None => self.start_main(),
+                }
                 None
             }
             Interrupt::Dying => {
@@ -1002,30 +1163,48 @@ impl Machine {
 
     /// A hook escaped (`Some(exc)`) or exhausted its budget (`None`): the
     /// record is rewritten and the next kind up is delivered at the next
-    /// boundary, which is now.
-    fn escalate(&mut self, exc: Option<Exception>) -> Option<Slice> {
+    /// boundary, which is now. From `on_low_power` the next kind up is
+    /// `fault` (Q62), which is never pending: its handler starts here.
+    fn escalate(&mut self, host: &mut dyn Host, exc: Option<Exception>) -> Option<Slice> {
         let Mode::Handler { kind, .. } = self.mode else {
             return None;
         };
         let to = match kind {
+            Interrupt::LowPower => Interrupt::Fault,
             Interrupt::Fault => Interrupt::Dying,
             _ => Interrupt::Death,
         };
+        // Where a budget ran out: the last operation the hook completed.
+        let (file, line) = match self.frames.last() {
+            Some(f) => (
+                Some(f.code.file.clone()),
+                f.code
+                    .lines
+                    .get(f.pc.saturating_sub(1))
+                    .copied()
+                    .unwrap_or(0),
+            ),
+            None => (None, 0),
+        };
+        if to == Interrupt::Fault {
+            // `on_fault(e)` needs an exception, so a budget that ran out
+            // is a `LimitError` naming the hook, located where it stopped.
+            let exc = exc.unwrap_or_else(|| {
+                let e = Exception::new(
+                    ExcClass::LimitError,
+                    vec![Value::str("on_low_power exhausted its budget")],
+                );
+                match &file {
+                    Some(f) => e.located(f, line, self.tick),
+                    None => e,
+                }
+            });
+            self.events.push(Event::Escalated { from: kind, to });
+            return self.fault(host, exc);
+        }
         match exc {
             Some(e) => self.record_exception(&e),
             None => {
-                // Located at the last operation the hook completed.
-                let (file, line) = match self.frames.last() {
-                    Some(f) => (
-                        Some(f.code.file.clone()),
-                        f.code
-                            .lines
-                            .get(f.pc.saturating_sub(1))
-                            .copied()
-                            .unwrap_or(0),
-                    ),
-                    None => (None, 0),
-                };
                 self.fault_record = Some(FaultRecord {
                     exception: None,
                     exhausted: Some(kind),
@@ -1238,21 +1417,10 @@ impl Machine {
                 }
                 Need::Host { name, args, kwargs } => {
                     self.frame().natives.push(nat);
-                    match self.costs.game_cost(&name) {
-                        Some(cost) => self.charge(cost),
-                        None => return Err(Exception::name_error(&name)),
-                    }
-                    match host.call(&name, args, kwargs)? {
-                        HostCall::Value(v) => input = Some(v),
-                        HostCall::Charged { value, extra } => {
-                            self.charge(extra);
-                            input = Some(value);
-                        }
-                        HostCall::Wait => {
-                            self.native_waiting = true;
-                            return Ok(Step::Wait);
-                        }
-                        HostCall::Unknown => return Err(Exception::name_error(&name)),
+                    match self.host_call(host, name, args, kwargs, true)? {
+                        Called::Value(v) => input = Some(v),
+                        Called::Wait => return Ok(Step::Wait),
+                        Called::Held => return Ok(Step::Hold),
                     }
                 }
                 Need::Call {
@@ -1421,6 +1589,24 @@ impl Machine {
         self.close_slice(host, tracer)
     }
 
+    /// A slice in which the host holds main flow (`docs/08`, A dark
+    /// building): it opens with its budget, so a deficit is paid down,
+    /// interrupts are delivered and a handler runs, but main flow runs
+    /// nothing and an action it waits on is not the VM's to count down.
+    /// Ends [`Slice::Held`] wherever main flow would have run.
+    pub fn run_slice_held(
+        &mut self,
+        host: &mut dyn Host,
+        tracer: Option<&mut dyn Tracer>,
+    ) -> Slice {
+        self.main_held = true;
+        let slice = self.run_slice_traced(host, tracer);
+        if slice != Slice::Stopped {
+            self.main_held = false;
+        }
+        slice
+    }
+
     /// Go on with a slice a tracer stopped, from the boundary it stopped
     /// at. The slice's budget is the one it opened with: the deficit was
     /// taken off it then, and is not taken off again.
@@ -1429,7 +1615,11 @@ impl Machine {
             return Slice::Dead;
         }
         debug_assert!(self.stopped, "only a stopped slice is resumed");
-        self.close_slice(host, tracer)
+        let slice = self.close_slice(host, tracer);
+        if slice != Slice::Stopped {
+            self.main_held = false;
+        }
+        slice
     }
 
     /// Run the slice on, and close its books unless it stopped: what it
@@ -1478,18 +1668,27 @@ impl Machine {
             } = self.mode
                 && hook_spent > hook_budget
             {
-                self.escalate(None);
+                if let Some(slice) = self.escalate(host, None) {
+                    return slice;
+                }
                 continue;
             }
             if self.waiting {
                 return Slice::Wait;
             }
+            if self.main_held && matches!(self.mode, Mode::Main) {
+                return Slice::Held;
+            }
             if self.spent >= budget {
                 return Slice::Yield;
             }
-            let stepped = match self.native_input.take() {
-                Some(v) => self.drive(host, Some(v)),
-                None => self.step(host),
+            let stepped = if self.held.is_some() {
+                self.retry_held(host)
+            } else {
+                match self.native_input.take() {
+                    Some(v) => self.drive(host, Some(v)),
+                    None => self.step(host),
+                }
             };
             // The live-values limit is measured at the operation that
             // created a value or stored a reference: here, at its end.
@@ -1503,9 +1702,10 @@ impl Machine {
                     self.waiting = true;
                     return Slice::Wait;
                 }
+                Ok(Step::Hold) => return Slice::Held,
                 Ok(Step::MainEnded) => {
                     if matches!(self.mode, Mode::Handler { .. }) {
-                        if let Some(slice) = self.hook_returned() {
+                        if let Some(slice) = self.hook_returned(host) {
                             return slice;
                         }
                         continue;
@@ -1520,7 +1720,7 @@ impl Machine {
                     };
                     let ended = match self.mode {
                         Mode::Main => self.fault(host, escaped),
-                        Mode::Handler { .. } => self.escalate(Some(escaped)),
+                        Mode::Handler { .. } => self.escalate(host, Some(escaped)),
                     };
                     if let Some(slice) = ended {
                         return slice;
@@ -1540,6 +1740,8 @@ impl Machine {
             || self.slice_end.is_some()
             || self.deliverable().is_some()
             || self.waiting
+            || self.held.is_some()
+            || (self.main_held && matches!(self.mode, Mode::Main))
             || self.spent >= self.slice_budget
             || self.native_input.is_some()
         {
@@ -2567,6 +2769,67 @@ impl Machine {
         self.charge_each(n, f);
     }
 
+    /// Call a game builtin: its row of the cost table, then the host. In
+    /// main flow and in `on_low_power` the host is first asked whether the
+    /// machine may begin it (`Host::ready`); if not, nothing is charged
+    /// and the call is kept for a later slice. A call in `on_fault` or
+    /// `on_dying` is never held (`docs/08`).
+    fn host_call(
+        &mut self,
+        host: &mut dyn Host,
+        name: String,
+        args: Vec<Value>,
+        kwargs: Vec<(String, Value)>,
+        native: bool,
+    ) -> R<Called> {
+        let Some(cost) = self.costs.game_cost(&name) else {
+            return Err(Exception::name_error(&name));
+        };
+        let may_hold = matches!(self.mode, Mode::Main) || self.in_low_power();
+        if may_hold && !host.ready(&name) {
+            self.held = Some(Held {
+                name,
+                args,
+                kwargs,
+                native,
+            });
+            return Ok(Called::Held);
+        }
+        self.charge(cost);
+        match host.call(&name, args, kwargs)? {
+            HostCall::Value(v) => Ok(Called::Value(v)),
+            HostCall::Charged { value, extra } => {
+                self.charge(extra);
+                Ok(Called::Value(value))
+            }
+            HostCall::Wait => {
+                if native {
+                    self.native_waiting = true;
+                }
+                Ok(Called::Wait)
+            }
+            HostCall::Unknown => Err(Exception::name_error(&name)),
+        }
+    }
+
+    /// The program stands at a held call: ask the host again, and make the
+    /// call if it is ready now, as if it were first reached in this slice.
+    fn retry_held(&mut self, host: &mut dyn Host) -> R<Step> {
+        let Some(h) = self.held.take() else {
+            return Ok(Step::Continue);
+        };
+        let native = h.native;
+        match self.host_call(host, h.name, h.args, h.kwargs, native)? {
+            Called::Held => Ok(Step::Hold),
+            Called::Wait => Ok(Step::Wait),
+            Called::Value(v) if native => self.drive(host, Some(v)),
+            Called::Value(v) => {
+                self.push(v);
+                Ok(Step::Continue)
+            }
+        }
+    }
+
     fn call(
         &mut self,
         host: &mut dyn Host,
@@ -2618,22 +2881,13 @@ impl Machine {
                         },
                     );
                 }
-                match self.costs.game_cost(&name) {
-                    Some(cost) => self.charge(cost),
-                    None => return Err(Exception::name_error(&name)),
-                }
-                match host.call(&name, args, kwargs)? {
-                    HostCall::Value(v) => {
+                match self.host_call(host, name.to_string(), args, kwargs, false)? {
+                    Called::Value(v) => {
                         self.push(v);
                         Ok(Step::Continue)
                     }
-                    HostCall::Charged { value, extra } => {
-                        self.charge(extra);
-                        self.push(value);
-                        Ok(Step::Continue)
-                    }
-                    HostCall::Wait => Ok(Step::Wait),
-                    HostCall::Unknown => Err(Exception::name_error(&name)),
+                    Called::Wait => Ok(Step::Wait),
+                    Called::Held => Ok(Step::Hold),
                 }
             }
             Value::Method(m) => {
@@ -2663,7 +2917,73 @@ impl Machine {
 enum Step {
     Continue,
     Wait,
+    /// Main flow is held before a game builtin's call (`Host::ready`).
+    Hold,
     MainEnded,
+}
+
+/// A game builtin's call main flow is held before: everything needed to
+/// make it once the host is ready. `native` says the call was a native's
+/// (`log` of an instance), whose result goes to the native.
+#[derive(Clone)]
+struct Held {
+    name: String,
+    args: Vec<Value>,
+    kwargs: Vec<(String, Value)>,
+    native: bool,
+}
+
+/// Main flow set aside while `on_low_power` runs (Q63): its frames, the
+/// call it was held before if it was, and a native's input not yet taken.
+struct Suspended {
+    frames: Vec<Frame>,
+    held: Option<Held>,
+    native_input: Option<Value>,
+}
+
+/// Frames, as the state hash writes them.
+fn write_frames(out: &mut Vec<u8>, frames: &[Frame], seen: &mut BTreeSet<u64>) {
+    out.extend_from_slice(&(frames.len() as u64).to_le_bytes());
+    for f in frames {
+        write_str(out, &f.code.name);
+        out.extend_from_slice(&(f.pc as u64).to_le_bytes());
+        out.extend_from_slice(&(f.locals.len() as u64).to_le_bytes());
+        for l in &f.locals {
+            match l {
+                Some(v) => {
+                    out.push(1);
+                    hash_value(v, out, seen);
+                }
+                None => out.push(0),
+            }
+        }
+        out.extend_from_slice(&(f.stack.len() as u64).to_le_bytes());
+        for v in &f.stack {
+            hash_value(v, out, seen);
+        }
+    }
+}
+
+/// A held call, as the state hash writes it.
+fn write_held(out: &mut Vec<u8>, h: &Held, seen: &mut BTreeSet<u64>) {
+    out.push(u8::from(h.native));
+    write_str(out, &h.name);
+    out.extend_from_slice(&(h.args.len() as u64).to_le_bytes());
+    for v in &h.args {
+        hash_value(v, out, seen);
+    }
+    out.extend_from_slice(&(h.kwargs.len() as u64).to_le_bytes());
+    for (k, v) in &h.kwargs {
+        write_str(out, k);
+        hash_value(v, out, seen);
+    }
+}
+
+/// How a game builtin's call came out.
+enum Called {
+    Value(Value),
+    Wait,
+    Held,
 }
 
 /// Whether a caught exception value — a built-in exception or a raisable

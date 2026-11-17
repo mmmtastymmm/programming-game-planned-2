@@ -764,7 +764,10 @@ impl<'a> Host for GameHost<'a> {
                 self.cancel();
                 None
             }
-            Interrupt::Death => None,
+            // `low_power` waits for the action in progress and does
+            // nothing to the body (Q63); nothing raises it until the sim
+            // has batteries (T31).
+            Interrupt::LowPower | Interrupt::Death => None,
         }
     }
 }
