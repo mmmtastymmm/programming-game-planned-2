@@ -47,11 +47,13 @@ impl World {
     /// its buildings, sites excluded, and of its wire — joined where they
     /// are adjacent, and from each pylon to every pylon and building of
     /// the team within its span; every set of them that holds a building.
-    /// Ascending label.
-    pub(crate) fn trace_grids(&self, team: TeamId) -> Vec<Grid> {
-        let buildings: Vec<(EntityId, TilePos, Model)> = self
-            .machines
-            .values()
+    /// Ascending label. `own` is the team's machines in id order
+    /// ([`World::rosters`]), so that tracing one team's grids reads that
+    /// team's machines and no other's.
+    pub(crate) fn trace_grids(&self, team: TeamId, own: &[EntityId]) -> Vec<Grid> {
+        let buildings: Vec<(EntityId, TilePos, Model)> = own
+            .iter()
+            .filter_map(|id| self.machines.get(id))
             .filter(|m| m.team == team && m.is_building() && m.model != Model::Site)
             .map(|m| (m.id, m.pos, m.model))
             .collect();
@@ -210,8 +212,8 @@ impl World {
 
     /// Trace the team's grids, serve them and keep their figures. A site
     /// is on no grid and never powered.
-    fn serve_team(&mut self, team: TeamId, moving: bool) {
-        let grids = self.trace_grids(team);
+    fn serve_team(&mut self, team: TeamId, own: &[EntityId], moving: bool) {
+        let grids = self.trace_grids(team, own);
         let mut changed = false;
         let mut figures = Vec::new();
         let mut live: BTreeSet<TilePos> = BTreeSet::new();
@@ -221,8 +223,11 @@ impl World {
             changed |= c;
             live.extend(grid.wires.iter().copied());
         }
-        for m in self.machines.values_mut() {
-            if m.team == team && m.model == Model::Site {
+        for id in own {
+            if let Some(m) = self.machines.get_mut(id)
+                && m.team == team
+                && m.model == Model::Site
+            {
                 m.powered = false;
                 m.grid = None;
             }
@@ -239,18 +244,19 @@ impl World {
 
     /// A match's first power state: grids traced, every building powered,
     /// the figures kept as they stand, no charge moved.
-    pub(crate) fn trace_and_keep(&mut self, team: TeamId) {
-        self.serve_team(team, false);
+    pub(crate) fn trace_and_keep(&mut self, team: TeamId, own: &[EntityId]) {
+        self.serve_team(team, own, false);
     }
 
     /// The power step for one team, up to its prints (`docs/08`): its
     /// grids traced and served, its bots' solar added, and its flat bots
     /// that have the charge woken, which raises `low_power` for each.
-    pub(crate) fn power_step(&mut self, team: TeamId) {
-        self.serve_team(team, true);
-        let bots: Vec<EntityId> = self
-            .machines
-            .values()
+    /// `own` is the team's machines in id order ([`World::rosters`]).
+    pub(crate) fn power_step(&mut self, team: TeamId, own: &[EntityId]) {
+        self.serve_team(team, own, true);
+        let bots: Vec<EntityId> = own
+            .iter()
+            .filter_map(|id| self.machines.get(id))
             .filter(|m| m.team == team && m.model == Model::Bot)
             .map(|m| m.id)
             .collect();

@@ -424,6 +424,18 @@ pub struct GridFigures {
     pub capacity: Num,
 }
 
+/// One team's machines as one pass over every machine found them
+/// ([`World::rosters`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Roster {
+    /// Every machine of the team, in id order.
+    pub machines: Vec<EntityId>,
+    pub bots: usize,
+    pub printers: usize,
+    /// Its printers with a print in progress.
+    pub printing: usize,
+}
+
 /// Whether `name` is a deployment a team holds.
 pub fn is_deployment_name(name: &str) -> bool {
     DEPLOYMENTS.contains(&name)
@@ -591,8 +603,10 @@ impl World {
         // The match is built with its grids traced, every building
         // powered and the figures kept, no charge having moved.
         let teams: Vec<TeamId> = world.teams.keys().copied().collect();
+        let rosters = world.rosters();
         for team in teams {
-            world.trace_and_keep(team);
+            let own = rosters.get(&team).map_or(&[][..], |r| &r.machines);
+            world.trace_and_keep(team, own);
         }
         world
     }
@@ -745,6 +759,33 @@ impl World {
         }
     }
 
+    /// Every team's machines from one pass over them all (T41): what the
+    /// steps that go team by team, and the state hash, would otherwise
+    /// each scan every machine for. A team with no machine has no entry.
+    pub fn rosters(&self) -> BTreeMap<TeamId, Roster> {
+        let mut out: BTreeMap<TeamId, Roster> = BTreeMap::new();
+        for m in self.machines.values() {
+            let r = out.entry(m.team).or_default();
+            r.machines.push(m.id);
+            match m.model {
+                Model::Bot => r.bots = r.bots.saturating_add(1),
+                Model::Printer => {
+                    r.printers = r.printers.saturating_add(1);
+                    if m.printing > 0 {
+                        r.printing = r.printing.saturating_add(1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// The bots `printers` printers support (`docs/02`, Printing).
+    pub fn cap_of(&self, printers: usize) -> usize {
+        (printers as u64).saturating_mul(self.data.machines.bots_per_printer) as usize
+    }
+
     pub fn printers_of(&self, team: TeamId) -> usize {
         self.machines
             .values()
@@ -760,7 +801,7 @@ impl World {
     }
 
     pub fn bot_cap(&self, team: TeamId) -> usize {
-        (self.printers_of(team) as u64).saturating_mul(self.data.machines.bots_per_printer) as usize
+        self.cap_of(self.printers_of(team))
     }
 
     /// The team's standing buildings of `model` and its sites becoming
