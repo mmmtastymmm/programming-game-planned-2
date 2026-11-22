@@ -31,25 +31,6 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M9 — The language as ruled
-
-**T40 — A deficit is carried until it is paid** `⚠HASH`
-
-`01`'s Metering, the tick budget, which the interpreter does not yet
-follow for a deficit above one tick's budget
-([P10](PROBLEMS.md), from
-[I11](history/inbox-triaged/inbox-triaged-0011.md)). When a slice
-closes, what the machine owes is what it owed as the slice opened, plus
-what the slice spent, less one tick's budget, and never below zero: so a
-deficit of several budgets is paid down one budget a tick, by slices
-that open at zero and run no operation, and a held slice — a flat bot's,
-a dark building's — pays it down the same. A slice a debugger stopped
-and resumed still takes the deficit off once. Tests: an operation
-costing many budgets sits out that many ticks, less the one it ran in;
-a deficit below a budget is carried as before; a `fault` and a
-`redeploy` clear none of it. Any fixture that overspends by more than a
-budget changes, and the PR says why. Fixes [P10](PROBLEMS.md).
-
 ## M10 — Power
 
 **T32 — Power in `render`: wire, pylons, the charger, the flat and dark marks, the inspector**
