@@ -31,32 +31,6 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M10 — Power
-
-**T32 — Power in `render`: wire, pylons, the charger, the flat and dark marks, the inspector**
-
-Q62, ruled in `07`'s Decided entry, the screen table, Machines on the map
-and Marks. Wires drawn from the snapshot as a bar across each wired tile
-and lines to the same team's wires and buildings beside it, sites
-excluded, two teams side by side, the player's own wires that are part
-of no grid dimmed; a pylon's lines to its team's pylons and buildings
-within its span, worked out from positions and the span in data, above
-machines; the strip's wire row on `C`, its plan's see-through line, and
-its ghost only on seen ground and only where it would change the tile, a
-clear withdrawing a standing wire plan; `charger` and `pylon` in the
-strip's building row; every new see-through layer on a mesh asset of its
-own or opaque, as `crates/render/CLAUDE.md` requires of any translucent
-layer over paint; a small struck-through bolt over a flat bot and a dark
-building, their lights unchanged; the charge bar under the health bar of
-a selected or hovered machine; the art — the panel a low tilted plate,
-the charger a squat block with a gauge that fills, the pylon a thin
-mast, each with a lamp; `interrupts/on_low_power.py` and
-`robots/charger.py` as fixed files of the tree; the inspector's grids,
-with generation and drain per second at the speed in force and stored
-charge against capacity, and the selected machine's charge with its
-`flat`, or `powered` and `grid`. The last of the three tasks Q62 and Q63
-opened: it closes [P8](PROBLEMS.md).
-
 ## M12 — Scale
 
 **T41 — The state hash and the print step visit the map and the machines once, not once a team**
