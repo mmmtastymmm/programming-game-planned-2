@@ -42,7 +42,7 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   calls `build` with a building model and a tile; printing is not a
   program's call but the printers' own rule (Q42, below). All bots are one
   kind and run one program. A print takes time and, as Q23 amended, costs
-  nothing else; a build takes time and costs resources, hauled to its site
+  no resource; a build takes time and costs resources, hauled to its site
   by bots (Q22). A printed bot appears on a tile adjacent to the printer on
   the tick the print completes, running the team's `bot` bundle from the
   top. The opening program set is the command log's first entries, one
@@ -79,11 +79,12 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   fill it, construction runs for the build time, and the building appears
   with an empty store. Nothing starts stocked and nothing spends from a
   store it does not own; ore goes into sites and depots only. The building
-  list holds printer, depot and, as Q59 added, solar; the numbers are
-  tuning in data; `03` defines deposits and places them.
-- **Printing costs time only; building costs resources (Q23).** A printer
-  prints one bot per print time and consults no store; a `drop` into a
-  printer is a fault. The printer itself is built for ore like any building
+  list holds printer, depot and, as Q62 added, solar, charger and pylon;
+  the numbers are tuning in data; `03` defines deposits and places them.
+- **Printing costs time and power, never ore; building costs resources
+  (Q23, as Q62 amended).** A printer prints one bot per print time and
+  consults no store; a `drop` into a printer is a fault; a print drains
+  its printer's power while it runs (`08`). The printer itself is built for ore like any building
   (Q42), so the economy prices the objective as well as depots. Q9's priced
   print and Q22's opening stock and printer store are withdrawn; Q23's own
   bound, printers and time, is replaced by Q24's cap.
@@ -113,12 +114,12 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   just before the new site is placed, so losing printers lowers the next
   one's price. The map's starting printers count toward `n`. After out
   teams, each team's printers begin prints by turns while its bots and
-  prints in progress fall short of its cap and, as Q59 amended, while it
-  has spare power for one more bot — the turn order, the print and its loss
-  are Printing below. Nothing converts a printer. A team is out at the end
+  prints in progress fall short of its cap — the turn order, the print and
+  its loss are Printing below; Q59's wait for spare power went with Q59
+  (Q62). Nothing converts a printer. A team is out at the end
   of any tick it has no printer, whatever sites, bots or ore it holds
   (`04`). A team's deployments are `"bot"`, `"printer"`, `"depot"` and, as
-  Q59 added, `"solar"`, and nothing else. Q31 and Q40 are withdrawn and
+  Q62 added, `"solar"` and `"charger"`, and nothing else. Q31 and Q40 are withdrawn and
   have no entry here.
 - **Printers defend themselves (Q30, as Q42 amended, which withdrew
   conversion).** Every printer deals `defence_damage` each tick to every
@@ -139,20 +140,14 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   attacks — a printer's defence (Q30) is a rule, not an attack — nothing
   repairs, and the world deals no damage; each is a new question number if
   wanted.
-- **Power is a team's flow: printers and solar panels supply it, bots draw
-  it, a building counts only when wired to a printer, and when the draw
-  outruns the supply the newest bots stop (Q59, amending Q10, Q27, Q42 and
-  Q49).** The bot model has a `power_draw` and every building model a
-  `power_supply` in data; no building draws. A team's grid is its wires and
-  its buildings, sites excluded, joined to one of its printers; bots draw
-  anywhere. Each tick, oldest first, a bot is powered while the supply
-  covers it, and an unpowered bot's main flow and the action main flow
-  began wait — never a handler, nor an action a hook began. A printer
-  prints only with spare power for the new bot. Wires are laid and removed
-  by the team's own bots alone, for a little ore, on ground; a wire plan is
-  the fourth plan kind. The **solar panel** is a building that supplies
-  power. Power, below; the renderer's side is
-  [07-interface](07-interface.md)'s.
+- **Power is stored in batteries and shared across grids (Q62, which
+  withdrew Q59, as Q63 amended).** The ruling and every rule of it are
+  [08-power](08-power.md)'s and are not repeated here. This doc carries
+  what it adds to a machine: the `charger` and `pylon` models and the
+  `solar` panel; the attributes `charge`, `battery`, `flat`, `powered` and
+  `grid`; the senses `power()` and `wires()`; the actions `recharge`,
+  `wire` and `unwire`; a print's hold while its printer is dark; and what
+  `low_power` does to a bot's body. Q59 has no entry here.
 
 ## A machine
 
@@ -161,9 +156,9 @@ identity:
 
 | | Is | Set |
 |---|---|---|
-| **kind** | `"bot"` or `"building"`; every machine also has a **model** — `"bot"` for a bot, `"printer"`, `"depot"`, `"solar"` or `"site"` for a building | at print or build, never changed |
+| **kind** | `"bot"` or `"building"`; every machine also has a **model** — `"bot"` for a bot, `"printer"`, `"depot"`, `"solar"`, `"charger"`, `"pylon"` or `"site"` for a building | at print or build, never changed |
 | **team** | the allegiance it acts for, a small integral `num`; every machine of a team shares senses, memory, stores, deployments and the bot cap | at print or build, from the machine that made it; never changed |
-| **program** | the bundle of its **deployment**, which is its model's name: every bot runs the `bot` bundle, a building the bundle deployed to its model (Q42) | by the command log, through the deployment (Q11) |
+| **program** | the bundle of its **deployment**, which is its model's name: every bot runs the `bot` bundle, a building the bundle deployed to its model (Q42); a site and a pylon run none | by the command log, through the deployment (Q11) |
 | **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print, to `bot` plus the entity id (`bot17`); at build, a site to the name of the model it will become plus its entity id (`printer23`), and the completed building, a machine of its own, to its model plus its own id (Q42); changed by `rename` |
 
 Two machines with the same team, kind and deployment are the same program in
@@ -176,12 +171,13 @@ A **deployment** is a named slot that holds a bundle. Deploying (Q3) writes a
 bundle into a slot; every machine on that slot takes the new bundle at its
 next operation boundary (Q11).
 
-- **One deployment per model** (Q42, as Q59 amended): a team has exactly
-  `"bot"`, `"printer"`, `"depot"` and `"solar"`, each from the start, never
-  locked, and no others; a `Deploy` naming anything else is refused at
-  submission (`06`). Every bot runs the `bot` bundle. A site runs no
-  program and has no deployment; the building that replaces it when it
-  completes takes its model's.
+- **One deployment per model that runs a program** (Q42, as Q62 amended):
+  a team has exactly `"bot"`, `"printer"`, `"depot"`, `"solar"` and
+  `"charger"`, each from the start, never locked, and no others; a
+  `Deploy` naming anything else is refused at submission (`06`). Every bot
+  runs the `bot` bundle. A site and a pylon run no program and have no
+  deployment; the building that replaces a site when it completes takes
+  its model's, if its model has one.
 - **The opening program set** (Q9) is one deploy per deployment the team's
   starting bundles name, agreed for tick 0.
 
@@ -203,6 +199,8 @@ classDiagram
     deployment
     pos
     health
+    charge
+    battery
     busy
     progress
     see()
@@ -222,11 +220,12 @@ classDiagram
   class bot {
     load
     color
-    powered
+    flat
     move()
     move_to()
     pick()
     drop()
+    recharge()
     build()
     build_nearest()
     deconstruct()
@@ -241,13 +240,18 @@ classDiagram
   }
   class building {
     store
-    on_grid
+    powered
+    grid
   }
   class printer {
     printing
   }
   class depot
   class solar
+  class charger
+  class pylon {
+    runs no program
+  }
   class site {
     runs no program
   }
@@ -256,6 +260,8 @@ classDiagram
   building <|-- printer
   building <|-- depot
   building <|-- solar
+  building <|-- charger
+  building <|-- pylon
   building <|-- site
 ```
 
@@ -266,18 +272,22 @@ carries a team and a position like any building.
 
 | Model | Moves | Store | Made by | Does |
 |---|---|---|---|---|
-| `bot` | yes | none; a **load** up to its capacity | a printer, in `print_ticks`, under the team's cap and its power (Q59) | senses, moves, picks, drops, builds, wires; draws power |
-| `printer` | no | capacity zero | the map, one on each starting tile at tick 0 (`03`); then a bot's `build`, at a price rising with the team's printers and printer sites (Q42) | senses; prints by turns and defends itself, by rule; raises the cap by `bots_per_printer` |
+| `bot` | yes | none; a **load** up to its capacity | a printer, in `print_ticks`, under the team's cap | senses, moves, picks, drops, builds, wires, recharges; its calls cost charge (`08`) |
+| `printer` | no | capacity zero | the map, one on each starting tile at tick 0 (`03`); then a bot's `build`, at a price rising with the team's printers and printer sites (Q42) | senses; prints by turns and defends itself, by rule; raises the cap by `bots_per_printer`; generates, and recharges bots (`08`) |
 | `depot` | no | capacity per kind, large | a bot's `build` | senses, holds |
-| `solar` | no | capacity zero | a bot's `build` (Q59) | senses; supplies power, by rule, while on the grid |
+| `solar` | no | capacity zero | a bot's `build` (Q62) | senses; generates, by rule (`08`) |
+| `charger` | no | capacity zero | a bot's `build` (Q62) | senses; holds charge and recharges bots, by rule (`08`) |
+| `pylon` | no | capacity zero | a bot's `build` (Q62) | joins its team's grid across its span (`08`); runs no program |
 | `site` | no | capacity equal to the price of what it becomes (Q42) | a bot's `build`, at once | holds; replaced by its building when full and built |
 
 A **site** is a building for every purpose but one: it has a team, a tile, a
 store, ranges and health, and appears in sightings and memory like any
 building, but it runs **no program** and has no deployment. When it
 completes it is removed and its building placed on its tile as a new
-machine with a new entity id (the `build` row, Actions). `docs/03` says
-which tiles may be built on.
+machine with a new entity id (the `build` row, Actions). A **pylon**
+(Q62) is a building for every purpose but the same one: it runs no
+program and has no deployment. `docs/03` says which tiles may be built
+on.
 
 ## A machine's attributes
 
@@ -291,19 +301,22 @@ writable except through an action.
 | `id` | `num`, integral | the entity id, unique for the match, never reused |
 | `name` | `str` | the machine's name |
 | `kind` | `str` | `"bot"` or `"building"` |
-| `model` | `str` | `"bot"`, `"printer"`, `"depot"`, `"solar"` or `"site"` |
+| `model` | `str` | `"bot"`, `"printer"`, `"depot"`, `"solar"`, `"charger"`, `"pylon"` or `"site"` |
 | `team` | `num`, integral | the team's number |
-| `deployment` | `str` or `None` | the model name whose bundle the machine runs — `"bot"` for every bot (Q42); `None` for a site |
+| `deployment` | `str` or `None` | the model name whose bundle the machine runs — `"bot"` for every bot (Q42); `None` for a site or a pylon |
 | `pos` | `(num, num)` | the tile it occupies, as `(x, y)`, integral |
 | `health` | `num` | current health; the model's maximum is in data |
+| `charge` | `num` | the charge its battery holds (`08`); zero on a model with no battery |
+| `battery` | `num` | its battery's capacity, the model's in data |
 | `busy` | `str` or `None` | the name of the action in progress — any of the action builtins below, `"move"` for both move forms — or `None` |
 | `load` | `dict` of kind to `num` | a bot's carried resources, every kind present; absent on a building |
 | `color` | `str` or `None` | a bot's color, set by `set_color` (Q43), from the paint list `deployment.colors` in [data/machines.toml](../data/machines.toml); `None` when printed; absent on a building |
 | `store` | `dict` of kind to `num` | a building's held resources, every kind present; absent on a bot |
 | `progress` | `num` | ticks remaining on `busy`, or on a site's construction; `0` when idle |
 | `printing` | `num` | a printer's ticks remaining on its print in progress, `0` when not printing (Printing, below); absent on every other model |
-| `powered` | `bool` | whether the last power step powered the bot (Power, below); absent on a building, which never draws |
-| `on_grid` | `bool` | a building's place on its team's grid at the last power step (Power, below); absent on a bot |
+| `flat` | `bool` | whether the bot is out of power, from a call it could not pay for until it wakes (`08`, Q63); absent on a building |
+| `powered` | `bool` | whether the last power step powered the building or left it dark (`08`); `False` on a site; absent on a bot |
+| `grid` | `num`, integral, or `None` | the label of the grid the last power step found the building on (`08`); `None` on a site; absent on a bot |
 
 **Occupancy.** A tile holds at most one machine. A bot cannot move onto an
 occupied tile, a print needs a free adjacent tile, and a build needs a free
@@ -320,7 +333,7 @@ Sensing is **passive**: every machine sees and hears every tick without
 doing anything, and the queries below read what the whole team senses now.
 Two queries, two more that read the colony's memory, three that read the
 team's plans and marks (Q10, Q26, Q27), and two that read its power and
-wires (Q59). All of them return
+wires (Q62). All of them return
 lists or records sorted as Q7 and Q21 rule, computed when called —
 `power()` excepted, which returns what the power step kept — and cost
 their `[game]` row plus `factor.traverse` per element returned
@@ -330,20 +343,21 @@ their `[game]` row plus `factor.traverse` per element returned
 |---|---|
 | `see()` | a list of **sightings**: every machine any of the team's machines sees now, each once, sorted by squared distance from the calling machine then by `id`. A sighting is a machine's attribute record. The team's own machines are always included. |
 | `hear()` | a list of **sounds** emitted during the previous tick that any of the team's machines hears, each once, sorted by squared distance from the calling machine, then by position, then by cause. A sound is a record `cause`, `pos`, `loudness`, `tick`. |
-| `tile(x, y)` | the tile's record for the team — `x` and `y`; `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `deposit`, a `dict` of resource kind to amount or `None` (`03`); `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, `wires`, the sorted team numbers with a wire on it (Q59), and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
+| `tile(x, y)` | the tile's record for the team — `x` and `y`; `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `deposit`, a `dict` of resource kind to amount or `None` (`03`); `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, `wires`, the sorted team numbers with a wire on it (Q62), and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
 | `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle, clipped to the map, that is not unknown, sorted by row then column. |
 | `me()` | the calling machine's own attribute record. |
-| `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"`, `"building"` (Q27) or `"wire"` (Q59) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label, a model or `True` for a wire, or `None` for a plan to clear. |
+| `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"`, `"building"` (Q27) or `"wire"` (Q62) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label, a model or `True` for a wire, or `None` for a plan to clear. |
 | `painted(color)` | every tile the team sees or remembers whose paint is `color` — paint is the tile's, not a team's (Q28) — as `(x, y)` tuples, sorted by row then column. |
 | `overlaid(label)` | every tile the team sees or remembers whose overlay is `label`, as `(x, y)` tuples, sorted by row then column. |
-| `power()` | the team's power as the last power step kept it (Power, below): a record `supply`, `demand` — every bot's draw, powered or not — and `spare`, after that step's prints began. |
+| `power()` | the team's grids as the last power step kept them (`08`): a list of records, one per grid, each `grid`, its label, and `generation`, `drain`, `stored` and `capacity`, sorted by `grid`. |
 | `wires()` | every tile the team sees or remembers that carries the team's own wire, as `(x, y)` tuples, sorted by row then column. |
 
 **Vision** (Q7): machine `u` sees a machine at `q` if
 `dist²(u.pos, q) ≤ vision²` for `u`'s model and the line of sight from
 `u.pos` to `q` is clear, by `03`'s ray-walk. **Hearing**: `u` hears a sound
 at `s` with loudness `L` if `dist²(u.pos, s) ≤ (hearing + L)²`. Both ranges
-are per model in data.
+are per model in data. A dark building (`08`) sees and hears nothing, and
+adds nothing to either query.
 
 ### Sounds
 
@@ -371,8 +385,8 @@ the machine then yields at the boundary after it until the action completes
 — `progress` counting down one per tick, so an action of `n ≥ 1` ticks
 begun in tick `T`'s slice completes in step 3 of tick `T + n - 1` (`06`),
 and one of `0` ticks, such as `build`, in step 3 of tick `T` itself — each
-tick a bot's main flow is left unpowered adds one, since a dark tick holds
-its action (Power, below) — after which main flow continues with the
+tick a building is dark adds one for its own main flow's action, which a
+dark tick holds (`08`) — after which main flow continues with the
 builtin's return value. Interrupts are delivered at the boundaries inside
 the wait as at any other, and a `fault` or `redeploy` epilogue **cancels**
 the action in progress: the machine is idle when its program restarts, and
@@ -387,17 +401,24 @@ is not `None` is a `ValueError`. A precondition that fails is a `ValueError`
 raised before anything begins, so a failed action has no effect and emits no
 sound.
 
+**Charge.** A bot's call of any builtin in this doc, a sense included,
+takes the builtin's charge cost from the bot's battery as it begins, and a
+bot whose charge is short of it is out of power: it waits, flat, at the
+call until its solar has woken it (`08`, Charge costs and Out of power).
+A failed precondition takes none.
+
 | Action | Who | Does | Takes | Noisy |
 |---|---|---|---|---|
 | `move(dir)` | bot | `dir` one of `"n"`, `"e"`, `"s"`, `"w"`; the target tile must be passable (`03`) and unoccupied at the moment the move begins; the bot is on the target tile when the move completes, and occupies **both** tiles meanwhile for occupancy purposes | `move_ticks` | yes |
 | `move_to(x, y)` | bot | **one step** toward `(x, y)`: of the adjacent tiles that are passable and unoccupied, the one with the least squared distance to `(x, y)`, ties in the order `n`, `e`, `s`, `w`; a `ValueError` if none qualifies or the bot is already there. A program that wants to arrive loops; there is no pathfinding, and a bot can be led into a dead end | `move_ticks` | yes |
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
+| `recharge()` | bot | from the adjacent building — any team's — that is powered (`08`) and holds the most `charge`, ties by lower `id`, take `min(recharge_rate, its charge, the bot's free battery)`, the rate the building's model's; the transfer happens when the action **completes**, from what the building then holds, and nothing moves if the building is then gone or dark; a result of zero is a `ValueError` before it begins | `recharge_ticks` | no |
 | `build(model, x, y)` | bot | `model` a building model other than `site` — `printer` included (Q42); `(x, y)` adjacent and buildable (`03`): `ground`, no deposit, **no building** — a tile carrying the team's building plan for `model` (Q27) is the usual target, and if that tile has a building the plan deconstructs it first (Q28), as one action of both durations; placing the site consumes the plan and no other mark. The site appears at once, on the bot's team, named `model` plus its `id`, with an empty store whose capacity is `model`'s price, as Q42's Decided bullet defines it, fixed at placement. When the site's store reaches its capacity, construction runs `build_ticks[model]`, and then the site is removed and the building placed on its tile, a new machine with a new entity id, named its model plus that id, with `deployment` the model's name and an empty store | `0`, or `deconstruct_ticks` of the old building first — the site is busy after that | yes, twice |
 | `paint(x, y)` | bot | `(x, y)` adjacent and carrying the team's paint plan with a color; if the tile is already painted, the unpaint runs first (Q28), as one action of both durations; on completion the tile's paint is the plan's color and the plan is gone; no plan is a `ValueError` | `paint_ticks`, plus `unpaint_ticks` if painted | no |
 | `unpaint(x, y)` | bot | `(x, y)` adjacent and painted; on completion its paint is `None`. Any team's bot may do it. A paint plan whose value is `None` is realised by this action and consumed | `unpaint_ticks` | no |
 | `overlay(x, y)`, `unoverlay(x, y)` | bot | as `paint` and `unpaint`, for the overlay slot | `overlay_ticks`, `unoverlay_ticks` | no |
-| `wire(x, y)` | bot | `(x, y)` adjacent, `ground` (`03`) and without the team's wire, and the bot's load holding `wire_cost` (Q59); a load short of it is a `ValueError`. A tile carrying the team's wire plan to lay one is the usual target. On completion, if the tile still has no wire of the team's, the wire is laid, `wire_cost` leaves the load and the tile's plan to lay one, if any, is consumed; if another of the team's bots laid one first this tick, nothing happens and nothing is taken | `wire_ticks` | no |
+| `wire(x, y)` | bot | `(x, y)` adjacent, `ground` (`03`) and without the team's wire, and the bot's load holding `wire_cost` (Q62); a load short of it is a `ValueError`. A tile carrying the team's wire plan to lay one is the usual target. On completion, if the tile still has no wire of the team's, the wire is laid, `wire_cost` leaves the load and the tile's plan to lay one, if any, is consumed; if another of the team's bots laid one first this tick, nothing happens and nothing is taken | `wire_ticks` | no |
 | `unwire(x, y)` | bot | `(x, y)` adjacent and carrying the team's own wire. On completion, if the wire is still there it is gone, nothing refunded, and the tile's wire plan to clear, if any, is consumed; if another of the team's bots removed it first this tick, nothing happens. Only the wire's team may do it | `unwire_ticks` | no |
 | `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store and any print in progress lost, and its team's cap updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
@@ -422,95 +443,37 @@ from idle (`busy` is `None`): a printer whose program waits may be ready,
 and one that prints may be idle.
 
 - **Beginning**, in the tick's power and print step (`06`, step 6), team by
-  team in order, after the team's power (Power, below). A team's
+  team in order, after the team's grids are served (`08`). A team's
   **shortfall** is its cap (Q24) minus its bots, `dying` ones included,
-  minus its printers whose `printing` is above zero. A team's **spare** is
-  its supply, minus its demand (Power, below) — every bot's draw, powered
-  or not — minus `bot`'s `power_draw` for each printer whose `printing` is
-  above zero (Q59), so no print begins while any bot is dark. A printer may
-  begin a print if it is ready and its health is above zero; one at or
-  below zero may not, even before its `dying` handler has run. While the
-  shortfall is above zero, the spare is at least `bot`'s `power_draw`, and
-  such a printer remains, the one to begin is the one with the least entity
-  id greater than the team's **print turn**, or, if there is none, the one
-  with the least entity id; its `printing` becomes `print_ticks`, it emits
-  the `"print"` sound, the print turn becomes its id, the shortfall falls
-  by one and the spare by `bot`'s `power_draw`. The print turn is team
-  state in the hash, an entity id, and starts as `0`, which no machine has
-  — entity ids begin at `1` — so the first print goes to the team's least
-  id.
+  minus its printers whose `printing` is above zero. A printer may begin a
+  print if it is ready, powered (`08`) and its health is above zero; one
+  at or below zero may not, even before its `dying` handler has run. While
+  the shortfall is above zero and such a printer remains, the one to begin
+  is the one with the least entity id greater than the team's **print
+  turn**, or, if there is none, the one with the least entity id; its
+  `printing` becomes `print_ticks`, it emits the `"print"` sound, the
+  print turn becomes its id, and the shortfall falls by one. The print
+  turn is team state in the hash, an entity id, and starts as `0`, which
+  no machine has — entity ids begin at `1` — so the first print goes to
+  the team's least id. A printer whose `printing` is above zero needs
+  `print_drain` more power each tick (`08`).
 - **Completing**, in step 3 of every later tick, with the action
-  completions and in entity-id order among them: `printing` falls by one,
-  and at `0` the print completes. The bot appears on the first tile
+  completions and in entity-id order among them: a powered printer's
+  `printing` falls by one — a dark one's holds (`08`) — and at `0` the
+  print completes. The bot appears on the first tile
   adjacent to the printer of `n`, `e`, `s`, `w` that is on the map,
   passable (`03`) and unoccupied, on the printer's team, on the `bot`
-  deployment, named `bot` plus its id, in main flow, its first slice next
-  tick. If none qualifies the print is cancelled with nothing made. Either
+  deployment, named `bot` plus its id, its battery full (`08`), in main
+  flow, its first slice next tick. If none qualifies the print is cancelled with nothing made. Either
   way the printer is ready again, and may begin another print in the same
   tick's print step. A print begun in tick `T` completes in tick
-  `T + print_ticks`.
+  `T + print_ticks`, later by each tick its printer was dark.
 - **Losing a print.** A printer loses its print in progress — its
   `printing` becomes `0`, and nothing else follows — the moment its health
   falls to zero or below, whether in a fault's prologue during its slice or
   in the damage step (`06`, step 4); when its `death` runs; and when it is
   deconstructed. A print so lost never completes in step 3. There is no queue, so the next print step's shortfall already
   counts the bot that was not made.
-
-### Power
-
-Power (Q59) is a team's **flow**, worked out afresh in the tick's power and
-print step (`06`, step 6) and held until the next one. It is not a
-resource kind (Q22): nothing hauls, holds or spends it, and what one tick's
-supply does not power is gone. **Bots draw power; buildings supply it or
-nothing.** The bot model has a `power_draw`, and every building model a
-`power_supply` — the printer's and the solar panel's above zero, the
-depot's and the site's zero — in [data/machines.toml](../data/machines.toml).
-The sim refuses data whose printer supply is below one bot's draw, so a
-team that stands always powers its oldest bot; and data keeps a printer's
-supply below what `bots_per_printer` bots draw, so that panels matter.
-
-- **The grid.** A team's **conductors** are the tiles carrying its wire
-  (`03`) and the tiles of its buildings, sites excluded. Its **grid** is
-  every conductor joined to the tile of one of its printers by a chain of
-  adjacent conductors. A building is **on the grid** — its `on_grid`
-  attribute — when its tile is; a printer always is. Bots need no grid.
-- **Supply** is the sum of `power_supply` over the team's buildings on the
-  grid — a `dying` one included until its `death` removes it, as Q24's cap
-  counts a printer — so a team that stands has a printer that supplies. A
-  building off the grid supplies nothing.
-- **Who is powered.** The team's bots are taken in ascending entity id,
-  oldest first, and each is powered — its `powered` attribute — while the
-  summed draw so far, its own included, is within the supply; the first
-  that does not fit, and every newer bot, is not. **Demand** is every
-  bot's draw, powered or not. A building has no `powered`: it never draws,
-  so it never stops.
-- **An unpowered bot stops.** Its slice (`06`, step 2) still opens with its
-  tick budget, reduced by any deficit as always, so a dark tick pays down a
-  deficit like any other (`01`, Metering); but main flow does not run on
-  it, and the action main flow began does not count down — its `progress`
-  holds. Power never withholds a handler: interrupts are delivered at the
-  bot's boundaries as always, and a hook runs on the slice's budget and its
-  own, its actions with it, so `dying` still ends in `death` and a redeploy
-  still swaps. A stopped bot keeps its tile, its load and its health, can
-  be attacked, and dies as any other does.
-- **When it is decided.** The power step sets `powered` and `on_grid`, and
-  they hold until the next. The match is built with that step's power half
-  already run at tick 0, so every bot has its `powered` and every building
-  its `on_grid` from the first slice. A machine made in step 3 — a printed
-  bot, a completed building — has them from the same tick's power step,
-  before its first slice.
-- **What a program reads.** The power step keeps each team's supply,
-  demand and spare — the spare as it stands after that step's prints
-  began — as team state, in the hash (`06`), and `power()` (Senses)
-  returns them as kept. A fault in a slice may since have lowered a
-  building's health; the figures wait for the next power step, as
-  `powered` does.
-
-A **wire** is a team's (Q59): it carries only its own team's power, and
-only that team's bots lay or remove it, with `wire` and `unwire`
-(Actions). Every team sees a wire, and remembers it, as it does paint
-(`03`). A team that is out has its wires removed with its machines (`06`,
-step 5).
 
 ## Health, damage and the interrupts
 
@@ -536,10 +499,10 @@ instead of looping forever. **An attack costs `attack_damage`** (Q25), landed
 in the tick's damage step, where every hit on one target this tick is summed
 before the rules below run. **A printer defends itself** (Q30): in the same
 step, every printer deals its model's `defence_damage` to every bot of
-another team on an adjacent tile, every tick it stands — with printing
-(Printing, above) and power (Power, above), one of the things in the
-design that act without a
-program, because a building does not decide.
+another team on an adjacent tile, every tick it stands and is powered
+(`08`) — with printing (Printing, above) and power
+([08-power](08-power.md)), one of the things in the design that act
+without a program, because a building does not decide.
 `defence_damage` is per model in data and zero for every model but the
 printer.
 Nothing else deals damage, and nothing repairs; each is a new question
@@ -554,6 +517,7 @@ is what the prologues and epilogues do beyond the language's rules.
 | `death` | health at or below the threshold, from faults, attacks or a printer's defence; `dying`'s epilogue | nothing | — | removes the machine, at the end of the tick's damage step even when the epilogue ran in its own slice (`06`, step 4); its load or store, and a printer's print, is lost; its tile is then free; a site it was building stays; the team's cap updates if it was a printer |
 | `dying` | health at or below zero, from faults, attacks or a printer's defence | cancels the action in progress; freezes health (a printer's print was already lost when its health fell, Printing) | call the senses, `log`, `wait`, `rename`, `set_color` (Q43) and `drop`; any other action is a `ValueError` | nothing beyond raising `death` |
 | `fault` | the program | cancels the action in progress; charges `fault_damage` | anything | nothing beyond the restart |
+| `low_power` | a bot's charge falling to the level, or the bot waking from being out of power (Q62, Q63; `08`, Low power) | nothing: it is delivered only once the action in progress has completed | anything | nothing: main flow goes on where it was |
 | `redeploy` | the command log | cancels the action in progress | — | nothing beyond the swap |
 
 ## Game modules and builtins
@@ -572,7 +536,9 @@ Every builtin above has a row in the `[game]` table of
 [data/language/costs.toml](../data/language/costs.toml), in the shape
 [costs](01-language/costs.md) fixed: a base cost, plus `factor.traverse` per
 element for a query that returns a list. An action's base cost is charged
-when it begins; its wait costs nothing, since the program is paused.
+when it begins; its wait costs nothing, since the program is paused. Each
+also has a charge cost, a row of `[power.cost]` in
+[data/machines.toml](../data/machines.toml), which is `08`'s.
 
 ## What this doc leaves open
 
@@ -581,9 +547,4 @@ when it begins; its wait costs nothing, since the program is paused.
   kind; a turret model or a repair action is a new question number.
 - **Further models**: a building that extends senses, a second bot model, a
   second resource. Each is a new question number and a row here.
-- **More of power** (Q59 began it): storing power, any supply but the
-  printer's and the panel's, a panel whose output varies, a player-set
-  order for who stops first, and a building that draws power — which must
-  come with a rule that keeps a team's oldest bots running, since a dark
-  bot cannot deconstruct the building that starves it. Each is a new
-  question number.
+- **More of power** is [08-power](08-power.md)'s to list.

@@ -1,30 +1,49 @@
-"""The starter bot's three jobs, one step at a time.
+"""The starter bot's jobs, one step at a time.
 
 Each *_step function does one step of its job (a move, a pick, a drop, a
-build or a paint) and returns True, or returns False at once when its job
-has nothing to do, so a bot can try them in order:
+build, a paint or a wire) and returns True, or returns False at once when
+its job has nothing to do, so a bot can try them in order:
 
     while True:
+        if low() and recharge_step(True):
+            continue
         if build_step():
+            continue
+        if wire_step():
             continue
         if mark_step():
             continue
         leg, steps = patrol_step(leg, steps)
 
-Plans come from the mark tools in the game (B, P and O): `plans(kind)`
+Plans come from the mark tools in the game (B, P, O and C): `plans(kind)`
 reads them as (x, y, value) tuples, value None for a plan to clear.
+
+A bot goes to recharge when its battery is half empty (low()), so that it
+gets there on what it has left. The low-power hook
+(interrupts/on_low_power.py) runs recharge_step too, at a fifth, for a bot
+that did not make it.
 """
 
-from geo import DIRS, same, step
-from sense import known, passable, has_building, buildable, nearest, machines, ore_sources
-from act import try_move, try_pick, try_drop, try_build, try_deconstruct
+from geo import DIRS, same, step, adjacent
+from sense import known, passable, has_building, buildable, nearest, machines
+from sense import ore_sources, charge_sources
+from act import try_move, try_move_to, try_pick, try_drop, try_build, try_deconstruct
 from act import try_paint, try_unpaint, try_overlay, try_unoverlay
+from act import try_wire, try_unwire, try_recharge
 from nav import approach
 
 # Ore a bot carries at most (data/machines.toml).
 CAPACITY: int = 10
 # Steps a patrol leg may take before the bot turns anyway.
 LEG_STEPS: int = 40
+# Ore one tile of wire costs (data/machines.toml).
+WIRE_COST: int = 3
+# The share of its battery a bot recharges to before going back to work.
+FULL = 0.9
+# The share below which a bot goes to recharge before it takes another job.
+# Half a battery is enough to cross the first map; the low-power hook, at a
+# fifth, is the fallback for a bot that could not get home.
+RESERVE = 0.5
 
 
 # Building
@@ -66,6 +85,76 @@ def build_step() -> bool:
                 try_build(p[2], p[0], p[1])
         if not try_drop("ore"):
             wait(1)
+    return True
+
+
+# Wiring
+
+
+def wire_step() -> bool:
+    """One step of wiring; False when there is no wire plan to act on.
+
+    Takes up wire planned for removal first. Otherwise fetches ore, since a
+    tile of wire costs WIRE_COST, and lays the nearest planned wire.
+    """
+    plan = plans("wire")
+    target = nearest([(p[0], p[1]) for p in plan if p[2] is None])
+    if target is not None:
+        if approach(target) and not try_unwire(target[0], target[1]):
+            wait(1)
+        return True
+    lay = [(p[0], p[1]) for p in plan if p[2] is not None]
+    if not lay:
+        return False
+    if me().load["ore"] < WIRE_COST:
+        source = nearest(ore_sources())
+        if source is None:
+            return False
+        if approach(source) and not try_pick("ore"):
+            wait(1)
+        return True
+    target = nearest(lay)
+    if approach(target) and not try_wire(target[0], target[1]):
+        wait(1)
+    return True
+
+
+# Recharging
+
+
+def low() -> bool:
+    """True once the battery is below RESERVE of what it holds: time to go
+    and recharge, while there is charge enough to get there."""
+    m = me()
+    return m.charge < m.battery * RESERVE
+
+
+def recharge_step(search: bool = False) -> bool:
+    """One step toward a nearly full battery; False once it is, or when
+    there is nothing more this step can do about it.
+
+    Heads for the team's nearest powered building holding charge and
+    recharges there; a recharge moves only so much at a time, so call it
+    until it returns False. It gives up rather than wait beside a building
+    that has run low.
+
+    search: find a way round rock and water, as the other jobs do. Leave it
+    False in the low-power hook, which has a budget a route search could
+    use up: the bot then takes move_to's one greedy step and searches for
+    nothing.
+    """
+    m = me()
+    if m.charge >= m.battery * FULL:
+        return False
+    target = nearest(charge_sources())
+    if target is None:
+        return False
+    if adjacent(m.pos, target):
+        return try_recharge()
+    if search:
+        return approach(target) is not None
+    if not try_move_to(target[0], target[1]):
+        wait(1)
     return True
 
 

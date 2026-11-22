@@ -192,7 +192,9 @@ pub fn body_half(model: Model) -> Vec3 {
     match model {
         Model::Bot => Vec3::splat(BOT_HALF),
         Model::Printer => Vec3::new(0.45, 0.25, 0.45),
-        Model::Depot => Vec3::new(0.39, 0.15, 0.39),
+        // The solar panel, the charger and the pylon (Q62) are drawn as a
+        // depot until T32 gives them their own art.
+        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => Vec3::new(0.39, 0.15, 0.39),
         Model::Site => Vec3::splat(0.35),
     }
 }

@@ -12,6 +12,7 @@
                         ("main.py", "# The fixture\'s player printer: printers print by themselves (Q42), so it\n# logs its print\'s countdown and how many machines its team sees — own and\n# rival, bots and buildings — so a change in the printing rule moves the\n# transcript.\nwhile True:\n    log(\"printing\", me().printing, \"sees\", len(see()))\n    wait(5)\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
+                        ("on_low_power.py", "# The fixture\'s low-power hook (Q62, Q63): walk toward the nearest powered\n# building of the team that holds charge, recharge until nearly full, and\n# let the bot\'s program go on from where it was. It counts its steps, so\n# a bot that cannot get there gives up long before the hook\'s budget does.\ndef on_low_power():\n    tries = 0\n    while tries < 30 and me().charge < 90:\n        tries += 1\n        home = None\n        for m in see():\n            if m.team == me().team and m.kind == \"building\" and m.model != \"site\":\n                if m.powered and m.charge >= 10:\n                    home = m.pos\n                    break\n        if home is None:\n            return\n        here = me().pos\n        if abs(home[0] - here[0]) + abs(home[1] - here[1]) == 1:\n            try:\n                recharge()\n                log(\"recharged to\", me().charge)\n            except ValueError:\n                return\n        else:\n            try:\n                move_to(home[0], home[1])\n            except ValueError:\n                wait(1)\n"),
                     ],
                 ),
             ),
@@ -24,9 +25,10 @@
                 deployment: "bot",
                 bundle: (
                     files: [
-                        ("main.py", "# The fixture\'s first bot program: haul ore from the nearest deposit into\n# the team\'s building plan — a printer, whose price rises with the team\'s\n# printers (Q42) — building the site when there is none, and keep a tally\n# that a redeploy will throw away. It wears its job as its color (Q43):\n# orange while hauling to the site, cyan while fetching ore.\nsteps = 0\nCAPACITY = 10\n\n\ndef deposit():\n    for t in tiles(-30, -30, 30, 30):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            return (t.x, t.y)\n    return None\n\n\ndef site():\n    for p in plans(\"building\"):\n        return (p[0], p[1])\n    for m in see():\n        if m.team == me().team and m.model == \"site\":\n            return (m.pos[0], m.pos[1])\n    return None\n\n\ndef adjacent(p):\n    here = me().pos\n    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1\n\n\ndef step_off():\n    for d in [\"n\", \"e\", \"s\", \"w\"]:\n        try:\n            move(d)\n            return\n        except ValueError:\n            pass\n    wait(1)\n\n\nwhile True:\n    full = me().load[\"ore\"] >= CAPACITY\n    job = \"orange\" if full else \"cyan\"\n    if me().color != job:\n        set_color(job)\n    target = site() if full else deposit()\n    if target is None:\n        wait(5)\n        continue\n    here = me().pos\n    if (here[0], here[1]) == target:\n        step_off()\n        continue\n    if adjacent(target):\n        if full:\n            for p in plans(\"building\"):\n                if (p[0], p[1]) == target:\n                    try:\n                        build(p[2], p[0], p[1])\n                        log(\"site placed\")\n                    except ValueError:\n                        pass\n            try:\n                drop(\"ore\")\n                log(\"dropped\")\n            except ValueError:\n                wait(1)\n        else:\n            try:\n                pick(\"ore\")\n                log(\"picked\", me().load[\"ore\"])\n            except ValueError:\n                wait(1)\n        continue\n    try:\n        move_to(target[0], target[1])\n        steps += 1\n    except ValueError:\n        wait(2)\n    if steps % 4 == 0:\n        log(\"steps\", steps, \"sees\", len(see()), \"hears\", len(hear()))\n"),
+                        ("main.py", "# The fixture\'s first bot program: haul ore from the nearest deposit into\n# the team\'s building plans, one at a time — a charger, a pylon and a\n# printer, whose price rises with the team\'s printers (Q42) — building the\n# site when there is none, lay the team\'s planned wire on the way (Q62),\n# and keep a tally that a redeploy will throw away. It wears its job as its\n# color (Q43): orange while hauling to the site, cyan while fetching ore.\n# The low-power hook beside it (interrupts/on_low_power.py) takes a bot\n# off to recharge, and this loop then goes on where it was (Q63).\nsteps = 0\nCAPACITY = 10\n\n\ndef deposit():\n    for t in tiles(-30, -30, 30, 30):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            return (t.x, t.y)\n    return None\n\n\ndef site():\n    for p in plans(\"building\"):\n        return (p[0], p[1])\n    for m in see():\n        if m.team == me().team and m.model == \"site\":\n            return (m.pos[0], m.pos[1])\n    return None\n\n\ndef wire_plan():\n    for p in plans(\"wire\"):\n        if p[2]:\n            return (p[0], p[1])\n    return None\n\n\ndef adjacent(p):\n    here = me().pos\n    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1\n\n\ndef step_off():\n    for d in [\"n\", \"e\", \"s\", \"w\"]:\n        try:\n            move(d)\n            return\n        except ValueError:\n            pass\n    wait(1)\n\n\nwhile True:\n    full = me().load[\"ore\"] >= CAPACITY\n    job = \"orange\" if full else \"cyan\"\n    if me().color != job:\n        set_color(job)\n    wiring = wire_plan() if full else None\n    target = wiring or (site() if full else deposit())\n    if target is None:\n        wait(5)\n        continue\n    here = me().pos\n    if (here[0], here[1]) == target:\n        step_off()\n        continue\n    if adjacent(target):\n        if wiring is not None:\n            try:\n                wire(target[0], target[1])\n                log(\"wired\")\n            except ValueError:\n                wait(1)\n        elif full:\n            for p in plans(\"building\"):\n                if (p[0], p[1]) == target:\n                    try:\n                        build(p[2], p[0], p[1])\n                        log(\"site placed\")\n                    except ValueError:\n                        pass\n            try:\n                drop(\"ore\")\n                log(\"dropped\")\n            except ValueError:\n                wait(1)\n        else:\n            try:\n                pick(\"ore\")\n                log(\"picked\", me().load[\"ore\"])\n            except ValueError:\n                wait(1)\n        continue\n    try:\n        move_to(target[0], target[1])\n        steps += 1\n    except ValueError:\n        wait(2)\n    if steps % 4 == 0:\n        log(\"steps\", steps, \"sees\", len(see()), \"hears\", len(hear()))\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
+                        ("on_low_power.py", "# The fixture\'s low-power hook (Q62, Q63): walk toward the nearest powered\n# building of the team that holds charge, recharge until nearly full, and\n# let the bot\'s program go on from where it was. It counts its steps, so\n# a bot that cannot get there gives up long before the hook\'s budget does.\ndef on_low_power():\n    tries = 0\n    while tries < 30 and me().charge < 90:\n        tries += 1\n        home = None\n        for m in see():\n            if m.team == me().team and m.kind == \"building\" and m.model != \"site\":\n                if m.powered and m.charge >= 10:\n                    home = m.pos\n                    break\n        if home is None:\n            return\n        here = me().pos\n        if abs(home[0] - here[0]) + abs(home[1] - here[1]) == 1:\n            try:\n                recharge()\n                log(\"recharged to\", me().charge)\n            except ValueError:\n                return\n        else:\n            try:\n                move_to(home[0], home[1])\n            except ValueError:\n                wait(1)\n"),
                     ],
                 ),
             ),
@@ -72,6 +74,45 @@
         ),
         (
             tick: 0,
+            sender: (0),
+            seq: 5,
+            kind: Mark(
+                at: (
+                    x: -7,
+                    y: 4,
+                ),
+                plan: Building,
+                value: Some("charger"),
+            ),
+        ),
+        (
+            tick: 0,
+            sender: (0),
+            seq: 6,
+            kind: Mark(
+                at: (
+                    x: -7,
+                    y: 3,
+                ),
+                plan: Building,
+                value: Some("pylon"),
+            ),
+        ),
+        (
+            tick: 2,
+            sender: (0),
+            seq: 2,
+            kind: Mark(
+                at: (
+                    x: -8,
+                    y: 4,
+                ),
+                plan: Wire,
+                value: Some("wire"),
+            ),
+        ),
+        (
+            tick: 0,
             sender: (1),
             seq: 0,
             kind: Deploy(
@@ -81,6 +122,7 @@
                         ("main.py", "# The Fool\'s printer: it prints by itself, taking turns with the team\'s other\n# printers until the team is at its cap (Q42), so its program only waits.\n# This is shipped source (design-invariant DI8): it runs under docs/01 exactly\n# as a player\'s program does.\n\nwhile True:\n    wait(60)\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
+                        ("on_low_power.py", ""),
                     ],
                 ),
             ),
@@ -96,6 +138,7 @@
                         ("main.py", "# The Fool\'s bots: carry ore from the nearest deposit to the nearest place\n# that takes it — a planned site first, a depot otherwise — and build where\n# the plans say, which for the Fool is depots only. Shipped source\n# (design-invariant DI8): every name here is docs/01\'s or docs/02\'s.\n\nCAPACITY = 10\nFAR = 1000\n\n\ndef nearest(points):\n    here = me().pos\n    best = None\n    for p in points:\n        d = (p[0] - here[0]) ** 2 + (p[1] - here[1]) ** 2\n        if best is None or d < best[0]:\n            best = (d, p)\n    return None if best is None else best[1]\n\n\ndef adjacent(p):\n    here = me().pos\n    return abs(p[0] - here[0]) + abs(p[1] - here[1]) == 1\n\n\ndef step_toward(p):\n    try:\n        move_to(p[0], p[1])\n    except ValueError:\n        wait(1)\n\n\ndef step_off():\n    # Standing on the tile itself: an action wants it adjacent, so leave it.\n    for d in [\"n\", \"e\", \"s\", \"w\"]:\n        try:\n            move(d)\n            return\n        except ValueError:\n            pass\n    wait(1)\n\n\ndef approach(p):\n    # True once adjacent to p; otherwise one step nearer, or off it.\n    here = me().pos\n    if (here[0], here[1]) == (p[0], p[1]):\n        step_off()\n        return False\n    if adjacent(p):\n        return True\n    step_toward(p)\n    return False\n\n\ndef drop_targets():\n    targets = [(p[0], p[1]) for p in plans(\"building\")]\n    for m in see():\n        if m.team == me().team and m.kind == \"building\" and m.model != \"printer\":\n            targets.append(m.pos)\n    return targets\n\n\ndef deposits():\n    found = []\n    for t in tiles(-FAR, -FAR, FAR, FAR):\n        if t.deposit is not None and t.deposit[\"ore\"] > 0:\n            found.append((t.x, t.y))\n    return found\n\n\nwhile True:\n    if me().load[\"ore\"] >= CAPACITY:\n        target = nearest(drop_targets())\n        if target is None:\n            wait(5)\n            continue\n        if approach(target):\n            for p in plans(\"building\"):\n                if (p[0], p[1]) == target:\n                    try:\n                        build(p[2], p[0], p[1])\n                    except ValueError:\n                        pass\n            try:\n                drop(\"ore\")\n            except ValueError:\n                wait(1)\n        continue\n    target = nearest(deposits())\n    if target is None:\n        wait(5)\n        continue\n    if approach(target):\n        try:\n            pick(\"ore\")\n        except ValueError:\n            wait(1)\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
+                        ("on_low_power.py", ""),
                     ],
                 ),
             ),
@@ -111,6 +154,7 @@
                         ("main.py", "# The Fool\'s depots do nothing but hold. Shipped source (design-invariant DI8).\n\nwhile True:\n    wait(60)\n"),
                         ("on_dying.py", ""),
                         ("on_fault.py", ""),
+                        ("on_low_power.py", ""),
                     ],
                 ),
             ),
@@ -160,7 +204,7 @@
             ),
         ),
         (
-            tick: 360,
+            tick: 600,
             sender: (0),
             seq: 0,
             kind: Deploy(
@@ -173,5 +217,5 @@
             ),
         ),
     ],
-    ticks: 400,
+    ticks: 640,
 )

@@ -29,7 +29,8 @@ signature = "tile(x: int, y: int) -> Tile | None"
 doc = """
 The tile at (x, y) as your team knows it: `state` ("visible" or
 "remembered"), `terrain`, `deposit`, `building`, `paint`, `overlay`,
-`plans` and `seen_at`. None for a tile your team has never seen."""
+`wires` (the numbers of the teams with a wire under it), `plans` and
+`seen_at`. None for a tile your team has never seen."""
 
 [game.tiles]
 signature = "tiles(x0: int, y0: int, x1: int, y1: int) -> list[Tile]"
@@ -43,14 +44,33 @@ Costs one unit per tile returned."""
 signature = "me() -> Machine"
 doc = """
 This machine's own record: `id`, `name`, `model`, `team`, `pos`, `health`,
-`busy`, `progress`, and `load` and `color` for a bot."""
+`busy`, `progress`, `charge` (what its battery holds) and `battery` (what
+it can hold); `load`, `color` and `flat` (out of power) for a bot;
+`store`, `powered` and `grid` for a building."""
 
 [game.plans]
-signature = "plans(kind: str) -> list[tuple[int, int, str | None]]"
+signature = "plans(kind: str) -> list[tuple[int, int, str | bool | None]]"
 doc = """
-Your team's pending plans of one kind: "paint", "overlay" or "building",
-as (x, y, value) tuples sorted by row then column. The value is a color,
-a label or a model, or None for a plan to clear."""
+Your team's pending plans of one kind: "paint", "overlay", "building" or
+"wire", as (x, y, value) tuples sorted by row then column. The value is a
+color, a label, a model or True for a wire, or None for a plan to clear."""
+
+[game.power]
+signature = "power() -> list[Power]"
+doc = """
+Your team's grids as the last power step left them, one record each:
+`grid` (its label, the id of its oldest building), `generation` and
+`drain` per tick, `stored` (the charge in its batteries) and `capacity`.
+
+Costs one unit per grid returned."""
+
+[game.wires]
+signature = "wires() -> list[tuple[int, int]]"
+doc = """
+Every tile carrying your team's own wire, as (x, y), sorted by row then
+column.
+
+Costs one unit per tile returned."""
 
 [game.painted]
 signature = "painted(color: str) -> list[tuple[int, int]]"
@@ -101,10 +121,21 @@ most room for it. A printer never takes a drop.
 
 Raises ValueError if nothing adjacent has room."""
 
+[game.recharge]
+signature = "recharge() -> None"
+doc = """
+Take charge from the adjacent powered building that holds the most —
+any team's — up to that building's rate and what your battery has room
+for. A printer and a charger have batteries.
+
+Raises ValueError if nothing adjacent has charge to give, or your battery
+is full."""
+
 [game.build]
 signature = "build(model: str, x: int, y: int) -> None"
 doc = """
-Place a site for `model` ("depot", "printer") on the adjacent tile
+Place a site for `model` ("printer", "depot", "solar", "charger" or
+"pylon") on the adjacent tile
 (x, y), which must be ground with no deposit or building. The site is
 finished by dropping its price in ore into it. A building plan on the
 tile is the usual target, and is used up.
@@ -146,6 +177,24 @@ doc = """
 Remove the overlay from the adjacent tile (x, y).
 
 Raises ValueError if the tile has none."""
+
+[game.wire]
+signature = "wire(x: int, y: int) -> None"
+doc = """
+Lay your team's wire under the adjacent ground tile (x, y), for
+`wire_cost` in ore from your load. A wire plan on the tile is used up.
+Wire joins your buildings into a grid, and no rival can remove it.
+
+Raises ValueError if your team's wire is already there, the tile is not
+ground, or your load is short of the cost."""
+
+[game.unwire]
+signature = "unwire(x: int, y: int) -> None"
+doc = """
+Remove your team's wire from the adjacent tile (x, y). Nothing is
+refunded. A wire plan to clear the tile is used up.
+
+Raises ValueError if your team has no wire there."""
 
 [game.deconstruct]
 signature = "deconstruct(x: int, y: int) -> None"

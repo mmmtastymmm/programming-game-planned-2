@@ -177,7 +177,7 @@ pub fn read_bundle(dir: &Path) -> Result<Bundle, String> {
 pub const ROBOTS: &str = "robots";
 pub const INTERRUPTS: &str = "interrupts";
 /// The interrupt files every bundle carries.
-pub const INTERRUPT_FILES: [&str; 2] = ["on_fault.py", "on_dying.py"];
+pub const INTERRUPT_FILES: [&str; 3] = ["on_fault.py", "on_dying.py", "on_low_power.py"];
 
 /// A programs tree as text: every `.py` file by its path relative to the
 /// root, with `/` separators.
@@ -274,7 +274,7 @@ pub fn compose(tree: &Tree) -> Result<BTreeMap<String, Bundle>, String> {
             if !INTERRUPT_FILES.contains(&bare) || path.matches('/').count() != 1 {
                 return Err(format!(
                     "`{path}`: `{INTERRUPTS}/` holds only {}",
-                    INTERRUPT_FILES.join(" and ")
+                    INTERRUPT_FILES.join(", ")
                 ));
             }
             continue;
@@ -332,7 +332,16 @@ mod tests {
         let b = compose(&t).unwrap();
         assert_eq!(b.keys().cloned().collect::<Vec<_>>(), ["bot", "printer"]);
         let names: Vec<&str> = b["bot"].files.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, ["main.py", "nav.py", "on_dying.py", "on_fault.py"]);
+        assert_eq!(
+            names,
+            [
+                "main.py",
+                "nav.py",
+                "on_dying.py",
+                "on_fault.py",
+                "on_low_power.py"
+            ]
+        );
         assert_eq!(b["bot"].files[0].1, "import nav\n");
         assert_eq!(b["bot"].files[3].1, "def on_fault(e):\n    pass\n");
         // The interrupt files are in every bundle even when the tree lacks

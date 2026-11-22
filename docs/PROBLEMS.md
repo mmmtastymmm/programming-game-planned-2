@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-12: 9 opened, 7 fixed — 2 open.**
+**Status 2026-11-16: 9 opened, 7 fixed — 2 open.**
 
 ## Open
 
@@ -52,13 +52,20 @@ way to take a printer down. The user deferred retuning them to
 playtesting; this entry holds the arithmetic until then, and closes with
 the commit that changes the numbers or the rule.
 
-**P8 — The code lags Q59: no power, wires or solar panels**
+**P8 — The code lags Q62: no batteries, charge costs, grids, chargers, pylons or wire**
 
-Q59 ruled that power is a team's flow, supplied by printers and solar
-panels wired back to a printer and drawn by bots, with the newest bots
-stopping when the team is short; `01`, `02`, `03`, `05`, `06` and `07`
-state it as current. None of it exists: the sim has no wires, no `solar`
-model, no power step and no `powered` attribute, printing ignores power,
-and the renderer draws none of it. The work is [T31](TASKS.md) and
-[T32](TASKS.md); this entry closes with the commit that finishes
-whichever lands last.
+This entry was opened against Q59, whose power was never built; Q62
+withdrew Q59 and ruled power again, and Q63 amended it, so the gap is
+now theirs. They ruled that every bot has a battery its calls run down
+and its own solar refills, that a bot out of power waits to be charged
+back to a level, that `low_power` is a fifth interrupt, which returns to
+main flow, that buildings generate
+and drain and share power as grids served oldest first, that a building
+a grid cannot cover goes dark, and that grids are joined by pylons or by
+underground wire; `01`, `02`, `03`, `05`, `06`, `07` and `08` state it as
+current. The interpreter and the sim have it, from T39's and T31's work;
+what is missing is the renderer's half: it draws a solar panel, a charger
+and a pylon as depots, and no wire, no pylon's line, no mark over a flat
+bot or a dark building, no wire tool and no grid in the inspector. The
+work is [T39](TASKS.md), [T31](TASKS.md) and [T32](TASKS.md); this entry
+closes with the commit that finishes whichever lands last.

@@ -1,7 +1,10 @@
 //! The interrupt model of `docs/01-language/execution.md`: hooks bound at
 //! load, hook budgets, delivery at boundaries, escalation, preemption, and
-//! what the fault record holds. The sim raises `dying`, `death` and
-//! `redeploy` through `Machine::raise`; here a scripted host does.
+//! what the fault record holds. The sim raises `dying`, `death`,
+//! `low_power` and `redeploy` through `Machine::raise`; here a scripted
+//! host does. The last tests are Q62's and Q63's (T39): `low_power`,
+//! which sets main flow aside and puts it back, and a program held before
+//! a call the host is not ready for, or for a whole slice.
 
 use lang::data::{COSTS_TOML, LIMITS_TOML};
 use lang::{
@@ -15,6 +18,10 @@ use std::rc::Rc;
 struct ScriptHost {
     log: Vec<String>,
     next_program: Option<Program>,
+    /// Builtins the host is not ready for (`Host::ready`), and every name
+    /// it was asked about, in order.
+    refuse: Vec<&'static str>,
+    asked: Vec<String>,
 }
 
 impl Host for ScriptHost {
@@ -35,12 +42,18 @@ impl Host for ScriptHost {
                 Ok(HostCall::Value(Value::None))
             }
             "wait" => Ok(HostCall::Wait),
+            "move" => Ok(HostCall::Value(Value::None)),
             _ => Ok(HostCall::Unknown),
         }
     }
 
     fn current_program(&mut self) -> Option<Program> {
         self.next_program.clone()
+    }
+
+    fn ready(&mut self, name: &str) -> bool {
+        self.asked.push(name.to_string());
+        !self.refuse.contains(&name)
     }
 }
 
@@ -123,6 +136,7 @@ fn kinds(events: &[Event]) -> Vec<String> {
             Event::Abandoned(x) => format!("abandoned:{}", x.class.name()),
             Event::Escalated { from, to } => format!("escalated:{}>{}", from.name(), to.name()),
             Event::Dying => "dying".to_string(),
+            Event::LowPower => "low_power".to_string(),
             Event::Death => "death".to_string(),
             Event::Redeploy { swapped } => format!("redeploy:{swapped}"),
         })
@@ -525,4 +539,616 @@ fn a_hook_binds_from_the_interrupt_file_when_main_lacks_it() {
 
 fn limits_of() -> Rc<Limits> {
     tables().1
+}
+
+// ------------------------------------------------- Q62: low_power (T39) ---
+
+#[test]
+fn low_power_ranks_between_redeploy_and_fault_and_the_old_kinds_keep_their_bytes() {
+    assert!(Interrupt::Redeploy < Interrupt::LowPower);
+    assert!(Interrupt::LowPower < Interrupt::Fault);
+    assert!(Interrupt::Fault < Interrupt::Dying && Interrupt::Dying < Interrupt::Death);
+    assert_eq!(Interrupt::LowPower.name(), "low_power");
+    // The state hash's byte for a kind is not its rank, so adding a kind
+    // in the middle moved no older kind's.
+    assert_eq!(
+        [
+            Interrupt::Redeploy.code(),
+            Interrupt::Fault.code(),
+            Interrupt::Dying.code(),
+            Interrupt::Death.code(),
+            Interrupt::LowPower.code(),
+        ],
+        [0, 1, 2, 3, 4]
+    );
+}
+
+#[test]
+fn on_low_power_binds_at_load_from_main_or_its_file_with_no_parameter() {
+    let p = load("def on_low_power():\n    pass\n");
+    assert!(p.hooks.on_low_power.is_some());
+    assert!(p.hooks.on_fault.is_none() && p.hooks.on_dying.is_none());
+    assert!(load_error("def on_low_power(x):\n    pass\n").contains("exactly 0 parameters"));
+    assert!(
+        load_error("def on_low_power():\n    pass\ndef on_low_power():\n    pass\n")
+            .contains("twice")
+    );
+    let (_, limits) = tables();
+    let from_file = Program::load(
+        &[
+            ("main.py", "x = 1\n"),
+            ("on_low_power.py", "def on_low_power():\n    pass\n"),
+        ],
+        &limits,
+    )
+    .unwrap();
+    assert!(
+        from_file
+            .hooks
+            .on_low_power
+            .as_ref()
+            .is_some_and(|h| h.module.as_deref() == Some("on_low_power"))
+    );
+    // `main.py`'s wins over the file's.
+    let both = Program::load(
+        &[
+            ("main.py", "def on_low_power():\n    pass\n"),
+            ("on_low_power.py", "def on_low_power():\n    pass\n"),
+        ],
+        &limits,
+    )
+    .unwrap();
+    assert!(
+        both.hooks
+            .on_low_power
+            .as_ref()
+            .is_some_and(|h| h.module.is_none())
+    );
+}
+
+#[test]
+fn low_power_runs_its_hook_and_main_flow_goes_on_where_it_was() {
+    let src =
+        "log('top')\nn = 5\nt = wait()\nlog('after', n, t)\ndef on_low_power():\n    log('hook')\n";
+    let mut host = ScriptHost::default();
+    let (m, ticks) = run(src, &[(2, Interrupt::LowPower)], 2, &mut host);
+    assert_eq!(ticks[0].slice, Slice::Wait);
+    // The wait is over (the run resumed it with the tick), so the hook
+    // runs at once and main flow then takes the wait's value, its
+    // variables as they were. The restart is main flow's own end.
+    assert_eq!(kinds(&ticks[1].events), ["low_power"]);
+    assert_eq!(ticks[1].mode, "main");
+    assert_eq!(host.log, ["top", "hook", "after 5 1"]);
+    assert_eq!(ticks[1].slice, Slice::Restarted);
+    assert!(
+        m.fault_record.is_none(),
+        "nothing failed, so nothing is recorded"
+    );
+}
+
+#[test]
+fn low_power_waits_for_the_action_in_progress_and_a_redeploy_beside_it_does_not() {
+    let src =
+        "log('top')\nt = wait()\nlog('after', t)\nwait()\ndef on_low_power():\n    log('hook')\n";
+    let mut m = machine(src);
+    let mut host = ScriptHost::default();
+    m.tick = 1;
+    assert_eq!(m.run_slice(&mut host), Slice::Wait);
+    // Raised inside the wait: it stays pending, tick after tick.
+    m.raise(Interrupt::LowPower);
+    for tick in 2..=3 {
+        m.tick = tick;
+        assert_eq!(m.run_slice(&mut host), Slice::Wait);
+        assert_eq!(kinds(&m.take_events()), Vec::<String>::new());
+        assert_eq!(m.mode_name(), "main");
+    }
+    assert_eq!(host.log, ["top"]);
+    // The action completes; the hook runs before main flow takes its value.
+    m.resume(Value::int(7));
+    m.tick = 4;
+    assert_eq!(m.run_slice(&mut host), Slice::Wait);
+    assert_eq!(kinds(&m.take_events()), ["low_power"]);
+    assert_eq!(host.log, ["top", "hook", "after 7"]);
+
+    // A `redeploy` pending beside it is delivered inside the wait, as
+    // always; `low_power` then reaches the new program's first boundary.
+    let mut m = machine(src);
+    let mut host = ScriptHost {
+        next_program: Some(load(
+            "log('new')\nwait()\ndef on_low_power():\n    log('new hook')\n",
+        )),
+        ..Default::default()
+    };
+    m.tick = 1;
+    assert_eq!(m.run_slice(&mut host), Slice::Wait);
+    m.raise(Interrupt::LowPower);
+    m.raise(Interrupt::Redeploy);
+    m.tick = 2;
+    assert_eq!(m.run_slice(&mut host), Slice::Wait);
+    assert_eq!(kinds(&m.take_events()), ["redeploy:true", "low_power"]);
+    assert_eq!(host.log, ["top", "new hook", "new"]);
+}
+
+#[test]
+fn low_power_with_no_hook_changes_nothing() {
+    let src = "log('top')\nt = wait()\nlog('after', t)\n";
+    let mut plain = ScriptHost::default();
+    let (a, _) = run(src, &[], 3, &mut plain);
+    let mut host = ScriptHost::default();
+    let (b, ticks) = run(
+        src,
+        &[(2, Interrupt::LowPower), (2, Interrupt::LowPower)],
+        3,
+        &mut host,
+    );
+    // A missing hook is an empty one: the two raises coalesce into one
+    // delivery, and main flow runs exactly as it would have.
+    assert_eq!(kinds(&events_of(&ticks)), ["low_power"]);
+    assert_eq!(host.log, plain.log);
+    assert_eq!(a.state_bytes(), b.state_bytes());
+    assert_eq!(a.trace().restarts, b.trace().restarts);
+}
+
+#[test]
+fn the_hook_shares_main_flows_globals_and_a_second_low_power_merges_into_it() {
+    let mut host = ScriptHost::default();
+    let (_, ticks) = run(
+        "seen = []\nt = wait()\nlog('main sees', len(seen), t)\nwait()\ndef on_low_power():\n    seen.append(1)\n    log('hook')\n    wait()\n    log('hook resumes')\n",
+        &[(2, Interrupt::LowPower), (3, Interrupt::LowPower)],
+        4,
+        &mut host,
+    );
+    assert_eq!(ticks[1].mode, "low_power");
+    assert_eq!(ticks[1].slice, Slice::Wait);
+    // Raised again while the hook runs: it merges, and the hook runs once.
+    assert_eq!(kinds(&events_of(&ticks)), ["low_power"]);
+    assert_eq!(
+        host.log,
+        ["hook", "hook resumes", "main sees 1 1"],
+        "main flow went on with its own wait's value and the hook's change"
+    );
+}
+
+#[test]
+fn an_exception_in_on_low_power_escalates_to_fault_and_main_flow_restarts() {
+    let mut host = ScriptHost::default();
+    let (m, ticks) = run(
+        "log('top')\nwait()\nlog('never')\ndef on_low_power():\n    x = 1 / 0\ndef on_fault(e):\n    log('on_fault', e)\n",
+        &[(2, Interrupt::LowPower)],
+        3,
+        &mut host,
+    );
+    assert_eq!(
+        kinds(&ticks[1].events),
+        [
+            "low_power",
+            "escalated:low_power>fault",
+            "fault:ZeroDivisionError"
+        ]
+    );
+    // `fault`'s epilogue restarts main flow: the one set aside is gone.
+    assert_eq!(ticks[1].slice, Slice::Restarted);
+    assert_eq!(ticks[1].mode, "main");
+    let rec = m.fault_record.as_ref().expect("the fault wrote its record");
+    assert_eq!(
+        rec.exception.as_ref().map(|e| e.class),
+        Some(ExcClass::ZeroDivisionError)
+    );
+    assert_eq!(rec.line, 5);
+    assert_eq!(host.log, ["top", "on_fault ZeroDivisionError", "top"]);
+    assert!(!m.is_dead());
+}
+
+#[test]
+fn on_low_power_exhausting_its_budget_is_a_limit_error_fault() {
+    let mut host = ScriptHost::default();
+    let (m, ticks) = run(
+        "log('top')\nwait()\ndef on_low_power():\n    i = 0\n    while i < 1000000:\n        i += 1\n    log('hook done')\ndef on_fault(e):\n    log('on_fault', e)\n",
+        &[(2, Interrupt::LowPower)],
+        400,
+        &mut host,
+    );
+    assert_eq!(
+        kinds(&events_of(&ticks)),
+        ["low_power", "escalated:low_power>fault", "fault:LimitError"]
+    );
+    assert!(!host.log.contains(&"hook done".to_string()));
+    assert!(
+        host.log
+            .contains(&"on_fault LimitError: on_low_power exhausted its budget".to_string()),
+        "{:?}",
+        host.log
+    );
+    // `on_fault(e)` needs an exception, so the record holds one too, and
+    // is located at the last operation the hook completed.
+    let rec = m.fault_record.as_ref().expect("record");
+    assert_eq!(
+        rec.exception.as_ref().map(|e| e.class),
+        Some(ExcClass::LimitError)
+    );
+    assert_eq!(rec.exhausted, None);
+    assert_eq!(rec.file.as_deref(), Some("main.py"));
+    assert!((5..=6).contains(&rec.line), "line {}", rec.line);
+    assert!(
+        !m.is_dead(),
+        "a hook that ran too long costs a fault, not the machine"
+    );
+}
+
+#[test]
+fn low_power_waits_for_on_fault_and_a_redeploy_waits_for_on_low_power() {
+    // Raised while `on_fault` waits: it is lower, so it waits for the
+    // epilogue and lands at the restarted program's first boundary.
+    let mut host = ScriptHost::default();
+    let (_, ticks) = run(
+        "log('top')\nx = 1 / 0\ndef on_fault(e):\n    log('fault hook')\n    wait()\ndef on_low_power():\n    log('low hook')\n",
+        &[(2, Interrupt::LowPower)],
+        3,
+        &mut host,
+    );
+    assert_eq!(kinds(&ticks[0].events), ["fault:ZeroDivisionError"]);
+    assert_eq!(ticks[0].mode, "fault");
+    assert_eq!(kinds(&ticks[1].events), Vec::<String>::new());
+    assert_eq!(ticks[1].slice, Slice::Restarted);
+    // Then the hook, and main flow from its top, which faults again.
+    assert_eq!(
+        kinds(&ticks[2].events),
+        ["low_power", "fault:ZeroDivisionError"]
+    );
+    assert_eq!(
+        host.log,
+        ["top", "fault hook", "low hook", "top", "fault hook"]
+    );
+
+    // A `redeploy` raised while `on_low_power` waits does the same: the
+    // hook finishes, main flow goes on to its end, and then the swap.
+    let mut host = ScriptHost {
+        next_program: Some(load("log('new program')\n")),
+        ..Default::default()
+    };
+    let (_, ticks) = run(
+        "log('old')\nwait()\nlog('old goes on')\ndef on_low_power():\n    log('low hook')\n    wait()\n    log('low hook resumes')\n",
+        &[(2, Interrupt::LowPower), (3, Interrupt::Redeploy)],
+        4,
+        &mut host,
+    );
+    assert_eq!(kinds(&ticks[1].events), ["low_power"]);
+    assert_eq!(ticks[1].mode, "low_power");
+    assert_eq!(kinds(&ticks[2].events), ["redeploy:true"]);
+    assert_eq!(
+        host.log[..4],
+        ["old", "low hook", "low hook resumes", "new program"][..]
+    );
+
+    // Both pending at one boundary: `low_power` is the higher. With no
+    // hook it is over at once, and the redeploy follows in the same slice.
+    let mut host = ScriptHost {
+        next_program: Some(load("log('new program')\n")),
+        ..Default::default()
+    };
+    let (_, ticks) = run(
+        "log('old')\nwait()\n",
+        &[(2, Interrupt::Redeploy), (2, Interrupt::LowPower)],
+        2,
+        &mut host,
+    );
+    assert_eq!(kinds(&ticks[1].events), ["low_power", "redeploy:true"]);
+    assert_eq!(host.log, ["old", "new program"]);
+}
+
+#[test]
+fn dying_preempts_on_low_power_and_the_main_flow_set_aside_goes_with_it() {
+    let mut host = ScriptHost::default();
+    let (m, ticks) = run(
+        "log('top')\nwait()\nlog('never')\ndef on_low_power():\n    log('low hook')\n    wait()\n    log('never either')\ndef on_dying():\n    log('last words')\n",
+        &[(2, Interrupt::LowPower), (3, Interrupt::Dying)],
+        4,
+        &mut host,
+    );
+    assert_eq!(kinds(&events_of(&ticks)), ["low_power", "dying", "death"]);
+    assert_eq!(host.log, ["top", "low hook", "last words"]);
+    assert!(m.is_dead());
+}
+
+#[test]
+fn main_flow_set_aside_is_in_the_state_and_a_copy_goes_on_as_its_source_does() {
+    let src = "n = [1, 2]\nt = wait()\nlog('main', n, t)\nwait()\ndef on_low_power():\n    log('hook')\n    wait()\n    n.append(3)\n";
+    let mut m = machine(src);
+    let mut host = ScriptHost::default();
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Wait);
+    m.raise(Interrupt::LowPower);
+    assert_eq!(tick_once(&mut m, &mut host, 2), Slice::Wait);
+    assert_eq!(m.mode_name(), "low_power");
+    // In the hook, with main flow set aside: a copy holds both.
+    let mut copy = m.deep_copy();
+    assert_eq!(copy.state_bytes(), m.state_bytes());
+    let mut other = ScriptHost::default();
+    for tick in 3..=4 {
+        assert_eq!(
+            tick_once(&mut m, &mut host, tick),
+            tick_once(&mut copy, &mut other, tick)
+        );
+        assert_eq!(copy.state_bytes(), m.state_bytes());
+    }
+    assert_eq!(host.log, ["hook", "main [1, 2, 3] 1"]);
+    assert_eq!(other.log, ["main [1, 2, 3] 1"]);
+}
+
+// ----------------------- Q62, Q63: a program held (T39, docs/08) ---
+
+/// Run one slice at `tick`, resuming a wait with the tick as `run` does.
+fn tick_once(m: &mut Machine, host: &mut ScriptHost, tick: u64) -> Slice {
+    m.tick = tick;
+    let slice = m.run_slice(host);
+    if slice == Slice::Wait {
+        m.resume(Value::int(i128::from(tick)));
+    }
+    slice
+}
+
+fn machine(src: &str) -> Machine {
+    let (costs, limits) = tables();
+    Machine::new(&load(src), costs, limits)
+}
+
+#[test]
+fn a_call_the_host_is_not_ready_for_holds_main_flow_before_it_and_charges_nothing() {
+    let mut m = machine("log('a')\nt = wait()\nlog('b', t)\n");
+    let mut host = ScriptHost {
+        refuse: vec!["wait"],
+        ..Default::default()
+    };
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Held);
+    assert!(m.is_held());
+    assert_eq!(host.log, ["a"]);
+    let spent_reaching_it = m.spent();
+    // Held again: the host is asked once a slice, and nothing is charged.
+    let asked = host.asked.len();
+    assert_eq!(tick_once(&mut m, &mut host, 2), Slice::Held);
+    assert_eq!(host.asked.len(), asked.wrapping_add(1));
+    assert_eq!(m.spent(), 0);
+    assert!(m.is_held());
+    // Ready: the call is made as if first reached now, and waits.
+    host.refuse.clear();
+    assert_eq!(tick_once(&mut m, &mut host, 3), Slice::Wait);
+    assert!(!m.is_held());
+    assert!(m.spent() > 0, "the builtin's row is charged when it begins");
+    assert!(spent_reaching_it > 0);
+    assert_eq!(tick_once(&mut m, &mut host, 4), Slice::Restarted);
+    assert_eq!(host.log, ["a", "b 3"]);
+}
+
+#[test]
+fn a_held_call_is_part_of_the_state_and_a_copy_goes_on_as_its_source_does() {
+    let src = "t = wait()\nlog('b', t)\n";
+    let mut free = machine(src);
+    let mut held = machine(src);
+    let mut refusing = ScriptHost {
+        refuse: vec!["wait"],
+        ..Default::default()
+    };
+    let before = held.state_bytes();
+    assert_eq!(before, free.state_bytes());
+    assert_eq!(tick_once(&mut held, &mut refusing, 1), Slice::Held);
+    assert_ne!(held.state_bytes(), before, "a held call is in the hash");
+    let mut copy = held.deep_copy();
+    assert_eq!(copy.state_bytes(), held.state_bytes());
+    assert!(copy.is_held());
+    let mut a = ScriptHost::default();
+    let mut b = ScriptHost::default();
+    for tick in 2..=3 {
+        assert_eq!(
+            tick_once(&mut held, &mut a, tick),
+            tick_once(&mut copy, &mut b, tick)
+        );
+        assert_eq!(copy.state_bytes(), held.state_bytes());
+    }
+    assert_eq!(a.log, ["b 2"]);
+    assert_eq!(b.log, a.log);
+    // A machine never held hashes as it always did: the hold adds bytes
+    // only while there is one.
+    let mut c = ScriptHost::default();
+    assert_eq!(tick_once(&mut free, &mut c, 1), Slice::Wait);
+    assert!(!free.is_held());
+}
+
+#[test]
+fn a_redeploy_abandons_a_held_call_and_on_fault_is_never_held() {
+    // Held, then redeployed: the swap takes it, and nothing is left held.
+    let mut m = machine("log('old')\nwait()\n");
+    let mut host = ScriptHost {
+        refuse: vec!["wait"],
+        next_program: Some(load("log('new')\n")),
+        ..Default::default()
+    };
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Held);
+    m.raise(Interrupt::Redeploy);
+    assert_eq!(tick_once(&mut m, &mut host, 2), Slice::Restarted);
+    assert!(!m.is_held());
+    assert_eq!(host.log, ["old", "new"]);
+
+    // `on_fault`'s call of a refused builtin is made without the host
+    // being asked: a hook that must finish is never held.
+    let mut m = machine(
+        "x = 1 / 0\ndef on_fault(e):\n    log('hook')\n    move('n')\n    log('hook moved')\n",
+    );
+    let mut host = ScriptHost {
+        refuse: vec!["move"],
+        ..Default::default()
+    };
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Restarted);
+    assert_eq!(host.log, ["hook", "hook moved"]);
+    assert!(
+        !host.asked.contains(&"move".to_string()),
+        "{:?}",
+        host.asked
+    );
+}
+
+/// `docs/08`, Out of power: main flow that cannot pay is held; the wake
+/// raises `low_power`, whose hook runs first; then main flow makes the
+/// call it was held before.
+#[test]
+fn a_held_main_flow_woken_by_low_power_runs_the_hook_then_makes_its_call() {
+    let mut m =
+        machine("log('a')\nmove('n')\nlog('b')\nwait()\ndef on_low_power():\n    log('hook')\n");
+    let mut host = ScriptHost {
+        refuse: vec!["move"],
+        ..Default::default()
+    };
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Held);
+    assert_eq!(tick_once(&mut m, &mut host, 2), Slice::Held);
+    host.refuse.clear();
+    m.raise(Interrupt::LowPower);
+    assert_eq!(tick_once(&mut m, &mut host, 3), Slice::Wait);
+    assert_eq!(kinds(&m.take_events()), ["low_power"]);
+    assert_eq!(host.log, ["a", "hook", "b"]);
+    assert!(!m.is_held());
+}
+
+/// `on_low_power` is held like main flow, and a `low_power` that finds
+/// it held is the bot waking: the hook starts over, with main flow still
+/// set aside, and main flow goes on when it returns.
+#[test]
+fn on_low_power_held_for_power_starts_over_when_low_power_wakes_it() {
+    let mut m = machine(
+        "log('a')\nt = wait()\nlog('b', t)\nwait()\ndef on_low_power():\n    log('hook starts')\n    move('s')\n    log('hook moved')\n",
+    );
+    let mut host = ScriptHost {
+        refuse: vec!["move"],
+        ..Default::default()
+    };
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Wait);
+    m.raise(Interrupt::LowPower);
+    assert_eq!(tick_once(&mut m, &mut host, 2), Slice::Held);
+    assert_eq!(m.mode_name(), "low_power");
+    assert!(m.is_held());
+    assert!(host.asked.contains(&"move".to_string()));
+    let spent_before = m.spent();
+    // Held again; the hook's budget is not what a held tick spends.
+    assert_eq!(tick_once(&mut m, &mut host, 3), Slice::Held);
+    assert_eq!(m.spent(), 0);
+    assert!(spent_before > 0);
+    // Not held: a second `low_power` would merge. Held: it starts the hook
+    // over, from its first line.
+    host.refuse.clear();
+    m.raise(Interrupt::LowPower);
+    assert_eq!(tick_once(&mut m, &mut host, 4), Slice::Wait);
+    assert_eq!(m.mode_name(), "main");
+    assert_eq!(
+        host.log,
+        ["a", "hook starts", "hook starts", "hook moved", "b 1"]
+    );
+    let events: Vec<String> = kinds(&m.take_events());
+    assert_eq!(events, ["low_power", "low_power"]);
+}
+
+#[test]
+fn a_held_call_that_fails_when_it_is_made_raises_then() {
+    // The host refuses `move`, then is ready and answers with an error: the
+    // exception belongs to the slice that made the call, and is catchable.
+    struct Failing {
+        ready: bool,
+        log: Vec<String>,
+    }
+    impl Host for Failing {
+        fn call(
+            &mut self,
+            name: &str,
+            args: Vec<Value>,
+            _: Vec<(String, Value)>,
+        ) -> lang::value::R<HostCall> {
+            match name {
+                "log" => {
+                    self.log.push(
+                        args.iter()
+                            .map(Value::to_str_value)
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    );
+                    Ok(HostCall::Value(Value::None))
+                }
+                "move" => Err(lang::Exception::value_error()),
+                "wait" => Ok(HostCall::Wait),
+                _ => Ok(HostCall::Unknown),
+            }
+        }
+        fn ready(&mut self, name: &str) -> bool {
+            name != "move" || self.ready
+        }
+    }
+    let mut m = machine("try:\n    move('n')\nexcept ValueError:\n    log('caught')\nwait(1)\n");
+    let mut host = Failing {
+        ready: false,
+        log: vec![],
+    };
+    m.tick = 1;
+    assert_eq!(m.run_slice(&mut host), Slice::Held);
+    assert!(host.log.is_empty());
+    host.ready = true;
+    m.tick = 2;
+    assert_eq!(m.run_slice(&mut host), Slice::Wait);
+    assert_eq!(host.log, ["caught"]);
+    assert!(m.fault_record.is_none());
+}
+
+#[test]
+fn a_native_call_of_the_host_is_held_and_made_once() {
+    // `log` of an instance renders it through `__str__` before the host
+    // is called; the hold comes after the rendering and repeats none of it.
+    let mut m =
+        machine("class A:\n    def __str__(self):\n        return 'an A'\nlog(A())\nwait()\n");
+    let mut host = ScriptHost {
+        refuse: vec!["log"],
+        ..Default::default()
+    };
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Held);
+    assert!(host.log.is_empty());
+    host.refuse.clear();
+    assert_eq!(tick_once(&mut m, &mut host, 2), Slice::Wait);
+    assert_eq!(host.log, ["an A"]);
+}
+
+#[test]
+fn a_held_slice_runs_handlers_and_no_main_flow() {
+    let mut m = machine("log('main')\nwait()\ndef on_dying():\n    log('last words')\n");
+    let mut host = ScriptHost::default();
+    // Dark from the start: main flow runs nothing, tick after tick.
+    for tick in 1..=3 {
+        m.tick = tick;
+        assert_eq!(m.run_slice_held(&mut host, None), Slice::Held);
+        assert_eq!(m.spent(), 0);
+    }
+    assert!(host.log.is_empty());
+    assert!(!m.is_held(), "a held slice is the host's, not a held call");
+    // Lit again: it runs as if nothing had happened.
+    m.tick = 4;
+    assert_eq!(m.run_slice(&mut host), Slice::Wait);
+    assert_eq!(host.log, ["main"]);
+    // Dark while its action waits: the wait is still a wait.
+    m.tick = 5;
+    assert_eq!(m.run_slice_held(&mut host, None), Slice::Wait);
+    // A handler runs whatever the hold: `dying` ends in `death`.
+    m.raise(Interrupt::Dying);
+    m.tick = 6;
+    assert_eq!(m.run_slice_held(&mut host, None), Slice::Dead);
+    assert_eq!(kinds(&m.take_events()), ["dying", "death"]);
+    assert_eq!(host.log, ["main", "last words"]);
+}
+
+#[test]
+fn a_held_slice_runs_on_low_power_and_then_no_main_flow() {
+    let mut m =
+        machine("log('main')\nwait()\nlog('after')\ndef on_low_power():\n    log('hook')\n");
+    let mut host = ScriptHost::default();
+    assert_eq!(tick_once(&mut m, &mut host, 1), Slice::Wait);
+    // The hook is a handler, so it runs in a held slice; main flow, put
+    // back when it returns, does not.
+    m.raise(Interrupt::LowPower);
+    m.tick = 2;
+    assert_eq!(m.run_slice_held(&mut host, None), Slice::Held);
+    assert_eq!(host.log, ["main", "hook"]);
+    assert_eq!(m.mode_name(), "main");
+    assert_eq!(tick_once(&mut m, &mut host, 3), Slice::Restarted);
+    assert_eq!(host.log, ["main", "hook", "after"]);
 }

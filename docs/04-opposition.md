@@ -31,8 +31,9 @@ it senses and remembers is Q7 and Q21 there, what it stands on is
 
 A **team** is a number, from the map's team list (`03`), and everything
 that has a team has exactly one. A team owns its machines, its deployments,
-its cap (Q24), its plans (Q27), its memory (Q21), its wires and its power
-(Q59); it shares nothing with another team but the world.
+its cap (Q24), its plans (Q27), its memory (Q21), its wires and its grids
+(Q62); it shares nothing with another team but the world — and the charge
+in its batteries, which any bot beside one may take (`08`).
 
 Every team is the same kind of thing. There is no flag on a team that says
 "the opposition": what makes a team the opposition is only **who submits

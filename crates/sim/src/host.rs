@@ -13,6 +13,40 @@ use lang::errors::{ExcClass, Exception};
 use lang::value::{R, Value};
 use lang::{Host, HostCall, Interrupt, Num, Program};
 
+/// Every game builtin (`docs/02`), each with a row in the `[game]` cost
+/// table and a charge cost in `[power.cost]` (`docs/08`).
+pub const BUILTINS: [&str; 29] = [
+    "see",
+    "hear",
+    "tile",
+    "tiles",
+    "me",
+    "plans",
+    "painted",
+    "overlaid",
+    "power",
+    "wires",
+    "move",
+    "move_to",
+    "pick",
+    "drop",
+    "recharge",
+    "build",
+    "build_nearest",
+    "paint",
+    "unpaint",
+    "overlay",
+    "unoverlay",
+    "wire",
+    "unwire",
+    "deconstruct",
+    "attack",
+    "wait",
+    "log",
+    "rename",
+    "set_color",
+];
+
 /// One machine's view of the world for one slice.
 pub struct GameHost<'a> {
     pub world: &'a mut World,
@@ -71,7 +105,16 @@ impl<'a> GameHost<'a> {
     fn see(&mut self) -> HostCall {
         let team = self.team();
         let here = self.pos();
-        let seen = sense::team_sees(self.world, team);
+        let mut seen = sense::team_sees(self.world, team);
+        // The team's own machines are always included: one no machine of
+        // the team sees — a dark building alone — is still its own.
+        seen.extend(
+            self.world
+                .machines
+                .values()
+                .filter(|m| m.team == team)
+                .map(|m| m.id),
+        );
         let mut records: Vec<MachineRecord> = seen
             .iter()
             .filter_map(|id| self.world.machines.get(id))
@@ -156,14 +199,13 @@ impl<'a> GameHost<'a> {
             let Some(plans) = self.world.plans(team, p) else {
                 continue;
             };
-            let plan = match kind.as_str() {
-                "paint" => &plans.paint,
-                "overlay" => &plans.overlay,
-                "building" => &plans.building,
-                _ => return Err(value_error()),
+            let Some(kind) = crate::command::PlanKind::from_name(&kind) else {
+                return Err(value_error());
             };
-            if let Some(pl) = plan {
+            if let Some(pl) = plans.of(kind) {
                 let v = match pl {
+                    // A wire plan to lay one reads `True` (`docs/02`).
+                    Plan::Set(_) if kind == crate::command::PlanKind::Wire => Value::Bool(true),
                     Plan::Set(s) => Value::str(s),
                     Plan::Clear => Value::None,
                 };
@@ -416,10 +458,8 @@ impl<'a> GameHost<'a> {
     /// `build` on a given tile: the checks shared with `build_nearest`.
     fn build_at(&mut self, model: &str, at: TilePos, must_be_adjacent: bool) -> R<HostCall> {
         // Any building model but a site; printers too (Q42).
-        let model = match model {
-            "depot" => Model::Depot,
-            "printer" => Model::Printer,
-            _ => return Err(value_error()),
+        let Some(model) = Model::from_name(model).filter(|m| m.buildable()) else {
+            return Err(value_error());
         };
         let here = self.pos();
         if must_be_adjacent && !here.is_adjacent(at) {
@@ -677,6 +717,136 @@ impl<'a> GameHost<'a> {
         Ok(HostCall::Value(Value::None))
     }
 
+    // ------------------------------------------------------------ power ---
+
+    /// `power()`: the team's grids as the last power step kept them.
+    fn power(&mut self) -> HostCall {
+        let team = self.team();
+        let grids = self.world.teams[&team].grids.clone();
+        let n = grids.len();
+        let values: Vec<Value> = grids.iter().map(crate::records::power_record).collect();
+        let v = list(self.world, values);
+        self.charged(v, n)
+    }
+
+    /// `wires()`: the tiles carrying the team's own wire, row then column.
+    /// Only the team's bots lay and remove its wire, beside the tile, so
+    /// every one is a tile the team has seen.
+    fn wires(&mut self) -> HostCall {
+        let team = self.team();
+        let mut tiles: Vec<TilePos> = self.world.teams[&team].wire_tiles.iter().copied().collect();
+        tiles.sort_by(crate::map::row_then_column);
+        let n = tiles.len();
+        let values: Vec<Value> = tiles.into_iter().map(pos_value).collect();
+        let v = list(self.world, values);
+        self.charged(v, n)
+    }
+
+    /// What a `recharge` from `from` would move now: `min(recharge_rate,
+    /// its charge, the bot's free battery)`, and nothing from a building
+    /// that is gone, dark or a site (`docs/02`, `recharge`).
+    pub fn recharge_amount(&self, from: EntityId) -> Num {
+        let me = self.me();
+        let Some(b) = self.world.machines.get(&from) else {
+            return Num::ZERO;
+        };
+        if !b.is_building() || b.model == Model::Site || !b.powered {
+            return Num::ZERO;
+        }
+        let rate = self.world.data.model(b.model.name()).recharge_rate;
+        let free = self
+            .world
+            .data
+            .model("bot")
+            .battery
+            .checked_sub(me.charge)
+            .unwrap_or(Num::ZERO);
+        rate.min(b.charge).min(free).max(Num::ZERO)
+    }
+
+    fn action_recharge(&mut self, args: &[Value]) -> R<HostCall> {
+        self.require_bot()?;
+        if !args.is_empty() {
+            return Err(type_error());
+        }
+        let here = self.pos();
+        // The adjacent powered building, any team's, holding the most
+        // charge, ties by lower id.
+        let mut best: Option<(Num, EntityId)> = None;
+        for m in self.world.machines.values() {
+            if !m.is_building() || m.model == Model::Site || !m.powered {
+                continue;
+            }
+            if !here.is_adjacent(m.pos) || m.charge <= Num::ZERO {
+                continue;
+            }
+            if best.is_none_or(|(c, _)| m.charge > c) {
+                best = Some((m.charge, m.id));
+            }
+        }
+        let Some((_, from)) = best else {
+            return Err(value_error());
+        };
+        if self.recharge_amount(from) <= Num::ZERO {
+            return Err(value_error());
+        }
+        let ticks = self.model_data().recharge_ticks;
+        self.begin("recharge", ticks, Effect::Recharge { from }, false)
+    }
+
+    /// `wire(x, y)` and `unwire(x, y)` (Q62): the team's own wire, on an
+    /// adjacent ground tile; laying one needs `wire_cost` in the load.
+    fn action_wire(&mut self, args: &[Value], lay: bool) -> R<HostCall> {
+        self.require_bot()?;
+        let [x, y] = args else {
+            return Err(type_error());
+        };
+        let at = TilePos::new(coord(x)?, coord(y)?);
+        if !self.pos().is_adjacent(at) {
+            return Err(value_error());
+        }
+        let team = self.team();
+        let has = self.world.has_wire(team, at);
+        let md = self.model_data();
+        if !lay {
+            if !has {
+                return Err(value_error());
+            }
+            return self.begin("unwire", md.unwire_ticks, Effect::Unwire { at }, false);
+        }
+        let ground = self
+            .world
+            .tile(at)
+            .is_some_and(|t| t.terrain == crate::map::Terrain::Ground);
+        if !ground || has {
+            return Err(value_error());
+        }
+        let me = self.me();
+        let short = md
+            .wire_cost
+            .iter()
+            .any(|(k, cost)| me.load.get(k).copied().unwrap_or(Num::ZERO) < *cost);
+        if short {
+            return Err(value_error());
+        }
+        self.begin("wire", md.wire_ticks, Effect::Wire { at }, false)
+    }
+
+    /// What a bot's call of `name` takes from its battery (`docs/08`,
+    /// Charge costs); nothing for a building, whose calls take none.
+    fn charge_cost(&self, name: &str) -> Num {
+        if !self.me().is_bot() {
+            return Num::ZERO;
+        }
+        self.world
+            .data
+            .machines
+            .charge_cost
+            .get(name)
+            .copied()
+            .unwrap_or(Num::ZERO)
+    }
+
     /// Cancel the action in progress (a fault, dying or redeploy prologue).
     fn cancel(&mut self) {
         self.me_mut().action = None;
@@ -684,47 +854,51 @@ impl<'a> GameHost<'a> {
 }
 
 impl<'a> Host for GameHost<'a> {
+    /// A builtin that began — every one but an unknown name and a failed
+    /// precondition, which is an `Err` — takes its charge cost from a
+    /// bot's battery (`docs/08`, Charge costs). In main flow and in
+    /// `on_low_power` [`Host::ready`] has seen that the battery covers
+    /// it; in `on_fault` and `on_dying` it takes what there is.
     fn call(&mut self, name: &str, args: Vec<Value>, kwargs: Vec<(String, Value)>) -> R<HostCall> {
-        if !kwargs.is_empty() && name != "log" {
-            return Err(type_error());
-        }
-        match name {
-            "see" => Ok(self.see()),
-            "hear" => Ok(self.hear()),
-            "tile" => {
-                let [x, y] = &args[..] else {
-                    return Err(type_error());
-                };
-                let p = TilePos::new(coord(x)?, coord(y)?);
-                let team = self.team();
-                Ok(HostCall::Value(tile_record(self.world, team, p)))
+        let began = self.dispatch(name, args, kwargs)?;
+        if !matches!(began, HostCall::Unknown) {
+            let cost = self.charge_cost(name);
+            if cost > Num::ZERO {
+                let me = self.me_mut();
+                me.charge = me
+                    .charge
+                    .checked_sub(cost)
+                    .unwrap_or(Num::ZERO)
+                    .max(Num::ZERO);
+                let id = self.id;
+                self.world.charge_changed(id);
             }
-            "tiles" => self.tiles(&args),
-            "me" => {
-                let r = MachineRecord::of(self.me());
-                Ok(HostCall::Value(machine_record(self.world, &r)))
-            }
-            "plans" => self.plans(&args),
-            "painted" => self.marked(&args, Slot::Paint),
-            "overlaid" => self.marked(&args, Slot::Overlay),
-            "move" => self.action_move(&args),
-            "move_to" => self.action_move_to(&args),
-            "pick" => self.action_pick(&args),
-            "drop" => self.action_drop(&args),
-            "build" => self.action_build(&args),
-            "build_nearest" => self.action_build_nearest(&args),
-            "paint" => self.action_paint(&args, Slot::Paint, true),
-            "unpaint" => self.action_paint(&args, Slot::Paint, false),
-            "overlay" => self.action_paint(&args, Slot::Overlay, true),
-            "unoverlay" => self.action_paint(&args, Slot::Overlay, false),
-            "deconstruct" => self.action_deconstruct(&args),
-            "attack" => self.action_attack(&args),
-            "wait" => self.action_wait(&args),
-            "log" => self.log(&args, &kwargs),
-            "rename" => self.rename(&args),
-            "set_color" => self.set_color(&args),
-            _ => Ok(HostCall::Unknown),
         }
+        Ok(began)
+    }
+
+    /// `docs/08`, Out of power: a flat bot begins no call that costs
+    /// charge, and a bot that reaches one its battery does not cover is
+    /// flat from then until it wakes.
+    fn ready(&mut self, name: &str) -> bool {
+        let cost = self.charge_cost(name);
+        if cost <= Num::ZERO {
+            return true;
+        }
+        let me = self.me_mut();
+        if me.flat {
+            return false;
+        }
+        if me.charge < cost {
+            me.flat = true;
+            return false;
+        }
+        true
+    }
+
+    fn take_raised(&mut self) -> Option<Interrupt> {
+        let me = self.me_mut();
+        std::mem::take(&mut me.low_power_due).then_some(Interrupt::LowPower)
     }
 
     fn current_program(&mut self) -> Option<Program> {
@@ -764,7 +938,65 @@ impl<'a> Host for GameHost<'a> {
                 self.cancel();
                 None
             }
-            Interrupt::Death => None,
+            // `low_power` waits for the action in progress and does
+            // nothing to the body (Q63).
+            Interrupt::LowPower | Interrupt::Death => None,
+        }
+    }
+}
+
+impl<'a> GameHost<'a> {
+    fn dispatch(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        kwargs: Vec<(String, Value)>,
+    ) -> R<HostCall> {
+        if !kwargs.is_empty() && name != "log" {
+            return Err(type_error());
+        }
+        match name {
+            "see" => Ok(self.see()),
+            "hear" => Ok(self.hear()),
+            "tile" => {
+                let [x, y] = &args[..] else {
+                    return Err(type_error());
+                };
+                let p = TilePos::new(coord(x)?, coord(y)?);
+                let team = self.team();
+                Ok(HostCall::Value(tile_record(self.world, team, p)))
+            }
+            "tiles" => self.tiles(&args),
+            "me" => {
+                let r = MachineRecord::of(self.me());
+                Ok(HostCall::Value(machine_record(self.world, &r)))
+            }
+            "plans" => self.plans(&args),
+            "painted" => self.marked(&args, Slot::Paint),
+            "overlaid" => self.marked(&args, Slot::Overlay),
+            "power" if args.is_empty() => Ok(self.power()),
+            "wires" if args.is_empty() => Ok(self.wires()),
+            "power" | "wires" => Err(type_error()),
+            "recharge" => self.action_recharge(&args),
+            "wire" => self.action_wire(&args, true),
+            "unwire" => self.action_wire(&args, false),
+            "move" => self.action_move(&args),
+            "move_to" => self.action_move_to(&args),
+            "pick" => self.action_pick(&args),
+            "drop" => self.action_drop(&args),
+            "build" => self.action_build(&args),
+            "build_nearest" => self.action_build_nearest(&args),
+            "paint" => self.action_paint(&args, Slot::Paint, true),
+            "unpaint" => self.action_paint(&args, Slot::Paint, false),
+            "overlay" => self.action_paint(&args, Slot::Overlay, true),
+            "unoverlay" => self.action_paint(&args, Slot::Overlay, false),
+            "deconstruct" => self.action_deconstruct(&args),
+            "attack" => self.action_attack(&args),
+            "wait" => self.action_wait(&args),
+            "log" => self.log(&args, &kwargs),
+            "rename" => self.rename(&args),
+            "set_color" => self.set_color(&args),
+            _ => Ok(HostCall::Unknown),
         }
     }
 }

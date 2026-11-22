@@ -9,8 +9,9 @@
 kinds = ["ore"]
 
 [deployment]
-# a team's deployments are one per model, `bot`, `printer` and `depot` (Q42);
-# this table holds what is shared across them
+# a team's deployments are one per model that runs a program — `bot`,
+# `printer`, `depot`, `solar` and `charger` (Q42, Q62); a pylon and a site
+# run none. This table holds what is shared across them
 # the paint colors a plan may name (Q10)
 colors = ["red", "blue", "green", "yellow", "purple", "orange", "cyan", "magenta"]
 # the bot cap: this many bots per standing printer (Q24)
@@ -44,6 +45,17 @@ paint_ticks = 2
 overlay_ticks = 2
 unpaint_ticks = 2
 unoverlay_ticks = 2
+# power (Q62, docs/08): the battery's capacity, and the bot's own solar per
+# tick, which the sim refuses at zero — it is what wakes a flat bot
+battery = 100
+generation = "0.1"
+# recharging from an adjacent building, at that building's `recharge_rate`
+recharge_ticks = 2
+# underground wire (Q62): ore per tile, and the ticks to lay and to remove
+# one. Dearer than the pylons that would cover the same ground
+wire_cost = { ore = 3 }
+wire_ticks = 2
+unwire_ticks = 2
 
 [model.printer]
 vision = 8
@@ -62,6 +74,20 @@ deconstruct_ticks = 30
 print_ticks = 30
 # damage dealt each tick to every adjacent enemy bot (Q30); zero on other models
 defence_damage = 1
+# power (Q62): a printer makes more than it uses — the sim refuses data in
+# which `generation` is below `drain + print_drain` — so it is never dark;
+# what is left fills its battery, which bots recharge from at `recharge_rate`
+# a `recharge`. A printer the map places starts full.
+# Set generously for testing: a bot moving without rest uses 0.4 a tick net
+# of its own solar, so the 4 a printer has left over while it prints keeps
+# the ten bots of its cap (`bots_per_printer`) charged by itself. To make
+# chargers and panels matter, bring `generation` down toward
+# `drain + print_drain`
+battery = 500
+generation = 6
+drain = 1
+print_drain = 1
+recharge_rate = 40
 
 [model.depot]
 vision = 4
@@ -75,6 +101,53 @@ cost_step = { ore = 0 }
 build_ticks = 20
 deconstruct_ticks = 10
 defence_damage = 0
+
+[model.solar]
+# the building that only generates (Q62): no battery, no drain, no store
+vision = 2
+hearing = 2
+health = 20
+death_threshold = -10
+store = { ore = 0 }
+cost = { ore = 30 }
+cost_step = { ore = 0 }
+build_ticks = 15
+deconstruct_ticks = 8
+defence_damage = 0
+generation = 3
+
+[model.charger]
+# the building bots recharge from quickly (Q62): a large battery, a little
+# solar of its own, filled by whatever its grid has left over
+vision = 3
+hearing = 3
+health = 30
+death_threshold = -15
+store = { ore = 0 }
+cost = { ore = 30 }
+cost_step = { ore = 0 }
+build_ticks = 15
+deconstruct_ticks = 8
+defence_damage = 0
+battery = 1000
+generation = "0.5"
+drain = 0
+recharge_rate = 50
+
+[model.pylon]
+# overhead line (Q62): joins its team's pylons and buildings within `span`
+# tiles, by squared distance; no program, battery, generation or drain
+vision = 1
+hearing = 1
+health = 10
+death_threshold = -5
+store = { ore = 0 }
+cost = { ore = 5 }
+cost_step = { ore = 0 }
+build_ticks = 5
+deconstruct_ticks = 3
+defence_damage = 0
+span = 4
 
 [model.site]
 # a site's store capacity is the price of what it becomes (Q42); its ranges
@@ -95,3 +168,45 @@ print = 4
 build = 4
 deconstruct = 3
 attack = 3
+
+[power]
+# the share of its battery at or below which a bot takes `low_power`, and
+# the share a bot out of power must be charged back to before it wakes
+# (Q62, Q63); the two start equal and are tuned apart freely
+low_power_level = "0.2"
+wake_level = "0.2"
+
+[power.cost]
+# What a bot's call of each game builtin takes from its battery as it
+# begins (Q62): one key per game builtin, zero or more. The sim refuses a
+# cost above `wake_level` of the bot's battery, so a bot that has woken can
+# pay for any one call. Placeholders until the game is played
+see = 0
+hear = 0
+tile = 0
+tiles = 0
+me = 0
+plans = 0
+painted = 0
+overlaid = 0
+power = 0
+wires = 0
+move = 1
+move_to = 1
+pick = 1
+drop = 1
+recharge = 0
+build = 2
+build_nearest = 2
+paint = 1
+unpaint = 1
+overlay = 1
+unoverlay = 1
+wire = 1
+unwire = 1
+deconstruct = 2
+attack = 2
+wait = 0
+log = 0
+rename = 0
+set_color = 0

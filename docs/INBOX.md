@@ -50,3 +50,17 @@ call them once a team, which is teams by machines. What is left of the
 step itself is the vision pass writing every visible tile's memory anew
 each tick, cloning its deposit amounts, paint and overlay, though on a
 tick where nothing moved almost none of it differs from what is there.
+
+**I11 — A deficit larger than one tick's budget is forgiven after one tick**
+
+Found while building T39, and not T39's. `01`'s Metering says a deficit
+reduces each following tick's budget "by what remains of it until it is
+paid". `Machine::close_slice` in `crates/lang/src/vm.rs` sets the new
+deficit to `spent - slice_budget`, saturating, and the slice's budget is
+the tick budget less the deficit, saturating at zero: so a deficit above
+one tick's budget opens a slice of zero, which spends nothing and closes
+with a deficit of zero. A program whose one operation costs 3,006 units
+against a budget of 200 was seen to carry 2,806, sit out one tick, and run
+at full budget on the next, where the doc has it sit out fourteen. A
+deficit below the tick budget is carried correctly. Fixing it moves the
+golden hashes of any replay that overspends by more than a tick.

@@ -60,10 +60,11 @@ same bundle once a redeploy has reached it; until then, the one it had.
 
 - **File names** match `[a-z_][a-z0-9_]*\.py` and are unique within the bundle.
   The entry file is **`main.py`**, which every bundle must contain. The name
-  without `.py` is the module name `import` sees. Two names are also hook
+  without `.py` is the module name `import` sees. Three names are also hook
   sources: a top-level `def on_fault` in `on_fault.py` binds the `on_fault`
-  hook when `main.py` defines none, and `on_dying.py` the `on_dying` hook
-  ([execution](execution.md), Q41); both are ordinary modules otherwise.
+  hook when `main.py` defines none, `on_dying.py` the `on_dying` hook and
+  `on_low_power.py` the `on_low_power` hook ([execution](execution.md),
+  Q41, Q62); all three are ordinary modules otherwise.
   How a player's tree of files becomes a bundle is `07`'s.
 - **Source is UTF-8 bytes, stored byte-exact** — no whitespace normalisation, no
   line-ending translation, no BOM stripping. A file that is not valid UTF-8 is
@@ -352,7 +353,7 @@ def nearest(points: list[tuple[num, num]], limit: num = 10) -> tuple[num, num] |
   | `tuple[A, B, …]`, `tuple[T, ...]` | a tuple of these elements in order, or of any length all `T`; `...` exists only here |
   | `A \| B` | either; `T \| None` is the optional `T` |
   | a class, or `module.Class` | an instance of the player's own class |
-  | `Machine`, `Tile`, `Sound`, `Power` | the game's records: a machine's attributes (`me()`, a sighting, a tile's `building`), a tile's, a sound's, and a team's power from `power()` (`02`; `Power` as Q59 added) |
+  | `Machine`, `Tile`, `Sound`, `Power` | the game's records: a machine's attributes (`me()`, a sighting, a tile's `building`), a tile's, a sound's, and one grid's figures, of which `power()` returns a list (`02`; `Power` as Q62 defines it) |
   | `'T'`, a string | the type expression written inside it, as Python allows |
 
   The names are read as written, not looked up: an annotation naming a
@@ -468,7 +469,7 @@ same name twice is a parse error.
   globals are per machine, like all globals.
 - A module's attributes are its globals; `mod.name` reads one, and assignment
   to `mod.name` is a `TypeError`.
-- Hooks (`on_fault`, `on_dying`) are recognised in `main.py` only.
+- Hooks (`on_fault`, `on_dying`, `on_low_power`) are recognised in `main.py` only.
 
 ## Exceptions
 

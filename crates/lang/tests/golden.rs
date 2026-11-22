@@ -14,17 +14,21 @@
 //! spent and the deficit it left, so a cost change that moves no call or
 //! event to another tick still moves the transcript (I5, T34).
 //!
-//! Three fixtures:
+//! Four fixtures:
 //! - `showcase` — one program through most of the language, two files.
 //! - `interrupts` — the paths a match replay is least likely to cover: a
 //!   fault escaping mid-unwind, a hook exhausting its budget, escalation,
 //!   preemption, redeploy. A scripted host raises the interrupts.
+//! - `low_power` — Q62's fifth kind as Q63 has it (T39): its hook run with
+//!   main flow set aside and put back, raising, waiting and started over, a
+//!   redeploy held off behind it, and main flow and the hook each held
+//!   before a call the host's battery does not cover.
 //! - `wide` — the 256-bit routine behind `num` at its boundaries: the
 //!   products and quotients nearest the range, the floor at each sign, and
 //!   the `**` procedure's count of steps. Computed in Rust, since a program
 //!   cannot observe a step count.
 //!
-//! The two program fixtures are also run as a debugger runs a program
+//! The three program fixtures are also run as a debugger runs a program
 //! (`docs/06`, Forks; T26) — watched at every boundary, stopped and resumed
 //! at every boundary, and replaced by a deep copy at every stop — and each
 //! way must give the stored fixture, transcript, budget and state alike.
@@ -87,10 +91,18 @@ fn bundle(name: &str) -> Program {
 
 /// A host that records every call into the transcript, waits on `wait()`
 /// (resumed with the tick), and can hand over a bundle for a `redeploy`.
+/// It keeps a battery for `move` alone (`docs/08`, Charge costs): the run
+/// adds a unit a tick, a `move` takes [`MOVE_CHARGE`], and a `move` the
+/// battery does not cover is refused, with a line saying so. The machine
+/// asks only for main flow's calls and `on_low_power`'s.
 struct TranscriptHost {
     lines: Vec<String>,
     next_program: Option<Program>,
+    charge: u64,
 }
+
+/// What a `move` takes from the fixture host's battery.
+const MOVE_CHARGE: u64 = 3;
 
 impl Host for TranscriptHost {
     fn call(
@@ -113,12 +125,27 @@ impl Host for TranscriptHost {
         match name {
             "wait" => Ok(HostCall::Wait),
             "log" => Ok(HostCall::Value(Value::None)),
+            // `on_fault`'s and `on_dying`'s `move` is never refused, so it
+            // takes what is there.
+            "move" => {
+                self.charge = self.charge.saturating_sub(MOVE_CHARGE);
+                Ok(HostCall::Value(Value::None))
+            }
             _ => Ok(HostCall::Unknown),
         }
     }
 
     fn current_program(&mut self) -> Option<Program> {
         self.next_program.clone()
+    }
+
+    fn ready(&mut self, name: &str) -> bool {
+        if name == "move" && self.charge < MOVE_CHARGE {
+            self.lines
+                .push(format!("  flat at move(), charge {}", self.charge));
+            return false;
+        }
+        true
     }
 }
 
@@ -220,11 +247,13 @@ fn run_as(
     let mut host = TranscriptHost {
         lines: vec![format!("version {:016x}", program.version)],
         next_program,
+        charge: 0,
     };
     let mut hashes = Vec::new();
     let mut h = fnv_start();
     for tick in 1..=ticks {
         m.tick = tick;
+        host.charge = host.charge.saturating_add(1);
         for (t, kind) in schedule {
             if *t == tick {
                 m.raise(*kind);
@@ -304,6 +333,12 @@ fn scenarios() -> Vec<Scenario> {
             Some(bundle("interrupts")),
         ),
         ("interrupts B", bundle("interrupts"), SCHEDULE_B, None),
+        (
+            "low power",
+            bundle("low_power"),
+            SCHEDULE_C,
+            Some(bundle("low_power")),
+        ),
     ]
 }
 
@@ -366,12 +401,16 @@ fn a_copy_left_behind_runs_as_its_source_did() {
         let mut host = TranscriptHost {
             lines: vec![],
             next_program: next.clone(),
+            charge: 0,
         };
-        let mut copies: Vec<(u64, Machine)> = Vec::new();
+        // Each copy with the host's battery as it stood: the battery is
+        // the host's state, as the world's is the sim's.
+        let mut copies: Vec<(u64, Machine, u64)> = Vec::new();
         let mut last = 0;
         for tick in 1..=60u64 {
             last = tick;
             m.tick = tick;
+            host.charge = host.charge.saturating_add(1);
             for (t, kind) in schedule {
                 if *t == tick {
                     m.raise(*kind);
@@ -385,17 +424,19 @@ fn a_copy_left_behind_runs_as_its_source_did() {
             if slice == Slice::Dead {
                 break;
             }
-            copies.push((tick, m.deep_copy()));
+            copies.push((tick, m.deep_copy(), host.charge));
         }
         assert!(copies.len() > 5, "{name}: only {} copies", copies.len());
         // The source is at its end; each copy now runs the rest.
-        for (from, mut copy) in copies {
+        for (from, mut copy, charge) in copies {
             let mut host = TranscriptHost {
                 lines: vec![],
                 next_program: next.clone(),
+                charge,
             };
             for tick in from.wrapping_add(1)..=last {
                 copy.tick = tick;
+                host.charge = host.charge.saturating_add(1);
                 for (t, kind) in schedule {
                     if *t == tick {
                         copy.raise(*kind);
@@ -836,4 +877,61 @@ fn cross_process_fixtures_match() {
         all_final_hashes(),
         "cross-process fixture mismatch — determinism violation"
     );
+}
+
+// ----------------------------------------------------------- low power ---
+
+/// Scenario C (Q62, Q63): `low_power` reaches main flow held before a
+/// `move`; its hook runs and returns, and main flow goes on where it was.
+/// A second arrives with a `redeploy` behind it, and its hook raises,
+/// escalating to `fault`; the redeploy then swaps. A third finds the
+/// battery too low for the hook's own `move`, which is held; a fourth,
+/// the wake, starts that hook over, and it finishes.
+const SCHEDULE_C: &[(u64, Interrupt)] = &[
+    (5, Interrupt::LowPower),
+    (14, Interrupt::LowPower),
+    (14, Interrupt::Redeploy),
+    (22, Interrupt::LowPower),
+    (23, Interrupt::LowPower),
+];
+
+fn low_power() -> (Vec<String>, Vec<u64>) {
+    run(
+        &bundle("low_power"),
+        30,
+        SCHEDULE_C,
+        Some(bundle("low_power")),
+    )
+}
+
+#[test]
+fn low_power_matches_stored_fixture() {
+    let (lines, hashes) = low_power();
+    check_fixture("low_power", &lines.join("\n"), &hashes);
+}
+
+#[test]
+fn low_power_is_alive() {
+    let (lines, _) = low_power();
+    let text = lines.join("\n");
+    for needle in [
+        "event LowPower",
+        "event Escalated { from: LowPower, to: Fault }",
+        "event Fault(Exception { class: IndexError",
+        "event Redeploy { swapped: true }",
+        "flat at move()",
+        "Held mode=main",
+        "Held mode=low_power",
+        "Wait mode=low_power",
+        // Main flow went on after a hook, with its own `n` and the
+        // hook's change to `done`.
+        "call log(moved, 2, 1)",
+        "call log(on_low_power done, 6)",
+        "call log(on_low_power done, 24)",
+    ] {
+        assert!(
+            text.contains(needle),
+            "low_power transcript lacks {needle:?}:\n{text}"
+        );
+    }
 }

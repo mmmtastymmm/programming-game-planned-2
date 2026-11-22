@@ -7,7 +7,8 @@
 //!
 //! Layout: [`data`] the tuning tables, [`map`] the rectangle and its
 //! terrain, [`world`] the state, [`sense`] line of sight and vision,
-//! [`records`] what programs read, [`host`] the game builtins as the
+//! [`power`] grids and the power step, [`records`] what programs read,
+//! [`host`] the game builtins as the
 //! language's host, [`tick`] the nine steps and the state hash,
 //! [`snapshot`] what the renderer reads, [`script`] scripted teams,
 //! [`command`] the one way in, and [`fork`] a private copy of the world
@@ -20,6 +21,7 @@ pub mod fork;
 pub mod hash;
 pub mod host;
 pub mod map;
+pub mod power;
 pub mod records;
 pub mod rng;
 pub mod script;

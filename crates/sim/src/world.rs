@@ -30,17 +30,44 @@ pub enum Plan {
     Clear,
 }
 
-/// A team's three plans on one tile.
+/// The value a wire plan to lay one carries (`docs/03`): a wire has no
+/// kinds, so there is one.
+pub const WIRE: &str = "wire";
+
+/// A team's four plans on one tile.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Plans {
     pub paint: Option<Plan>,
     pub overlay: Option<Plan>,
     pub building: Option<Plan>,
+    /// To lay the team's wire ([`WIRE`]) or to clear it (Q62).
+    pub wire: Option<Plan>,
 }
 
 impl Plans {
     pub fn is_empty(&self) -> bool {
-        self.paint.is_none() && self.overlay.is_none() && self.building.is_none()
+        self.paint.is_none()
+            && self.overlay.is_none()
+            && self.building.is_none()
+            && self.wire.is_none()
+    }
+
+    pub fn of(&self, kind: PlanKind) -> &Option<Plan> {
+        match kind {
+            PlanKind::Paint => &self.paint,
+            PlanKind::Overlay => &self.overlay,
+            PlanKind::Building => &self.building,
+            PlanKind::Wire => &self.wire,
+        }
+    }
+
+    pub fn of_mut(&mut self, kind: PlanKind) -> &mut Option<Plan> {
+        match kind {
+            PlanKind::Paint => &mut self.paint,
+            PlanKind::Overlay => &mut self.overlay,
+            PlanKind::Building => &mut self.building,
+            PlanKind::Wire => &mut self.wire,
+        }
     }
 }
 
@@ -50,6 +77,10 @@ pub struct Tile {
     pub deposit: Option<Deposit>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
+    /// The teams with a wire on the tile (Q62): underground, each its
+    /// team's own. Changed only by `World::lay_wire`, `remove_wire` and
+    /// `clear_wires`, which keep each team's index of its own in step.
+    pub wires: BTreeSet<TeamId>,
     /// Per team; absent means no plans.
     pub plans: BTreeMap<TeamId, Plans>,
 }
@@ -59,19 +90,48 @@ pub enum Model {
     Bot,
     Printer,
     Depot,
+    Solar,
+    Charger,
+    Pylon,
     Site,
 }
 
 impl Model {
-    pub const ALL: [Model; 4] = [Model::Bot, Model::Printer, Model::Depot, Model::Site];
+    pub const ALL: [Model; 7] = [
+        Model::Bot,
+        Model::Printer,
+        Model::Depot,
+        Model::Solar,
+        Model::Charger,
+        Model::Pylon,
+        Model::Site,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             Model::Bot => "bot",
             Model::Printer => "printer",
             Model::Depot => "depot",
+            Model::Solar => "solar",
+            Model::Charger => "charger",
+            Model::Pylon => "pylon",
             Model::Site => "site",
         }
+    }
+
+    /// The deployment a machine of the model runs: its name, or none for
+    /// a pylon and a site, which run no program (Q42, Q62).
+    pub fn deployment(self) -> Option<&'static str> {
+        match self {
+            Model::Pylon | Model::Site => None,
+            m => Some(m.name()),
+        }
+    }
+
+    /// A model a bot may `build` and a building plan may name: every
+    /// building but a site.
+    pub fn buildable(self) -> bool {
+        !matches!(self, Model::Bot | Model::Site)
     }
 
     pub fn kind(self) -> &'static str {
@@ -86,6 +146,9 @@ impl Model {
             "bot" => Some(Model::Bot),
             "printer" => Some(Model::Printer),
             "depot" => Some(Model::Depot),
+            "solar" => Some(Model::Solar),
+            "charger" => Some(Model::Charger),
+            "pylon" => Some(Model::Pylon),
             "site" => Some(Model::Site),
             _ => None,
         }
@@ -123,6 +186,17 @@ pub enum Effect {
     },
     Attack {
         target: EntityId,
+    },
+    /// Take charge from an adjacent building's battery (Q62).
+    Recharge {
+        from: EntityId,
+    },
+    /// Lay or remove the team's wire on a tile (Q62).
+    Wire {
+        at: TilePos,
+    },
+    Unwire {
+        at: TilePos,
     },
     Wait,
 }
@@ -183,6 +257,23 @@ pub struct Machine {
     /// A printer's ticks remaining on its print in progress, `0` when not
     /// printing (`docs/02`, Printing). Printing is not an action.
     pub printing: u64,
+    /// The charge its battery holds (`docs/08`); zero on a model with none.
+    pub charge: Num,
+    /// A bot out of power: from a call it could not pay for until its
+    /// solar has brought it to the wake level (Q63).
+    pub flat: bool,
+    /// A bot whose charge is above the low-power level since it last took
+    /// `low_power` for falling to it (Q62).
+    pub armed: bool,
+    /// A building the last power step powered, or left dark; a building
+    /// is placed powered, and a site never is.
+    pub powered: bool,
+    /// The label of the grid the last power step found a building on.
+    pub grid: Option<EntityId>,
+    /// `low_power` fell due during the machine's own slice, where its
+    /// program is out of its body: the interpreter collects it after the
+    /// call that caused it (`Host::take_raised`). Never set between calls.
+    pub low_power_due: bool,
     pub program: Option<lang::Machine>,
     /// The diagnostic log, this tick's entries; not world state.
     pub log: Vec<LogEntry>,
@@ -195,6 +286,13 @@ impl Machine {
 
     pub fn is_building(&self) -> bool {
         self.model != Model::Bot
+    }
+
+    /// A building the last power step left dark (`docs/08`): its rules,
+    /// its program and its senses stop. Never a bot, nor a site, which
+    /// has none of the three.
+    pub fn is_dark(&self) -> bool {
+        self.is_building() && self.model != Model::Site && !self.powered
     }
 
     pub fn busy(&self) -> Option<&'static str> {
@@ -262,6 +360,13 @@ pub struct MachineRecord {
     pub progress: u64,
     /// A printer's `printing`; absent on every other model.
     pub printing: Option<u64>,
+    /// The charge its battery holds (`docs/08`).
+    pub charge: Num,
+    /// A bot's `flat`; absent on a building.
+    pub flat: Option<bool>,
+    /// A building's `powered` and `grid`; absent on a bot.
+    pub powered: Option<bool>,
+    pub grid: Option<Option<EntityId>>,
 }
 
 impl MachineRecord {
@@ -281,6 +386,10 @@ impl MachineRecord {
             store: m.is_building().then(|| m.store.clone()),
             progress: m.progress(),
             printing: (m.model == Model::Printer).then_some(m.printing),
+            charge: m.charge,
+            flat: m.is_bot().then_some(m.flat),
+            powered: m.is_building().then_some(m.powered),
+            grid: m.is_building().then_some(m.grid),
         }
     }
 }
@@ -294,11 +403,26 @@ pub struct TileMemory {
     pub deposit: Option<BTreeMap<String, Num>>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
+    /// The teams with a wire on it, as last seen (Q62).
+    pub wires: BTreeSet<TeamId>,
     pub building: Option<MachineRecord>,
 }
 
-/// A team's deployments: one per model that runs a program (Q42).
-pub const DEPLOYMENTS: [&str; 3] = ["bot", "printer", "depot"];
+/// A team's deployments: one per model that runs a program (Q42, Q62).
+pub const DEPLOYMENTS: [&str; 5] = ["bot", "printer", "depot", "solar", "charger"];
+
+/// One grid's figures as a power step kept them (`docs/08`, The power
+/// step): its label, and four sums over its buildings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GridFigures {
+    pub grid: EntityId,
+    pub generation: Num,
+    /// Every need, powered or dark.
+    pub drain: Num,
+    /// The charge held after the step.
+    pub stored: Num,
+    pub capacity: Num,
+}
 
 /// Whether `name` is a deployment a team holds.
 pub fn is_deployment_name(name: &str) -> bool {
@@ -323,6 +447,15 @@ pub struct Team {
     /// The printer that began the team's last print; `0`, which no entity
     /// is, before the first (`docs/02`, Printing).
     pub print_turn: EntityId,
+    /// The team's grids as its last power step kept them, ascending label.
+    pub grids: Vec<GridFigures>,
+    /// The tiles carrying the team's wire: an index of `Tile::wires`,
+    /// kept by the three methods that change it, and no part of the hash
+    /// beyond the tiles.
+    pub wire_tiles: BTreeSet<TilePos>,
+    /// Those of them the last power step found on a grid, for the
+    /// snapshot; derived, never hashed.
+    pub live_wires: BTreeSet<TilePos>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -383,6 +516,7 @@ impl World {
                 }),
                 paint: None,
                 overlay: None,
+                wires: BTreeSet::new(),
                 plans: BTreeMap::new(),
             })
             .collect();
@@ -427,6 +561,7 @@ impl World {
                     deposit: None,
                     paint: None,
                     overlay: None,
+                    wires: BTreeSet::new(),
                     building: None,
                 })
                 .collect();
@@ -441,11 +576,23 @@ impl World {
                     seen: Vec::new(),
                     starts: starts.clone(),
                     print_turn: EntityId(0),
+                    grids: Vec::new(),
+                    wire_tiles: BTreeSet::new(),
+                    live_wires: BTreeSet::new(),
                 },
             );
             for &s in starts {
-                world.place(Model::Printer, id, s, Some("printer".to_string()));
+                let printer = world.place(Model::Printer, id, s, Some("printer".to_string()));
+                // A printer the map places starts full (`docs/08`).
+                let full = world.data.model("printer").battery;
+                world.machines.get_mut(&printer).expect("printer").charge = full;
             }
+        }
+        // The match is built with its grids traced, every building
+        // powered and the figures kept, no charge having moved.
+        let teams: Vec<TeamId> = world.teams.keys().copied().collect();
+        for team in teams {
+            world.trace_and_keep(team);
         }
         world
     }
@@ -478,6 +625,12 @@ impl World {
                     becomes: m.becomes,
                     construction: m.construction,
                     printing: m.printing,
+                    charge: m.charge,
+                    flat: m.flat,
+                    armed: m.armed,
+                    powered: m.powered,
+                    grid: m.grid,
+                    low_power_due: m.low_power_due,
                     program: m.program.as_ref().map(|p| p.deep_copy()),
                     log: m.log.clone(),
                 };
@@ -497,6 +650,9 @@ impl World {
                     seen: t.seen.clone(),
                     starts: t.starts.clone(),
                     print_turn: t.print_turn,
+                    grids: t.grids.clone(),
+                    wire_tiles: t.wire_tiles.clone(),
+                    live_wires: t.live_wires.clone(),
                 };
                 (*id, copy)
             })
@@ -693,6 +849,18 @@ impl World {
                 becomes: None,
                 construction: None,
                 printing: 0,
+                // A bot is printed full and armed; a building is placed
+                // empty, and powered until a power step finds otherwise.
+                charge: if model == Model::Bot {
+                    md.battery
+                } else {
+                    Num::ZERO
+                },
+                flat: false,
+                armed: model == Model::Bot,
+                powered: model != Model::Bot && model != Model::Site,
+                grid: None,
+                low_power_due: false,
                 program,
                 log: Vec::new(),
             },
@@ -728,7 +896,7 @@ impl World {
     }
 
     /// What some team sees may have changed (`generation`).
-    fn sight_changed(&mut self) {
+    pub(crate) fn sight_changed(&mut self) {
         self.generation = self.generation.wrapping_add(1);
     }
 
@@ -764,13 +932,11 @@ impl World {
     /// it; a `Mark` that fails it on its tick is dropped, and a renderer
     /// asks it before submitting.
     pub fn may_plan(&self, team: TeamId, p: TilePos, plan: PlanKind) -> Result<(), String> {
-        if plan == PlanKind::Building {
-            return Ok(());
-        }
-        let what = if plan == PlanKind::Paint {
-            "paint"
-        } else {
-            "an overlay"
+        let what = match plan {
+            PlanKind::Building => return Ok(()),
+            PlanKind::Paint => "paint",
+            PlanKind::Overlay => "an overlay",
+            PlanKind::Wire => "a wire",
         };
         let idx = self
             .tile_index(p)
@@ -804,6 +970,68 @@ impl World {
 
     pub fn plans_mut(&mut self, team: TeamId, p: TilePos) -> Option<&mut Plans> {
         self.tile_mut(p).map(|t| t.plans.entry(team).or_default())
+    }
+
+    /// Whether `team`'s wire lies on `p`.
+    pub fn has_wire(&self, team: TeamId, p: TilePos) -> bool {
+        self.tile(p).is_some_and(|t| t.wires.contains(&team))
+    }
+
+    /// Lay `team`'s wire on `p`; `false` if it was there or `p` is no tile.
+    pub fn lay_wire(&mut self, team: TeamId, p: TilePos) -> bool {
+        let laid = self.tile_mut(p).is_some_and(|t| t.wires.insert(team));
+        if laid && let Some(t) = self.teams.get_mut(&team) {
+            t.wire_tiles.insert(p);
+        }
+        laid
+    }
+
+    /// Remove `team`'s wire from `p`; `false` if there was none.
+    pub fn remove_wire(&mut self, team: TeamId, p: TilePos) -> bool {
+        let gone = self.tile_mut(p).is_some_and(|t| t.wires.remove(&team));
+        if gone && let Some(t) = self.teams.get_mut(&team) {
+            t.wire_tiles.remove(&p);
+            t.live_wires.remove(&p);
+        }
+        gone
+    }
+
+    /// Clear every wire of `team`, as a team that goes out loses them
+    /// (`docs/06`, step 5).
+    pub fn clear_wires(&mut self, team: TeamId) {
+        let Some(t) = self.teams.get_mut(&team) else {
+            return;
+        };
+        let tiles = std::mem::take(&mut t.wire_tiles);
+        t.live_wires.clear();
+        for p in tiles {
+            if let Some(tile) = self.tile_mut(p) {
+                tile.wires.remove(&team);
+            }
+        }
+    }
+
+    /// A bot's charge changed (`docs/08`, Low power): at or below the
+    /// level an armed bot takes `low_power` and is no longer armed; above
+    /// it, a bot that was not is armed again. Called after every change.
+    pub fn charge_changed(&mut self, id: EntityId) {
+        let level = self.data.machines.low_power_charge();
+        let Some(m) = self.machines.get_mut(&id) else {
+            return;
+        };
+        if m.model != Model::Bot {
+            return;
+        }
+        if m.armed && m.charge <= level {
+            m.armed = false;
+            match m.program.as_mut() {
+                Some(p) => p.raise(lang::Interrupt::LowPower),
+                // Inside its own slice the program is out of the body.
+                None => m.low_power_due = true,
+            }
+        } else if !m.armed && m.charge > level {
+            m.armed = true;
+        }
     }
 
     /// Drop empty plan entries so the hash and the snapshot see none.

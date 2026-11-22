@@ -15,6 +15,8 @@ pub enum PlanKind {
     Paint,
     Overlay,
     Building,
+    /// The team's underground wire, to lay or to clear (Q62).
+    Wire,
 }
 
 impl PlanKind {
@@ -23,6 +25,7 @@ impl PlanKind {
             PlanKind::Paint => "paint",
             PlanKind::Overlay => "overlay",
             PlanKind::Building => "building",
+            PlanKind::Wire => "wire",
         }
     }
 
@@ -31,6 +34,7 @@ impl PlanKind {
             "paint" => Some(PlanKind::Paint),
             "overlay" => Some(PlanKind::Overlay),
             "building" => Some(PlanKind::Building),
+            "wire" => Some(PlanKind::Wire),
             _ => None,
         }
     }

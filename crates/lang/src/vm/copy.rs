@@ -11,7 +11,7 @@
 //! written anywhere, so it decides nothing a peer could see differently
 //! (CLAUDE.md, rule 3).
 
-use super::{After, Block, FaultRecord, Frame, Machine};
+use super::{After, Block, FaultRecord, Frame, Held, Machine, Suspended};
 use crate::dispatch::{FindMode, Native, Piece, SortTask, Then};
 use crate::errors::Exception;
 use crate::value::{
@@ -649,6 +649,21 @@ impl Copied for Frame {
     }
 }
 
+impl Copied for Held {
+    fn copied(&self, m: &mut Memo) -> Self {
+        Held {
+            name: self.name.clone(),
+            args: self.args.copied(m),
+            kwargs: self
+                .kwargs
+                .iter()
+                .map(|(k, v)| (k.clone(), v.copied(m)))
+                .collect(),
+            native: self.native,
+        }
+    }
+}
+
 impl Copied for Event {
     fn copied(&self, m: &mut Memo) -> Self {
         match self {
@@ -659,6 +674,7 @@ impl Copied for Event {
                 to: *to,
             },
             Event::Dying => Event::Dying,
+            Event::LowPower => Event::LowPower,
             Event::Death => Event::Death,
             Event::Redeploy { swapped } => Event::Redeploy { swapped: *swapped },
         }
@@ -689,6 +705,13 @@ impl Machine {
             waiting: self.waiting,
             native_waiting: self.native_waiting,
             native_input: self.native_input.copied(&mut m),
+            held: self.held.as_ref().map(|h| h.copied(&mut m)),
+            suspended: self.suspended.as_ref().map(|s| Suspended {
+                frames: s.frames.copied(&mut m),
+                held: s.held.as_ref().map(|h| h.copied(&mut m)),
+                native_input: s.native_input.copied(&mut m),
+            }),
+            main_held: self.main_held,
             live_measured: self.live_measured,
             live_pressure: self.live_pressure,
             fault_record: self.fault_record.as_ref().map(|r| FaultRecord {

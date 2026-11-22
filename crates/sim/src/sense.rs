@@ -7,10 +7,11 @@ use crate::world::{EntityId, Model, World};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Everything a team's sight depends on: every machine's id, position,
-/// model (its vision range) and team. Terrain, the other input, never
+/// model (its vision range) and team, and whether it is a dark building,
+/// which sees nothing (`docs/08`). Terrain, the other input, never
 /// changes after the map loads.
 #[cfg(debug_assertions)]
-type Basis = Vec<(EntityId, TilePos, Model, TeamId)>;
+type Basis = Vec<(EntityId, TilePos, Model, TeamId, bool)>;
 
 /// The tiles each team sees now, kept between queries while the basis
 /// they were computed from stands. Sightings are a function of the world
@@ -38,11 +39,11 @@ pub struct SightCache {
 }
 
 #[cfg(debug_assertions)]
-fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamId)> + '_ {
+fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamId, bool)> + '_ {
     world
         .machines
         .values()
-        .map(|m| (m.id, m.pos, m.model, m.team))
+        .map(|m| (m.id, m.pos, m.model, m.team, m.is_dark()))
 }
 
 /// Make `world.sight.teams[team]` the tiles `team` sees now.
@@ -58,7 +59,7 @@ pub fn ensure_sight(world: &mut World, team: TeamId) {
     #[cfg(debug_assertions)]
     assert!(
         world.sight.basis.iter().copied().eq(basis(world)),
-        "the sight cache is stale: a machine was placed, removed, moved or changed by something other than `World::place`, `remove`, `move_machine` or `remove_team`"
+        "the sight cache is stale: a machine was placed, removed, moved or changed, or a building went dark or was lit, by something other than `World::place`, `remove`, `move_machine`, `remove_team` or the power step"
     );
     if !world.sight.teams.contains_key(&team) {
         let visible = team_visible_tiles(world, team);
@@ -116,7 +117,12 @@ pub fn sees_tile(world: &World, seer: EntityId, p: TilePos) -> bool {
 /// Every tile a team's machines see now, in row-then-column order.
 pub fn team_visible_tiles(world: &World, team: TeamId) -> BTreeSet<TilePos> {
     let mut out = BTreeSet::new();
-    for m in world.machines.values().filter(|m| m.team == team) {
+    // A dark building sees nothing (`docs/08`).
+    for m in world
+        .machines
+        .values()
+        .filter(|m| m.team == team && !m.is_dark())
+    {
         let vision = world.data.model(m.model.name()).vision;
         let r = i32::try_from(vision).unwrap_or(i32::MAX);
         for dy in r.saturating_neg()..=r {
@@ -163,14 +169,19 @@ pub fn team_can_see(world: &mut World, team: TeamId, target: EntityId) -> bool {
 pub fn team_hears(world: &World, team: TeamId) -> Vec<usize> {
     let mut out = Vec::new();
     for (i, s) in world.sounds_prev.iter().enumerate() {
-        let heard = world.machines.values().filter(|m| m.team == team).any(|m| {
-            let reach = world
-                .data
-                .model(m.model.name())
-                .hearing
-                .saturating_add(s.loudness);
-            m.pos.dist2(s.pos) <= reach.saturating_mul(reach)
-        });
+        // A dark building hears nothing (`docs/08`).
+        let heard = world
+            .machines
+            .values()
+            .filter(|m| m.team == team && !m.is_dark())
+            .any(|m| {
+                let reach = world
+                    .data
+                    .model(m.model.name())
+                    .hearing
+                    .saturating_add(s.loudness);
+                m.pos.dist2(s.pos) <= reach.saturating_mul(reach)
+            });
         if heard {
             out.push(i);
         }

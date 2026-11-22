@@ -10,7 +10,7 @@ use crate::map::{Map, TilePos, row_then_column};
 use crate::sense;
 use crate::world::{
     Effect, EntityId, LoadedBundle, MachineRecord, Model, PickSource, Plan, Slot, TileMemory,
-    TileState, World,
+    TileState, WIRE, World,
 };
 use lang::data::{COSTS_TOML, LIMITS_TOML};
 use lang::{Costs, Event, Interrupt, Limits, Num, Program, Slice, Tracer, Value};
@@ -46,6 +46,19 @@ impl Sim {
         let limits = Rc::new(Limits::parse(LIMITS_TOML).expect("limits"));
         Sim {
             world: World::new(map, data, costs, limits),
+            ended: None,
+        }
+    }
+
+    /// A match on `map` with tables of the caller's: the shipped language
+    /// tables and `data` in place of the shipped machines, world and net.
+    /// For tests of rules the shipped numbers leave idle — a building
+    /// that drains more than it makes, which no shipped model does.
+    pub fn with_data(map: Map, data: Data) -> Sim {
+        let costs = Rc::new(Costs::parse(COSTS_TOML).expect("costs"));
+        let limits = Rc::new(Limits::parse(LIMITS_TOML).expect("limits"));
+        Sim {
+            world: World::new(map, Rc::new(data), costs, limits),
             ended: None,
         }
     }
@@ -89,11 +102,13 @@ impl Sim {
         match plan {
             PlanKind::Building => Model::ALL
                 .into_iter()
-                .filter(|m| !matches!(m, Model::Site | Model::Bot))
+                .filter(|m| m.buildable())
                 .map(|m| m.name().to_string())
                 .collect(),
             PlanKind::Paint => data.machines.colors.clone(),
             PlanKind::Overlay => data.world.overlays.clone(),
+            // A wire has no kinds: the one value is the plan to lay one.
+            PlanKind::Wire => vec![WIRE.to_string()],
         }
     }
 
@@ -120,10 +135,12 @@ impl Sim {
                 }
                 match (plan, value) {
                     (PlanKind::Building, Some(v))
-                        if Model::from_name(v)
-                            .is_none_or(|m| m == Model::Site || m == Model::Bot) =>
+                        if Model::from_name(v).is_none_or(|m| !m.buildable()) =>
                     {
                         Err(format!("`{v}` is not a building model"))
+                    }
+                    (PlanKind::Wire, Some(v)) if v != WIRE => {
+                        Err(format!("a wire plan's value is `{WIRE}`, not `{v}`"))
                     }
                     (PlanKind::Paint, Some(v)) if !w.data.machines.colors.contains(v) => {
                         Err(format!("`{v}` is not a color"))
@@ -238,8 +255,16 @@ impl Sim {
     pub(crate) fn close_tick(&mut self, report: &mut StepReport) {
         // 5. Out teams.
         self.out_teams();
-        // 6. Printing.
-        self.print_step();
+        // 6. Power and printing, team by team (`docs/08`, The power step):
+        // grids traced and served, solar, waking, then prints.
+        let teams: Vec<TeamId> = self.world.teams.keys().copied().collect();
+        for team in teams {
+            if self.world.teams[&team].out {
+                continue;
+            }
+            self.world.power_step(team);
+            self.print_step(team);
+        }
         // 7. Regrowth.
         self.regrow();
         // 8. The vision pass.
@@ -285,21 +310,21 @@ impl Sim {
                     Some(v) => Plan::Set(v.clone()),
                     None => Plan::Clear,
                 };
-                let plans = w.plans_mut(c.sender, *at).ok_or(())?;
-                match plan {
-                    PlanKind::Paint => plans.paint = Some(p),
-                    PlanKind::Overlay => plans.overlay = Some(p),
-                    PlanKind::Building => plans.building = Some(p),
+                // A wire plan asking for what the tile already has — to lay
+                // where the team's wire lies, to clear where none does — is
+                // dropped, so every wire plan is one a bot can carry out
+                // (`docs/03`).
+                if *plan == PlanKind::Wire && w.has_wire(c.sender, *at) == matches!(p, Plan::Set(_))
+                {
+                    return Err(());
                 }
+                let plans = w.plans_mut(c.sender, *at).ok_or(())?;
+                *plans.of_mut(*plan) = Some(p);
                 Ok(())
             }
             CommandKind::Unmark { at, plan } => {
                 let plans = w.plans_mut(c.sender, *at).ok_or(())?;
-                match plan {
-                    PlanKind::Paint => plans.paint = None,
-                    PlanKind::Overlay => plans.overlay = None,
-                    PlanKind::Building => plans.building = None,
-                }
+                *plans.of_mut(*plan) = None;
                 w.tidy_plans(*at);
                 Ok(())
             }
@@ -365,6 +390,9 @@ impl Sim {
             self.world.machines.get_mut(&id).expect("machine").program = Some(program);
             return false;
         }
+        // A dark building's main flow does not run, though a handler
+        // does (`docs/08`, A dark building).
+        let dark = self.world.machines.get(&id).is_some_and(|m| m.is_dark());
         let slice = {
             let mut host = GameHost {
                 world: &mut self.world,
@@ -374,7 +402,11 @@ impl Sim {
                 program.resume_slice(&mut host, tracer)
             } else {
                 program.tick = host.world.tick;
-                program.run_slice_traced(&mut host, tracer)
+                if dark {
+                    program.run_slice_held(&mut host, tracer)
+                } else {
+                    program.run_slice_traced(&mut host, tracer)
+                }
             }
         };
         let events = program.take_events();
@@ -415,6 +447,12 @@ impl Sim {
             } else {
                 m.construction = Some(left);
             }
+            return;
+        }
+        // A dark building's main-flow action is held (`docs/08`). A hook's
+        // is not: a prologue cancels main flow's action, so one in
+        // progress while a handler runs is the hook's own.
+        if m.is_dark() && m.program.as_ref().is_some_and(|p| p.mode_name() == "main") {
             return;
         }
         let Some(action) = m.action.as_mut() else {
@@ -606,6 +644,56 @@ impl Sim {
                     }
                 }
             }
+            Effect::Recharge { from } => {
+                // From what the building then holds; nothing if it is
+                // gone or dark (`docs/02`, `recharge`).
+                let amount = {
+                    let host = GameHost { world: w, id };
+                    host.recharge_amount(from)
+                };
+                let w = &mut self.world;
+                if amount > Num::ZERO {
+                    if let Some(b) = w.machines.get_mut(&from) {
+                        b.charge = b.charge.checked_sub(amount).unwrap_or(Num::ZERO);
+                    }
+                    if let Some(m) = w.machines.get_mut(&id) {
+                        m.charge = m.charge.checked_add(amount).unwrap_or(Num::MAX);
+                    }
+                    w.charge_changed(id);
+                }
+            }
+            Effect::Wire { at } => {
+                // Laid only if still absent: another of the team's bots
+                // may have laid it first this tick, and then nothing is
+                // taken (`docs/02`, `wire`).
+                let team = w.machines[&id].team;
+                let cost = w.data.model("bot").wire_cost.clone();
+                if w.lay_wire(team, at) {
+                    if let Some(m) = w.machines.get_mut(&id) {
+                        for (kind, c) in &cost {
+                            let l = m.load.entry(kind.clone()).or_insert(Num::ZERO);
+                            *l = l.checked_sub(*c).unwrap_or(Num::ZERO).max(Num::ZERO);
+                        }
+                    }
+                    if let Some(pl) = w.plans_mut(team, at)
+                        && matches!(pl.wire, Some(Plan::Set(_)))
+                    {
+                        pl.wire = None;
+                    }
+                    w.tidy_plans(at);
+                }
+            }
+            Effect::Unwire { at } => {
+                let team = w.machines[&id].team;
+                if w.remove_wire(team, at) {
+                    if let Some(pl) = w.plans_mut(team, at)
+                        && matches!(pl.wire, Some(Plan::Clear))
+                    {
+                        pl.wire = None;
+                    }
+                    w.tidy_plans(at);
+                }
+            }
             Effect::Wait => {}
         }
         Value::None
@@ -619,7 +707,8 @@ impl Sim {
         };
         let (team, pos, model) = (site.team, site.pos, site.becomes.unwrap_or(Model::Depot));
         w.remove(id);
-        let new_id = w.place(model, team, pos, Some(model.name().to_string()));
+        // A pylon runs no program and has no deployment (Q62).
+        let new_id = w.place(model, team, pos, model.deployment().map(str::to_string));
         // Keeps the site's entity? No: the building is a machine of its own,
         // named after its own id, as `place` names it.
         let _ = new_id;
@@ -649,6 +738,10 @@ impl Sim {
             m.printing = 0;
             return;
         }
+        // A dark printer's print holds (`docs/08`).
+        if !m.powered {
+            return;
+        }
         m.printing = m.printing.saturating_sub(1);
         if m.printing > 0 {
             return;
@@ -663,48 +756,43 @@ impl Sim {
         }
     }
 
-    /// Step 6: each team's printers begin prints by turns while its bots
-    /// and prints in progress fall short of its cap (Q42; `docs/02`,
-    /// Printing).
-    fn print_step(&mut self) {
+    /// Step 6, the prints: the team's printers begin prints by turns while
+    /// its bots and prints in progress fall short of its cap (Q42;
+    /// `docs/02`, Printing). A dark printer begins none (`docs/08`).
+    fn print_step(&mut self, team: TeamId) {
         let w = &mut self.world;
         let ticks = w.data.model("printer").print_ticks;
-        let teams: Vec<TeamId> = w.teams.keys().copied().collect();
-        for team in teams {
-            if w.teams[&team].out {
-                continue;
-            }
-            let printing = w
-                .machines
-                .values()
-                .filter(|m| m.team == team && m.model == Model::Printer && m.printing > 0)
-                .count();
-            let shortfall = w
-                .bot_cap(team)
-                .saturating_sub(w.bots_of(team))
-                .saturating_sub(printing);
-            // The ready printers in id order, rotated to start past the
-            // print turn: each begins at most once this step, in that order.
-            let ready: Vec<EntityId> = w
-                .machines
-                .values()
-                .filter(|m| {
-                    m.team == team
-                        && m.model == Model::Printer
-                        && m.printing == 0
-                        && m.health > Num::ZERO
-                })
-                .map(|m| m.id)
-                .collect();
-            let turn = w.teams[&team].print_turn;
-            let split = ready.partition_point(|id| *id <= turn);
-            let order = ready[split..].iter().chain(&ready[..split]);
-            for &next in order.take(shortfall) {
-                let pos = w.machines[&next].pos;
-                w.machines.get_mut(&next).expect("printer").printing = ticks;
-                w.sound("print", pos);
-                w.teams.get_mut(&team).expect("team").print_turn = next;
-            }
+        let printing = w
+            .machines
+            .values()
+            .filter(|m| m.team == team && m.model == Model::Printer && m.printing > 0)
+            .count();
+        let shortfall = w
+            .bot_cap(team)
+            .saturating_sub(w.bots_of(team))
+            .saturating_sub(printing);
+        // The ready printers in id order, rotated to start past the
+        // print turn: each begins at most once this step, in that order.
+        let ready: Vec<EntityId> = w
+            .machines
+            .values()
+            .filter(|m| {
+                m.team == team
+                    && m.model == Model::Printer
+                    && m.printing == 0
+                    && m.powered
+                    && m.health > Num::ZERO
+            })
+            .map(|m| m.id)
+            .collect();
+        let turn = w.teams[&team].print_turn;
+        let split = ready.partition_point(|id| *id <= turn);
+        let order = ready[split..].iter().chain(&ready[..split]);
+        for &next in order.take(shortfall) {
+            let pos = w.machines[&next].pos;
+            w.machines.get_mut(&next).expect("printer").printing = ticks;
+            w.sound("print", pos);
+            w.teams.get_mut(&team).expect("team").print_turn = next;
         }
     }
 
@@ -717,11 +805,12 @@ impl Sim {
     pub(crate) fn damage_apply(&mut self) -> BTreeSet<EntityId> {
         let w = &mut self.world;
         let mut hits: BTreeMap<EntityId, Num> = std::mem::take(&mut w.pending_damage);
-        // Every printer defends against adjacent bots of another team.
+        // Every powered printer defends against adjacent bots of another
+        // team; a dark one deals none (`docs/08`).
         let printers: Vec<(TeamId, TilePos, Num)> = w
             .machines
             .values()
-            .filter(|m| m.model == Model::Printer)
+            .filter(|m| m.model == Model::Printer && m.powered)
             .map(|m| (m.team, m.pos, w.data.model("printer").defence_damage))
             .collect();
         for (team, pos, dmg) in printers {
@@ -802,7 +891,11 @@ impl Sim {
             for tile in &mut w.tiles {
                 tile.plans.remove(&team);
             }
-            w.teams.get_mut(&team).expect("team").out = true;
+            // Its wires go with its machines, and it has no grids (Q62).
+            w.clear_wires(team);
+            let t = w.teams.get_mut(&team).expect("team");
+            t.grids.clear();
+            t.out = true;
         }
     }
 
@@ -865,6 +958,7 @@ impl Sim {
                     deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
                     paint: tile.paint.clone(),
                     overlay: tile.overlay.clone(),
+                    wires: tile.wires.clone(),
                     building: buildings.get(&p).cloned(),
                 };
                 t.seen.push(idx);
@@ -886,6 +980,14 @@ impl Sim {
             }
             h.write_u64(w.bot_cap(*tid) as u64);
             h.write_u32(team.print_turn.0);
+            // Its grids' figures, in label order (Q62).
+            h.write_u64(team.grids.len() as u64);
+            for g in &team.grids {
+                h.write_u32(g.grid.0);
+                for v in [g.generation, g.drain, g.stored, g.capacity] {
+                    h.write_bytes(&v.raw().to_le_bytes());
+                }
+            }
             let mut planned: Vec<(TilePos, &crate::world::Plans)> = Vec::new();
             for p in w.map.positions() {
                 if let Some(pl) = w.plans(*tid, p) {
@@ -896,7 +998,7 @@ impl Sim {
             h.write_u64(planned.len() as u64);
             for (p, pl) in planned {
                 write_pos(&mut h, p);
-                for plan in [&pl.paint, &pl.overlay, &pl.building] {
+                for plan in [&pl.paint, &pl.overlay, &pl.building, &pl.wire] {
                     match plan {
                         None => h.write_u8(0),
                         Some(Plan::Clear) => h.write_u8(1),
@@ -921,6 +1023,7 @@ impl Sim {
                     write_amounts(&mut h, m.deposit.as_ref());
                     write_opt_str(&mut h, m.paint.as_deref());
                     write_opt_str(&mut h, m.overlay.as_deref());
+                    write_teams(&mut h, &m.wires);
                     match &m.building {
                         None => h.write_u8(0),
                         Some(b) => {
@@ -937,12 +1040,15 @@ impl Sim {
             write_amounts(&mut h, t.deposit.as_ref().map(|d| &d.amount));
             write_opt_str(&mut h, t.paint.as_deref());
             write_opt_str(&mut h, t.overlay.as_deref());
+            write_teams(&mut h, &t.wires);
         }
         h.write_u32(w.next_id_value());
         h.write_u64(w.machines.len() as u64);
         for m in w.machines.values() {
             write_record(&mut h, &MachineRecord::of(m));
             h.write_u8(u8::from(m.dying));
+            // Whether a bot is armed for `low_power` (Q62).
+            h.write_u8(u8::from(m.armed));
             match &m.action {
                 None => h.write_u8(0),
                 Some(a) => {
@@ -998,6 +1104,14 @@ fn write_pos(h: &mut Fnv1a, p: TilePos) {
     h.write_i32(p.y);
 }
 
+/// The teams with a wire on a tile, in order (Q62).
+fn write_teams(h: &mut Fnv1a, teams: &BTreeSet<TeamId>) {
+    h.write_u64(teams.len() as u64);
+    for t in teams {
+        h.write_u32(t.0);
+    }
+}
+
 fn write_opt_str(h: &mut Fnv1a, s: Option<&str>) {
     match s {
         None => h.write_u8(0),
@@ -1046,6 +1160,23 @@ fn write_record(h: &mut Fnv1a, r: &MachineRecord) {
         Some(t) => {
             h.write_u8(1);
             h.write_u64(t);
+        }
+    }
+    // Power (Q62): the charge held, a bot's `flat`, and a building's
+    // `powered` and `grid`. The battery's capacity is the model's, in data.
+    h.write_bytes(&r.charge.raw().to_le_bytes());
+    for flag in [r.flat, r.powered] {
+        match flag {
+            None => h.write_u8(0),
+            Some(b) => h.write_u8(u8::from(b).saturating_add(1)),
+        }
+    }
+    match r.grid {
+        None => h.write_u8(0),
+        Some(None) => h.write_u8(1),
+        Some(Some(id)) => {
+            h.write_u8(2);
+            h.write_u32(id.0);
         }
     }
 }

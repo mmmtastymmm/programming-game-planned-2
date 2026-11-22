@@ -13,8 +13,9 @@ in [docs/01-language.md](docs/01-language.md)'s parts, the machines' in
 [docs/03-world.md](docs/03-world.md), the opposition's in
 [docs/04-opposition.md](docs/04-opposition.md), progression's in
 [docs/05-progression.md](docs/05-progression.md), the architecture's in
-[docs/06-architecture.md](docs/06-architecture.md) and the interface's in
-[docs/07-interface.md](docs/07-interface.md); **everything still
+[docs/06-architecture.md](docs/06-architecture.md), the interface's in
+[docs/07-interface.md](docs/07-interface.md) and power's in
+[docs/08-power.md](docs/08-power.md); **everything still
 undecided is in
 [docs/QUESTIONS.md](docs/QUESTIONS.md)**, which is the only place it may be — a
 list of open topics repeated here would drift on every ruling. The corpus
