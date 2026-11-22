@@ -140,6 +140,44 @@ fn a_printer_prints_by_itself_one_bot_per_print_time_up_to_the_cap() {
 /// Q42: printers take turns — the ready printer with the least id past
 /// the team's print turn, wrapping to the least.
 #[test]
+fn the_rosters_are_each_teams_machines_as_a_scan_for_each_team_finds_them() {
+    // T41: one pass over the machines, for the steps that go team by
+    // team and for the hash. Run until bots exist and a print is in
+    // flight, then compare with a scan of every machine for each team.
+    let mut s = sim();
+    run(&mut s, vec![], 45);
+    let w = &s.world;
+    let rosters = w.rosters();
+    assert_eq!(
+        rosters.keys().copied().collect::<Vec<_>>(),
+        w.teams.keys().copied().collect::<Vec<_>>()
+    );
+    for (team, r) in &rosters {
+        let own: Vec<_> = w
+            .machines
+            .values()
+            .filter(|m| m.team == *team)
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(r.machines, own, "in id order");
+        assert_eq!(r.printers, w.printers_of(*team));
+        assert_eq!(r.bots, w.bots_of(*team));
+        assert_eq!(w.cap_of(r.printers), w.bot_cap(*team));
+        let printing = w
+            .machines
+            .values()
+            .filter(|m| m.team == *team && m.model == Model::Printer && m.printing > 0)
+            .count();
+        assert_eq!(r.printing, printing);
+        assert!(r.bots > 0 && r.printing > 0, "the case is not empty");
+    }
+    // A team with no machine has no entry.
+    let mut s = sim();
+    s.world.remove_team(TeamId(1));
+    assert!(!s.world.rosters().contains_key(&TeamId(1)));
+}
+
+#[test]
 fn printers_take_turns_by_entity_id() {
     let mut s = sim();
     // Team 0: printer 1 from the map, printer 3 by fiat; team 1's is 2.

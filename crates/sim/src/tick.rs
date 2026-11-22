@@ -6,11 +6,11 @@ use crate::data::Data;
 use crate::fork::{Hit, Saved, Watch, WatchIndex, Watcher};
 use crate::hash::Fnv1a;
 use crate::host::GameHost;
-use crate::map::{Map, TilePos, row_then_column};
+use crate::map::{Map, TilePos};
 use crate::sense;
 use crate::world::{
-    Effect, EntityId, LoadedBundle, MachineRecord, Model, PickSource, Plan, Slot, TileMemory,
-    TileState, WIRE, World,
+    Effect, EntityId, LoadedBundle, MachineRecord, Model, PickSource, Plan, Roster, Slot,
+    TileMemory, TileState, WIRE, World,
 };
 use lang::data::{COSTS_TOML, LIMITS_TOML};
 use lang::{Costs, Event, Interrupt, Limits, Num, Program, Slice, Tracer, Value};
@@ -257,13 +257,19 @@ impl Sim {
         self.out_teams();
         // 6. Power and printing, team by team (`docs/08`, The power step):
         // grids traced and served, solar, waking, then prints.
+        // One pass over the machines serves every team's turn (T41): no
+        // team's power or prints add or remove a machine, or change
+        // another team's prints in progress.
         let teams: Vec<TeamId> = self.world.teams.keys().copied().collect();
+        let rosters = self.world.rosters();
+        let none = Roster::default();
         for team in teams {
             if self.world.teams[&team].out {
                 continue;
             }
-            self.world.power_step(team);
-            self.print_step(team);
+            let roster = rosters.get(&team).unwrap_or(&none);
+            self.world.power_step(team, &roster.machines);
+            self.print_step(team, roster);
         }
         // 7. Regrowth.
         self.regrow();
@@ -759,23 +765,22 @@ impl Sim {
     /// Step 6, the prints: the team's printers begin prints by turns while
     /// its bots and prints in progress fall short of its cap (Q42;
     /// `docs/02`, Printing). A dark printer begins none (`docs/08`).
-    fn print_step(&mut self, team: TeamId) {
+    /// `roster` is the team's machines as the step found them
+    /// ([`World::rosters`]); which of its printers are ready is read now,
+    /// after its power step.
+    fn print_step(&mut self, team: TeamId, roster: &Roster) {
         let w = &mut self.world;
         let ticks = w.data.model("printer").print_ticks;
-        let printing = w
-            .machines
-            .values()
-            .filter(|m| m.team == team && m.model == Model::Printer && m.printing > 0)
-            .count();
         let shortfall = w
-            .bot_cap(team)
-            .saturating_sub(w.bots_of(team))
-            .saturating_sub(printing);
+            .cap_of(roster.printers)
+            .saturating_sub(roster.bots)
+            .saturating_sub(roster.printing);
         // The ready printers in id order, rotated to start past the
         // print turn: each begins at most once this step, in that order.
-        let ready: Vec<EntityId> = w
+        let ready: Vec<EntityId> = roster
             .machines
-            .values()
+            .iter()
+            .filter_map(|id| w.machines.get(id))
             .filter(|m| {
                 m.team == team
                     && m.model == Model::Printer
@@ -879,12 +884,15 @@ impl Sim {
     pub(crate) fn out_teams(&mut self) {
         let w = &mut self.world;
         let teams: Vec<TeamId> = w.teams.keys().copied().collect();
+        // Counted once for every team (T41): a team going out removes its
+        // own machines and no other's.
+        let rosters = w.rosters();
         for team in teams {
             let t = &w.teams[&team];
             if t.out {
                 continue;
             }
-            if !t.resigned && w.printers_of(team) > 0 {
+            if !t.resigned && rosters.get(&team).is_some_and(|r| r.printers > 0) {
                 continue;
             }
             w.remove_team(team);
@@ -971,6 +979,17 @@ impl Sim {
         let w = &self.world;
         let mut h = Fnv1a::new();
         h.write_u64(w.tick);
+        // One pass over the machines counts every team's printers, and
+        // one over the tiles, in the order the hash writes them, gives
+        // each team its plans already in that order (T41): the bytes are
+        // those a walk of the map and of the machines for each team wrote.
+        let rosters = w.rosters();
+        let mut planned: BTreeMap<TeamId, Vec<(TilePos, &crate::world::Plans)>> = BTreeMap::new();
+        for (p, idx) in w.map.walk() {
+            for (team, pl) in &w.tiles[idx].plans {
+                planned.entry(*team).or_default().push((p, pl));
+            }
+        }
         for (tid, team) in &w.teams {
             h.write_u32(tid.0);
             h.write_u8(u8::from(team.out));
@@ -978,7 +997,8 @@ impl Sim {
                 h.write_str(name);
                 h.write_u64(d.bundle.as_ref().map(|b| b.version).unwrap_or(0));
             }
-            h.write_u64(w.bot_cap(*tid) as u64);
+            let printers = rosters.get(tid).map_or(0, |r| r.printers);
+            h.write_u64(w.cap_of(printers) as u64);
             h.write_u32(team.print_turn.0);
             // Its grids' figures, in label order (Q62).
             h.write_u64(team.grids.len() as u64);
@@ -988,16 +1008,10 @@ impl Sim {
                     h.write_bytes(&v.raw().to_le_bytes());
                 }
             }
-            let mut planned: Vec<(TilePos, &crate::world::Plans)> = Vec::new();
-            for p in w.map.positions() {
-                if let Some(pl) = w.plans(*tid, p) {
-                    planned.push((p, pl));
-                }
-            }
-            planned.sort_by(|a, b| row_then_column(&a.0, &b.0));
+            let planned = planned.get(tid).map_or(&[][..], Vec::as_slice);
             h.write_u64(planned.len() as u64);
             for (p, pl) in planned {
-                write_pos(&mut h, p);
+                write_pos(&mut h, *p);
                 for plan in [&pl.paint, &pl.overlay, &pl.building, &pl.wire] {
                     match plan {
                         None => h.write_u8(0),
@@ -1009,8 +1023,7 @@ impl Sim {
                     }
                 }
             }
-            for p in w.map.positions() {
-                let idx = w.tile_index(p).expect("in bounds");
+            for (_, idx) in w.map.walk() {
                 let m = &team.memory[idx];
                 h.write_u8(match m.state {
                     TileState::Unknown => 0,
@@ -1034,8 +1047,8 @@ impl Sim {
                 }
             }
         }
-        for p in w.map.positions() {
-            let t = w.tile(p).expect("in bounds");
+        for (_, idx) in w.map.walk() {
+            let t = &w.tiles[idx];
             h.write_str(t.terrain.name());
             write_amounts(&mut h, t.deposit.as_ref().map(|d| &d.amount));
             write_opt_str(&mut h, t.paint.as_deref());

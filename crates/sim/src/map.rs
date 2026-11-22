@@ -322,18 +322,27 @@ impl Map {
 
     /// Every tile position in row-then-column order.
     pub fn positions(&self) -> Vec<TilePos> {
-        let half_w = self.width.wrapping_div(2);
-        let half_h = self.height.wrapping_div(2);
-        let mut out = Vec::with_capacity(self.tiles.len());
-        for row in (0..self.height).rev() {
-            for col in 0..self.width {
-                out.push(TilePos::new(
-                    col.wrapping_sub(half_w),
-                    row.wrapping_sub(half_h),
-                ));
-            }
-        }
-        out
+        self.walk().map(|(p, _)| p).collect()
+    }
+
+    /// Every tile in row-then-column order, the order the state hash
+    /// writes them in, as its position and its index in a tile vector
+    /// ([`index`]): a walk that builds no list, for a caller that makes it
+    /// often (T41).
+    pub fn walk(&self) -> impl Iterator<Item = (TilePos, usize)> + use<> {
+        let (width, height) = (self.width, self.height);
+        let half_w = width.wrapping_div(2);
+        let half_h = height.wrapping_div(2);
+        (0..height).rev().flat_map(move |row| {
+            (0..width).map(move |col| {
+                (
+                    TilePos::new(col.wrapping_sub(half_w), row.wrapping_sub(half_h)),
+                    (row as usize)
+                        .saturating_mul(width as usize)
+                        .saturating_add(col as usize),
+                )
+            })
+        })
     }
 
     /// The south-west corner and the north-east corner.
@@ -480,6 +489,16 @@ mod tests {
         );
         assert_eq!(m.positions()[0], TilePos::new(-12, 7));
         assert_eq!(m.positions()[1], TilePos::new(-11, 7));
+        // The walk is the same order, sorted as the hash sorts, and each
+        // position comes with the index the bounds rule gives it.
+        let walked: Vec<(TilePos, usize)> = m.walk().collect();
+        assert_eq!(walked.len(), m.tiles.len());
+        let mut sorted = m.positions();
+        sorted.sort_by(row_then_column);
+        assert_eq!(sorted, m.positions());
+        for (p, i) in walked {
+            assert_eq!(index(p, m.width, m.height), Some(i));
+        }
     }
 
     #[test]
