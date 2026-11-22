@@ -31,20 +31,4 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-## M12 — Scale
-
-**T41 — The state hash and the print step visit the map and the machines once, not once a team**
-
-From [I10](history/inbox-triaged/inbox-triaged-0010.md). At a hundred
-teams the state hash costs more than the step it follows, because it
-walks every position on the map twice for every team, building the list
-of positions each time, and counts each team's printers and bots by
-scanning every machine. Every tile's plans, for every team that has any,
-are in the tile, so one pass over the tiles gives each team its plans in
-row-then-column order; a team's memory is its own table and needs no
-list of positions to walk; and one pass over the machines counts every
-team's bots, printers and prints in progress, for the hash's cap and for
-the print step. The hash writes the same bytes in the same order, so no
-replay hash moves, and the PR shows it: the golden fixtures untouched,
-and `crates/replay/benches/scale.rs` at a hundred teams before and
-after.
+*(none — every task so far is completed, and no milestone is open)*
