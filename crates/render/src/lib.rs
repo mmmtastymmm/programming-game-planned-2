@@ -48,6 +48,7 @@ pub mod marks;
 pub mod outlines;
 pub mod palette;
 pub mod playback;
+pub mod power;
 pub mod programs;
 pub mod screens;
 pub mod ui;

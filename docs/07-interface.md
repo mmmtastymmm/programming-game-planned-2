@@ -326,10 +326,10 @@ clears only when those machines fault again or die.
   wire still shows; drawn on the ground above paint and under machines,
   two teams' wires on one tile side by side. The player's own wires the
   snapshot marks as part of no grid (`06`, The snapshot) are drawn dimmed.
-- **Pylons** (Q62): from each pylon the snapshot shows, a thin line at the
-  height of its head, in its team's color, to every pylon and building of
-  its team within its span (`08`) that the snapshot also shows, sites
-  excluded. The renderer works the pairs out from the positions and the
+- **Pylons** (Q62): from the head of each pylon the snapshot shows, a
+  thin line in its team's color to the head of every pylon, and to the top
+  of every other building, of its team within its span (`08`) that the
+  snapshot also shows, sites excluded. The renderer works the pairs out from the positions and the
   span in data, and draws the lines above machines, since bots pass under
   them.
 - **Health:** a bar over the machine for a few seconds after any change.

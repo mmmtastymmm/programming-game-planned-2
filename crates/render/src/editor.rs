@@ -1912,6 +1912,10 @@ mod tests {
         assert!(stray_error("robots/1.py").is_some());
         assert!(stray_error("robots/bot.py").is_none());
         assert!(is_fixed("robots/bot.py") && !is_fixed("robots/1.py"));
+        // Q62's files are fixed like the rest: the hook, and a robot file
+        // per deployment that runs a program.
+        assert!(is_fixed("interrupts/on_low_power.py"));
+        assert!(is_fixed("robots/charger.py") && is_fixed("robots/solar.py"));
         assert!(e.delete("robots/bot.py").is_err());
         // Selected, it puts new files at the root, not in `robots/`.
         e.selected = Some("robots/1.py".into());

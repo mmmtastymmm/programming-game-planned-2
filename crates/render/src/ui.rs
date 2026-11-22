@@ -13,6 +13,7 @@ use crate::layout::default_placement;
 use crate::marks::{self, MarkRows, ROWS};
 use crate::outlines::TeamColors;
 use crate::palette::{Frame, Interface, paint_color};
+use crate::power;
 use crate::view::{self, Entities};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -54,6 +55,7 @@ pub fn panels(
     ents: Res<Entities>,
     rows: Res<MarkRows>,
     frame: Res<Frame>,
+    tuning: Res<view::Tuning>,
     cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
@@ -296,7 +298,9 @@ pub fn panels(
                     editor::window_body(ui, &mut driver, &mut state, name);
                 } else {
                     match name.as_str() {
-                        "inspector" => inspector(ui, &interface, &driver, &mut state, &mut colors),
+                        "inspector" => {
+                            inspector(ui, &interface, &tuning, &driver, &mut state, &mut colors)
+                        }
                         "tools" => tools(ui, &mut driver, &mut state, &rows),
                         debugger::WINDOW => debugger::window(ui, &mut driver.0, &mut state),
                         _ => log(ui, &state),
@@ -410,8 +414,8 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
         ui.small("the mark tools rest while the map shows a fork");
         ui.small("show the match in the banner brings them back");
     }
-    // The strip (Q37): a row per kind from data, each ending in clear;
-    // `B`/`P`/`O` pick the row the digits index.
+    // The strip (Q37, Q62): a row per kind from data, each ending in
+    // clear; `B`/`P`/`O`/`C` pick the row the digits index.
     for plan in ROWS.into_iter().filter(|_| !resting) {
         ui.horizontal_wrapped(|ui| {
             let head = format!("{} {}", marks::row_key(plan), plan.name());
@@ -464,6 +468,7 @@ fn camera_help(ui: &mut egui::Ui) {
 fn inspector(
     ui: &mut egui::Ui,
     interface: &Interface,
+    tuning: &view::Tuning,
     driver: &DriverResource,
     state: &mut ViewState,
     colors: &mut TeamColors,
@@ -495,6 +500,10 @@ fn inspector(
                         );
                         ui.label(format!("at ({}, {})", r.pos.x, r.pos.y));
                         ui.label(format!("health {}", r.health.to_decimal()));
+                        // Power (Q62): its charge, and whether it is out.
+                        for line in power::machine_lines(r, tuning.battery_of(r.model)) {
+                            ui.label(line);
+                        }
                         match r.busy {
                             Some(b) => ui.label(format!("busy: {b} ({})", r.progress)),
                             None => ui.label("idle"),
@@ -594,6 +603,11 @@ fn inspector(
                             if let Some(o) = &mem.overlay {
                                 ui.small(format!("overlay: {o}"));
                             }
+                            if !mem.wires.is_empty() {
+                                let teams: Vec<String> =
+                                    mem.wires.iter().map(|t| format!("team {}", t.0)).collect();
+                                ui.small(format!("wire: {}", teams.join(", ")));
+                            }
                             if let Some(b) = &mem.building {
                                 ui.small(format!("{} of team {}", b.name, b.team.0));
                             }
@@ -639,6 +653,14 @@ fn inspector(
                 for (name, v) in &t.deployments {
                     if let Some(v) = v {
                         ui.small(format!("  {name}: {v:016x}"));
+                    }
+                }
+                // The player's own grids (Q62), which no other team's
+                // renderer sees: each rate per second at the speed in
+                // force, the renderer's own figure.
+                if t.id == player {
+                    for g in &t.grids {
+                        ui.small(power::grid_line(g, d.shown_speed()));
                     }
                 }
             }

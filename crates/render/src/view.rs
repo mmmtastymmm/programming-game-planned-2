@@ -13,6 +13,7 @@ use crate::palette::{
     BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, MARK_HALF, Palette,
     ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off, body_half, tint,
 };
+use crate::power::{self, WireLook};
 use bevy::prelude::*;
 use sim::map::Terrain;
 use sim::snapshot::{MachineSnapshot, Snapshot};
@@ -32,6 +33,8 @@ pub struct TileLook {
     pub overlay: Option<String>,
     /// The player's team's plans here, drawn as their effect (Q37).
     pub plans: Option<Plans>,
+    /// Every team's wire the player's team knows of here (Q62).
+    pub wires: Vec<WireLook>,
 }
 
 pub struct TileView {
@@ -64,6 +67,19 @@ pub struct FaultMark;
 #[derive(Component)]
 pub struct HoverMarker;
 
+/// The struck-through bolt over a flat bot and a dark building (`docs/07`,
+/// Power; Q62).
+#[derive(Component)]
+pub struct PowerMark;
+
+/// A machine's charge bar, under its health bar, and what fills it; a
+/// charger's gauge fills the same way.
+#[derive(Component)]
+pub struct ChargeBar;
+
+#[derive(Component)]
+pub struct ChargeFill;
+
 pub struct MachineView {
     pub body: Entity,
     pub model: Model,
@@ -75,6 +91,11 @@ pub struct MachineView {
     pub bar_root: Entity,
     pub bar_fill: Entity,
     pub mark: Entity,
+    pub power_mark: Entity,
+    pub charge_root: Entity,
+    pub charge_fill: Entity,
+    /// A charger's gauge, which fills with its charge.
+    pub gauge: Option<Entity>,
     pub yaw: f32,
     pub yaw_prev: f32,
     pub pos_seen: TilePos,
@@ -101,6 +122,11 @@ pub struct Entities {
     /// under the cursor, or a `Shift`+drag's rectangle (Q44).
     pub cursor: (Tool, Vec<TilePos>),
     pub cursor_entities: Vec<Entity>,
+    /// The lines pylons draw (Q62): which pairs they were last built for,
+    /// at which stamp of the map, and their entities.
+    pub lines_seen: Vec<(sim::TeamId, TilePos, TilePos)>,
+    pub lines_tick: Option<(u64, u64, u64)>,
+    pub lines: Vec<Entity>,
 }
 
 impl Entities {
@@ -113,19 +139,44 @@ impl Entities {
 #[derive(Resource)]
 pub struct Tuning {
     pub max_health: HashMap<&'static str, f32>,
+    /// Each model's battery, for the charge bars; none where it has none.
+    pub battery: HashMap<&'static str, lang::Num>,
+    /// How far a pylon joins, in tiles (`docs/08`).
+    pub span: i64,
 }
 
 impl Tuning {
     pub fn load() -> Tuning {
         let mut max_health = HashMap::new();
+        let mut battery = HashMap::new();
+        let mut span = 0;
         if let Ok(d) = sim::Data::load() {
             for m in Model::ALL {
                 if let Some(md) = d.machines.models.get(m.name()) {
                     max_health.insert(m.name(), num_f32(md.health).max(1.0));
+                    if md.battery > lang::Num::ZERO {
+                        battery.insert(m.name(), md.battery);
+                    }
                 }
             }
+            span = d.model("pylon").span;
         }
-        Tuning { max_health }
+        Tuning {
+            max_health,
+            battery,
+            span,
+        }
+    }
+
+    /// How full a machine's battery is, or `None` if its model has none.
+    pub fn charge_fraction(&self, m: &MachineSnapshot) -> Option<f32> {
+        let battery = self.battery_of(m.record.model)?;
+        Some((num_f32(m.record.charge) / num_f32(battery)).clamp(0.0, 1.0))
+    }
+
+    /// A model's battery, or `None` if it has none.
+    pub fn battery_of(&self, model: Model) -> Option<lang::Num> {
+        self.battery.get(model.name()).copied()
     }
 
     pub fn fraction(&self, m: &MachineSnapshot) -> f32 {
@@ -148,17 +199,53 @@ fn body_lift(model: Model) -> f32 {
     match model {
         Model::Bot => BOT_HALF,
         Model::Printer => 0.25,
-        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => 0.15,
+        Model::Depot => 0.15,
+        // Each stands on its tile's slab, none of it sunk in it, so a
+        // panel's low foot and a plan's small ghost still show.
+        Model::Solar | Model::Charger | Model::Pylon => SLAB_HALF + body_half(model).y,
         Model::Site => 0.35,
     }
 }
 
+/// How far above a body's centre its health bar rides.
 fn bar_height(model: Model) -> f32 {
     match model {
         Model::Bot => 0.85,
         Model::Printer => 0.75,
-        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => 0.6,
+        Model::Depot => 0.6,
+        Model::Solar => 0.7,
+        Model::Charger => 0.65,
+        Model::Pylon => 0.8,
         Model::Site => 0.85,
+    }
+}
+
+/// A wire's height over its tile's face: clear of paint, under a plan and
+/// under the hover marker. And how far from its tile's centre each team's
+/// wire lies, so that two on one tile lie side by side, each in line with
+/// its own on the next tile.
+const WIRE_LIFT: f32 = 2.0 * MARK_HALF + 0.012;
+const WIRE_LANES: [f32; 4] = [-0.08, 0.08, -0.24, 0.24];
+
+fn wire_lane(team: u32) -> f32 {
+    WIRE_LANES[team as usize % WIRE_LANES.len()]
+}
+
+/// How far a pylon's lamp sits above its mast's centre: just over its
+/// head.
+const PYLON_LAMP: f32 = 0.5;
+/// How far a panel's plate sits above its foot's centre, and its tilt
+/// toward the default camera.
+const PANEL_RISE: f32 = 0.2;
+const PANEL_TILT: f32 = 0.45;
+
+/// Where a pylon's line meets a machine, above its tile's top: a pylon's
+/// lamp at its head, a panel's plate, any other building's top face.
+fn tie_height(model: Model) -> f32 {
+    match model {
+        Model::Pylon => body_lift(model) + PYLON_LAMP,
+        Model::Solar => body_lift(model) + PANEL_RISE,
+        _ => body_lift(model) + body_half(model).y,
     }
 }
 
@@ -251,6 +338,8 @@ fn look_of(
     mem: &TileMemory,
     memory: &HashMap<TilePos, &TileMemory>,
     plans: Option<Plans>,
+    player: sim::TeamId,
+    live: &HashMap<TilePos, bool>,
 ) -> TileLook {
     let ore = mem.deposit.is_some();
     // A NESW same-neighbour mask (bit 0 = N … bit 3 = W); off the map or
@@ -280,6 +369,7 @@ fn look_of(
         paint: mem.paint.clone(),
         overlay: mem.overlay.clone(),
         plans,
+        wires: power::wires_on(p, mem, memory, player, live),
     }
 }
 
@@ -317,6 +407,8 @@ pub fn sync_tiles(
     mut commands: Commands,
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
+    interface: Res<Interface>,
+    mut colors: ResMut<TeamColors>,
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
@@ -334,8 +426,40 @@ pub fn sync_tiles(
     };
     let memory: HashMap<TilePos, &TileMemory> = team.tiles.iter().map(|(p, m)| (*p, m)).collect();
     let plans: HashMap<TilePos, &Plans> = team.plans.iter().map(|(p, x)| (*p, x)).collect();
+    // The player's own wire tiles, and whether each is part of a grid.
+    let live: HashMap<TilePos, bool> = team.wires.iter().copied().collect();
+    let mut wire_mats: WireMats = HashMap::new();
+    let own_wire = team_mats(
+        &mut colors,
+        &interface,
+        player,
+        player,
+        &palette,
+        &mut materials,
+    )
+    .wire;
     for (p, mem) in &team.tiles {
-        let look = look_of(*p, mem, &memory, plans.get(p).map(|x| (*x).clone()));
+        let look = look_of(
+            *p,
+            mem,
+            &memory,
+            plans.get(p).map(|x| (*x).clone()),
+            player,
+            &live,
+        );
+        for w in &look.wires {
+            wire_mats.entry(w.team).or_insert_with(|| {
+                let m = team_mats(
+                    &mut colors,
+                    &interface,
+                    player,
+                    sim::TeamId(w.team),
+                    &palette,
+                    &mut materials,
+                );
+                (m.wire, m.wire_off)
+            });
+        }
         if let Some(&c) = ents.covers.get(p)
             && let Ok(mut v) = covers.get_mut(c)
         {
@@ -368,6 +492,8 @@ pub fn sync_tiles(
             &mut materials,
             *p,
             &look,
+            &wire_mats,
+            &own_wire,
         );
         ents.tiles.insert(*p, TileView { look, entities });
     }
@@ -381,6 +507,10 @@ pub fn sync_tiles(
 /// How much smaller than the real thing a plan's preview is (Q50).
 const PLAN_SCALE: f32 = 0.6;
 
+/// Each team's wire material and its dimmed twin, by team number.
+type WireMats = HashMap<u32, (Handle<StandardMaterial>, Handle<StandardMaterial>)>;
+
+#[allow(clippy::too_many_arguments)]
 fn spawn_plans(
     commands: &mut Commands,
     frame: &Frame,
@@ -390,6 +520,7 @@ fn spawn_plans(
     top: f32,
     surface: f32,
     plans: &Plans,
+    own_wire: &Handle<StandardMaterial>,
 ) -> Vec<Entity> {
     let mut out = Vec::new();
     let mut spawn = |mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, t: Transform| {
@@ -462,17 +593,42 @@ fn spawn_plans(
         let (mesh, live) = match model {
             Model::Site => (palette.site_cube.clone(), palette.site_mat.clone()),
             Model::Printer => (palette.printer_box.clone(), palette.printer_mat.clone()),
+            Model::Solar => (palette.panel_plate.clone(), palette.panel_mat.clone()),
+            Model::Charger => (palette.charger_block.clone(), palette.neutral_mat.clone()),
+            Model::Pylon => (palette.pylon_mast.clone(), palette.neutral_mat.clone()),
             _ => (palette.crate_box.clone(), palette.crate_mat.clone()),
         };
         let (mat, scale) = match plan {
             Plan::Set(_) => (palette.ghost(materials, &live), PLAN_SCALE),
             Plan::Clear => (palette.hatch_mat.clone(), 1.0),
         };
+        // A panel's ghost is its plate, raised and tilted as the panel's
+        // own is; the others stand as their bodies do.
+        let at = match (plan, model) {
+            (Plan::Set(_), Model::Solar) => {
+                Transform::from_translation(frame.tile_xyz(p, top + SLAB_HALF + PANEL_RISE * scale))
+                    .with_rotation(Quat::from_rotation_x(PANEL_TILT))
+            }
+            _ => Transform::from_translation(frame.tile_xyz(p, top + body_lift(model) * scale)),
+        };
+        spawn(mesh, mat, at.with_scale(Vec3::splat(scale)));
+    }
+    if let Some(plan) = &plans.wire {
+        // A see-through line across the tile in the team's color for a
+        // wire to lay, and the same line hatched for one to take up (Q62).
+        // Both lie over paint and may lie over a paint plan's hatch, so
+        // each has a mesh of its own (`crates/render/CLAUDE.md`).
+        let (mesh, mat) = match plan {
+            Plan::Set(_) => (
+                palette.wire_plan_bar.clone(),
+                palette.ghost(materials, own_wire),
+            ),
+            Plan::Clear => (palette.wire_hatch_bar.clone(), palette.hatch_mat.clone()),
+        };
         spawn(
             mesh,
             mat,
-            Transform::from_translation(frame.tile_xyz(p, top + body_lift(model) * scale))
-                .with_scale(Vec3::splat(scale)),
+            Transform::from_translation(frame.tile_xyz(p, surface + WIRE_LIFT + 0.02)),
         );
     }
     out
@@ -498,13 +654,21 @@ pub fn plannable_preview(state: &ViewState, driver: &Driver) -> Vec<TilePos> {
         .map(|t| t.plans.iter().map(|(p, x)| (*p, x)).collect())
         .unwrap_or_default();
     let wanted = crate::marks::slot(&ghost, *plan);
+    let wired = driver.wired();
     tiles.retain(|p| {
         // A tile already carrying exactly this plan shows it: a second,
         // identical ghost on top would fight it and blink.
         let already = held
             .get(p)
             .is_some_and(|h| crate::marks::slot(h, *plan) == wanted);
-        !already && driver.may_plan(*p, *plan).is_ok()
+        // A wire plan only where it would change the tile (Q62).
+        let idle_wire = *plan == sim::PlanKind::Wire
+            && !crate::marks::wire_changes(
+                matches!(wanted, Some(Plan::Set(_))),
+                wired.contains(p),
+                held.get(p).is_some_and(|h| h.wire.is_some()),
+            );
+        !already && !idle_wire && driver.may_plan(*p, *plan).is_ok()
     });
     tiles
 }
@@ -514,6 +678,8 @@ pub fn cursor_ghost(
     driver: NonSend<DriverResource>,
     state: Res<ViewState>,
     frame: Res<Frame>,
+    interface: Res<Interface>,
+    mut colors: ResMut<TeamColors>,
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
@@ -526,6 +692,16 @@ pub fn cursor_ghost(
         commands.entity(e).despawn();
     }
     if let Some(plans) = crate::marks::ghost_of(&want.0) {
+        let player = driver.0.player;
+        let own_wire = team_mats(
+            &mut colors,
+            &interface,
+            player,
+            player,
+            &palette,
+            &mut materials,
+        )
+        .wire;
         for p in &want.1 {
             let top = ents.top(*p);
             let surface = surface_at(&ents, *p);
@@ -538,6 +714,7 @@ pub fn cursor_ghost(
                 top,
                 surface,
                 &plans,
+                &own_wire,
             );
             ents.cursor_entities.extend(spawned);
         }
@@ -545,6 +722,7 @@ pub fn cursor_ghost(
     ents.cursor = want;
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_tile(
     commands: &mut Commands,
     frame: &Frame,
@@ -552,6 +730,8 @@ fn spawn_tile(
     materials: &mut Assets<StandardMaterial>,
     p: TilePos,
     look: &TileLook,
+    wire_mats: &WireMats,
+    own_wire: &Handle<StandardMaterial>,
 ) -> Vec<Entity> {
     let mut out = Vec::new();
     if look.state == TileState::Unknown {
@@ -630,9 +810,57 @@ fn spawn_tile(
                 .id(),
         );
     }
+    // Wires (Q62): on the ground above paint and under machines. A short
+    // bar across the tile's centre in the team's color, and a thin line
+    // toward each neighbour that carries the same team's wire or one of
+    // its buildings, so a lone wire still shows; two teams' side by side.
+    for w in &look.wires {
+        let Some((on, off)) = wire_mats.get(&w.team) else {
+            continue;
+        };
+        let material = mat(palette, if w.dim { off.clone() } else { on.clone() });
+        let lane = wire_lane(w.team);
+        let centre = frame.tile_xyz(p, surface + WIRE_LIFT) + Vec3::new(lane, 0.0, lane);
+        let mut piece = |mesh: Handle<Mesh>, t: Transform| {
+            out.push(
+                commands
+                    .spawn((
+                        DespawnOnEnter(Screen::Start),
+                        Mesh3d(mesh),
+                        MeshMaterial3d(material.clone()),
+                        t,
+                    ))
+                    .id(),
+            );
+        };
+        piece(
+            palette.wire_node.clone(),
+            Transform::from_translation(centre),
+        );
+        // North is -Z and east is +X (`Frame`); the line's mesh runs
+        // along Z, half a tile long, from the centre to the edge.
+        for (bit, (dx, dz)) in [(0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)]
+            .into_iter()
+            .enumerate()
+        {
+            if w.mask & (1 << bit) == 0 {
+                continue;
+            }
+            let turn = if dx != 0.0 {
+                Quat::from_rotation_y(FRAC_PI_2)
+            } else {
+                Quat::IDENTITY
+            };
+            piece(
+                palette.wire_line.clone(),
+                Transform::from_translation(centre + Vec3::new(dx * 0.25, 0.0, dz * 0.25))
+                    .with_rotation(turn),
+            );
+        }
+    }
     if let Some(plans) = &look.plans {
         out.extend(spawn_plans(
-            commands, frame, palette, materials, p, top, surface, plans,
+            commands, frame, palette, materials, p, top, surface, plans, own_wire,
         ));
     }
     out
@@ -787,12 +1015,14 @@ fn body_mat(
             palette.printer_lights.clone(),
             0.5,
         ),
-        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => (
+        Model::Depot => (
             "depot".to_string(),
             palette.crate_texture.clone(),
             palette.crate_lights.clone(),
             0.9,
         ),
+        // A neutral body; its team is its lamp (Q62).
+        Model::Solar | Model::Charger | Model::Pylon => return palette.neutral_mat.clone(),
         Model::Site => return palette.site_mat.clone(),
     };
     let team = m.record.team;
@@ -843,9 +1073,24 @@ fn team_mats(
         outline: materials.add(outline_material(color)),
         glass,
         segment: materials.add(segment_material(color)),
+        wire: materials.add(wire_material(color, false)),
+        wire_off: materials.add(wire_material(color, true)),
     };
     colors.mats.insert(team.0, m.clone());
     m
+}
+
+/// A team's wire and a pylon's lines (Q62): its color, flat and opaque, so
+/// it is no see-through layer over paint; `off` is the dimmed one for the
+/// player's own wire that is part of no grid.
+fn wire_material(color: Color, off: bool) -> StandardMaterial {
+    let c = color.to_linear();
+    let k = if off { 0.3 } else { 1.0 };
+    StandardMaterial {
+        base_color: LinearRgba::new(c.red * k, c.green * k, c.blue * k, 1.0).into(),
+        unlit: true,
+        ..default()
+    }
 }
 
 /// A lit segment: the team's color, glowing like the bot's lights.
@@ -1010,6 +1255,12 @@ pub fn recolor_teams(
         if let Some(mut seg) = materials.get_mut(&m.segment) {
             *seg = segment_material(color);
         }
+        if let Some(mut w) = materials.get_mut(&m.wire) {
+            *w = wire_material(color, false);
+        }
+        if let Some(mut w) = materials.get_mut(&m.wire_off) {
+            *w = wire_material(color, true);
+        }
     }
 }
 
@@ -1032,8 +1283,12 @@ fn spawn_machine(
     let mesh = match model {
         Model::Bot => palette.bot_cube.clone(),
         Model::Printer => palette.printer_box.clone(),
-        // Drawn as a depot until T32 gives them their own art (Q62).
-        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => palette.crate_box.clone(),
+        Model::Depot => palette.crate_box.clone(),
+        // Q62: a panel's foot under its plate, a charger's block, a
+        // pylon's mast.
+        Model::Solar => palette.panel_foot.clone(),
+        Model::Charger => palette.charger_block.clone(),
+        Model::Pylon => palette.pylon_mast.clone(),
         Model::Site => palette.site_cube.clone(),
     };
     let live_mat = body_mat(palette, interface, colors, materials, player, m);
@@ -1041,6 +1296,7 @@ fn spawn_machine(
         outline: outline_mat,
         glass: glass_mat,
         segment: segment_mat,
+        ..
     } = team_mats(colors, interface, player, team, palette, materials);
     let half = body_half(model);
     let outline_scale = (half + Vec3::splat(OUTLINE)) / half;
@@ -1055,6 +1311,11 @@ fn spawn_machine(
     let mut bar_root = Entity::PLACEHOLDER;
     let mut bar_fill = Entity::PLACEHOLDER;
     let mut mark = Entity::PLACEHOLDER;
+    let mut power_mark = Entity::PLACEHOLDER;
+    let mut charge_root = Entity::PLACEHOLDER;
+    let mut charge_fill = Entity::PLACEHOLDER;
+    let mut gauge = None;
+    let lamp_mat = segment_mat.clone();
     let mesh_for_outline = mesh.clone();
     let body = commands
         .spawn((
@@ -1095,7 +1356,44 @@ fn spawn_machine(
                             .with_rotation(Quat::from_rotation_z(0.06)),
                     ));
                 }
-                Model::Depot | Model::Solar | Model::Charger | Model::Pylon | Model::Site => {}
+                Model::Solar => {
+                    // A low plate tilted toward the default camera, and a
+                    // lamp at its foot in its team's color.
+                    parent.spawn((
+                        Mesh3d(palette.panel_plate.clone()),
+                        MeshMaterial3d(palette.panel_mat.clone()),
+                        Transform::from_xyz(0.0, PANEL_RISE, -0.04)
+                            .with_rotation(Quat::from_rotation_x(PANEL_TILT)),
+                    ));
+                    // On the slab, in front of the plate's lower edge.
+                    spawn_lamp(parent, palette, &lamp_mat, Vec3::new(0.32, 0.01, 0.4));
+                }
+                Model::Charger => {
+                    // A gauge on the face toward the default camera that
+                    // fills with its charge, and a lamp on top.
+                    parent.spawn((
+                        Mesh3d(palette.segment.clone()),
+                        MeshMaterial3d(palette.gauge_bg_mat.clone()),
+                        Transform::from_xyz(0.0, 0.0, 0.303).with_scale(Vec3::new(0.2, 0.32, 0.01)),
+                    ));
+                    gauge = Some(
+                        parent
+                            .spawn((
+                                ChargeFill,
+                                Mesh3d(palette.segment.clone()),
+                                MeshMaterial3d(palette.gauge_fill_mat.clone()),
+                                Transform::from_xyz(0.0, -GAUGE_HALF, 0.31)
+                                    .with_scale(Vec3::new(0.14, 0.004, 0.012)),
+                            ))
+                            .id(),
+                    );
+                    spawn_lamp(parent, palette, &lamp_mat, Vec3::new(0.0, 0.25, 0.0));
+                }
+                Model::Pylon => {
+                    // A lamp at its head, where its lines run.
+                    spawn_lamp(parent, palette, &lamp_mat, Vec3::new(0.0, PYLON_LAMP, 0.0));
+                }
+                Model::Depot | Model::Site => {}
             }
             // A site's team is its outline (Q43): the body's own mesh, a
             // little larger. Every other machine's is its lights (Q45, Q47).
@@ -1115,6 +1413,42 @@ fn spawn_machine(
                     Transform::from_xyz(0.0, bar_height(model) + 0.55, 0.0),
                     Visibility::Hidden,
                 ))
+                .id();
+            // The power mark (Q62), beside where the fault mark shows.
+            power_mark = parent
+                .spawn((
+                    PowerMark,
+                    BillboardBar,
+                    Mesh3d(palette.power_quad.clone()),
+                    MeshMaterial3d(palette.bolt_mat.clone()),
+                    Transform::from_xyz(0.0, bar_height(model) + 0.3, 0.0),
+                    Visibility::Hidden,
+                ))
+                .id();
+            // The charge bar, under the health bar (Q62).
+            charge_root = parent
+                .spawn((
+                    ChargeBar,
+                    BillboardBar,
+                    Transform::from_xyz(0.0, bar_height(model) - 0.15, 0.0),
+                    Visibility::Hidden,
+                ))
+                .with_children(|bar| {
+                    bar.spawn((
+                        Mesh3d(palette.bar.clone()),
+                        MeshMaterial3d(palette.bar_bg_mat.clone()),
+                        Transform::default().with_scale(Vec3::new(0.8, 0.7, 1.0)),
+                    ));
+                    charge_fill = bar
+                        .spawn((
+                            ChargeFill,
+                            Mesh3d(palette.bar.clone()),
+                            MeshMaterial3d(palette.charge_fill_mat.clone()),
+                            Transform::from_xyz(0.0, 0.0, 0.0105)
+                                .with_scale(Vec3::new(0.8, 0.5, 1.0)),
+                        ))
+                        .id();
+                })
                 .id();
             bar_root = parent
                 .spawn((
@@ -1151,11 +1485,180 @@ fn spawn_machine(
         bar_root,
         bar_fill,
         mark,
+        power_mark,
+        charge_root,
+        charge_fill,
+        gauge,
         yaw,
         yaw_prev: yaw,
         pos_seen: m.record.pos,
         color_seen: m.record.color.clone(),
     }
+}
+
+/// Half the height a charger's gauge fills to.
+const GAUGE_HALF: f32 = 0.14;
+
+/// A small lamp in its team's color, on a panel, a charger or a pylon.
+fn spawn_lamp(
+    parent: &mut bevy::ecs::relationship::RelatedSpawnerCommands<ChildOf>,
+    palette: &Palette,
+    lit: &Handle<StandardMaterial>,
+    at: Vec3,
+) {
+    parent.spawn((
+        Mesh3d(palette.segment.clone()),
+        MeshMaterial3d(lit.clone()),
+        Transform::from_translation(at).with_scale(Vec3::splat(0.1)),
+    ));
+}
+
+/// The power mark (`docs/07`, Power; Q62): over a flat bot, and over a
+/// dark building, while the snapshot says so. Lights are not dimmed, so
+/// friend and foe still read at a glance.
+pub fn power_marks(
+    driver: NonSend<DriverResource>,
+    ents: Res<Entities>,
+    mut marks: Query<&mut Visibility, With<PowerMark>>,
+) {
+    let snap = driver.0.drawn();
+    for m in &snap.machines {
+        let Some(view) = ents.machines.get(&m.record.id) else {
+            continue;
+        };
+        let Ok(mut vis) = marks.get_mut(view.power_mark) else {
+            continue;
+        };
+        let out = m.record.flat == Some(true)
+            || (m.record.powered == Some(false) && m.record.model != Model::Site);
+        let want = if out && view.shown {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
+
+/// A selected or hovered machine with a battery shows its charge as a
+/// second bar under its health (Q62), and a charger's gauge fills with its
+/// charge whether it is looked at or not.
+pub fn charge_bars(
+    state: Res<ViewState>,
+    driver: NonSend<DriverResource>,
+    tuning: Res<Tuning>,
+    ents: Res<Entities>,
+    mut roots: Query<&mut Visibility, With<ChargeBar>>,
+    mut fills: Query<&mut Transform, With<ChargeFill>>,
+) {
+    let snap = driver.0.drawn();
+    for m in &snap.machines {
+        let Some(view) = ents.machines.get(&m.record.id) else {
+            continue;
+        };
+        let frac = tuning.charge_fraction(m);
+        let looked_at = state.selected == Some(m.record.id) || state.hover == Some(m.record.pos);
+        let show = view.shown && looked_at && frac.is_some();
+        if let Ok(mut v) = roots.get_mut(view.charge_root) {
+            let want = if show {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            if *v != want {
+                *v = want;
+            }
+        }
+        let Some(frac) = frac else { continue };
+        if show && let Ok(mut t) = fills.get_mut(view.charge_fill) {
+            let shown = frac.max(0.02);
+            t.scale = Vec3::new(shown * 0.8, 0.5, 1.0);
+            t.translation.x = -(0.9 * 0.8 * (1.0 - shown)) / 2.0;
+        }
+        if let Some(g) = view.gauge
+            && let Ok(mut t) = fills.get_mut(g)
+        {
+            // Filling from the bottom: the bar's height, and its centre.
+            t.scale.y = (2.0 * GAUGE_HALF * frac).max(0.004);
+            t.translation.y = -GAUGE_HALF + GAUGE_HALF * frac;
+        }
+    }
+}
+
+/// A pylon's lines (`docs/07`, Pylons; Q62): from the head of each pylon
+/// the map draws to the head of every pylon, and the top of every other
+/// building, of its team within its span that the map also draws, in its
+/// team's color, above the bots that pass under them. Rebuilt when the
+/// pairs change.
+#[allow(clippy::too_many_arguments)]
+pub fn pylon_lines(
+    mut commands: Commands,
+    driver: NonSend<DriverResource>,
+    frame: Res<Frame>,
+    interface: Res<Interface>,
+    tuning: Res<Tuning>,
+    palette: Res<Palette>,
+    mut colors: ResMut<TeamColors>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ents: ResMut<Entities>,
+) {
+    let stamp = driver.0.drawn_stamp();
+    if ents.lines_tick == Some(stamp) {
+        return;
+    }
+    ents.lines_tick = Some(stamp);
+    let snap = driver.0.drawn();
+    let player = driver.0.player;
+    let shown: Vec<(sim::TeamId, Model, TilePos)> = snap
+        .machines
+        .iter()
+        .filter(|m| m.record.model != Model::Bot && visibility(snap, player, m).is_some())
+        .map(|m| (m.record.team, m.record.model, m.record.pos))
+        .collect();
+    let pairs = power::pylon_pairs(&shown, tuning.span);
+    if pairs == ents.lines_seen {
+        return;
+    }
+    let models: HashMap<TilePos, Model> = shown.iter().map(|(_, m, p)| (*p, *m)).collect();
+    let tie = |p: TilePos| {
+        let model = models.get(&p).copied().unwrap_or(Model::Pylon);
+        frame.tile_xyz(p, ents.top(p) + tie_height(model))
+    };
+    let ends: Vec<(Vec3, Vec3)> = pairs.iter().map(|(_, a, b)| (tie(*a), tie(*b))).collect();
+    for e in std::mem::take(&mut ents.lines) {
+        commands.entity(e).despawn();
+    }
+    for ((team, _, _), (from, to)) in pairs.iter().zip(ends) {
+        let mat = team_mats(
+            &mut colors,
+            &interface,
+            player,
+            *team,
+            &palette,
+            &mut materials,
+        )
+        .wire;
+        let along = to - from;
+        let length = along.length();
+        if length <= f32::EPSILON {
+            continue;
+        }
+        // The unit cube, stretched from one end to the other.
+        let e = commands
+            .spawn((
+                DespawnOnEnter(Screen::Start),
+                Mesh3d(palette.segment.clone()),
+                MeshMaterial3d(mat),
+                Transform::from_translation((from + to) / 2.0)
+                    .with_rotation(Quat::from_rotation_arc(Vec3::X, along / length))
+                    .with_scale(Vec3::new(length, 0.03, 0.03)),
+            ))
+            .id();
+        ents.lines.push(e);
+    }
+    ents.lines_seen = pairs;
 }
 
 /// The fault mark shows for `fault_mark_ticks` after the record's tick
