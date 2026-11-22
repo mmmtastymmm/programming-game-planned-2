@@ -15,8 +15,9 @@
 //! the player's bots build, so the rising price, construction and two
 //! printers taking turns (Q42) all feed the hash; and, for power (Q62,
 //! Q63), a charger, a pylon and a tile of wire that join the two printers
-//! and the charger into one grid, on a run long enough for bots to fall to
-//! low power, run their hook and recharge. The alive test asserts on what
+//! and the charger into one grid, and one bot that only paces, so that
+//! inside the run's 480 ticks a battery falls to low power, the hook runs
+//! and the bot recharges. The alive test asserts on what
 //! the match must have done, so a run that did nothing cannot score green.
 
 use replay::Replay;
@@ -173,7 +174,7 @@ fn golden_replay() -> Replay {
     Replay {
         map: map_text,
         commands,
-        ticks: 640,
+        ticks: 480,
         version: None,
         final_hash: None,
         team: None,
@@ -181,9 +182,9 @@ fn golden_replay() -> Replay {
 }
 
 /// The tick the golden scenario's `bot` redeploy is agreed for, of its
-/// 640: late, so the hauling bots have run their batteries down to the
-/// low-power level and recharged before it.
-const REDEPLOY: u64 = 600;
+/// 480: after the pacing bot has run its battery down to the low-power
+/// level and recharged, and the last of the planned buildings is up.
+const REDEPLOY: u64 = 440;
 
 fn charger_plan(map: &Map) -> TilePos {
     let start = map.teams[0][0];
@@ -293,7 +294,7 @@ fn golden_scenario_is_alive() {
     // fail here, not agree with itself.
     assert_eq!(
         run.hashes.len(),
-        640,
+        480,
         "the match ended early: {:?}",
         run.sim.ended()
     );

@@ -8,6 +8,27 @@
 # off to recharge, and this loop then goes on where it was (Q63).
 steps = 0
 CAPACITY = 10
+# The team's first bot hauls nothing: it paces a lane away from the
+# deposits, which empties a battery about as fast as a bot can, so that
+# inside the fixture's few hundred ticks one bot falls to low power, runs
+# the hook, walks back to recharge and returns. The id is the first a
+# printer on this map gives a bot, and the lane is two tiles of its ground.
+RUNNER = 3
+LANE = (-6, 6)
+
+
+def pace():
+    here = me().pos
+    if here[1] != LANE[1] or here[0] < LANE[0] or here[0] > LANE[0] + 1:
+        try:
+            move_to(LANE[0], LANE[1])
+        except ValueError:
+            wait(1)
+        return
+    try:
+        move("e" if here[0] == LANE[0] else "w")
+    except ValueError:
+        wait(1)
 
 
 def deposit():
@@ -18,7 +39,13 @@ def deposit():
 
 
 def site():
-    for p in plans("building"):
+    # The printer first: it is the dearest, and the fixture wants it up
+    # and printing while there are still ticks to see it take its turn.
+    planned = plans("building")
+    for p in planned:
+        if p[2] == "printer":
+            return (p[0], p[1])
+    for p in planned:
         return (p[0], p[1])
     for m in see():
         if m.team == me().team and m.model == "site":
@@ -49,6 +76,9 @@ def step_off():
 
 
 while True:
+    if me().id == RUNNER:
+        pace()
+        continue
     full = me().load["ore"] >= CAPACITY
     job = "orange" if full else "cyan"
     if me().color != job:
