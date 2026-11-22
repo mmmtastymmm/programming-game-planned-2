@@ -31,6 +31,25 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
+## M9 — The language as ruled
+
+**T40 — A deficit is carried until it is paid** `⚠HASH`
+
+`01`'s Metering, the tick budget, which the interpreter does not yet
+follow for a deficit above one tick's budget
+([P10](PROBLEMS.md), from
+[I11](history/inbox-triaged/inbox-triaged-0011.md)). When a slice
+closes, what the machine owes is what it owed as the slice opened, plus
+what the slice spent, less one tick's budget, and never below zero: so a
+deficit of several budgets is paid down one budget a tick, by slices
+that open at zero and run no operation, and a held slice — a flat bot's,
+a dark building's — pays it down the same. A slice a debugger stopped
+and resumed still takes the deficit off once. Tests: an operation
+costing many budgets sits out that many ticks, less the one it ran in;
+a deficit below a budget is carried as before; a `fault` and a
+`redeploy` clear none of it. Any fixture that overspends by more than a
+budget changes, and the PR says why. Fixes [P10](PROBLEMS.md).
+
 ## M10 — Power
 
 **T32 — Power in `render`: wire, pylons, the charger, the flat and dark marks, the inspector**
@@ -56,3 +75,21 @@ with generation and drain per second at the speed in force and stored
 charge against capacity, and the selected machine's charge with its
 `flat`, or `powered` and `grid`. The last of the three tasks Q62 and Q63
 opened: it closes [P8](PROBLEMS.md).
+
+## M12 — Scale
+
+**T41 — The state hash and the print step visit the map and the machines once, not once a team**
+
+From [I10](history/inbox-triaged/inbox-triaged-0010.md). At a hundred
+teams the state hash costs more than the step it follows, because it
+walks every position on the map twice for every team, building the list
+of positions each time, and counts each team's printers and bots by
+scanning every machine. Every tile's plans, for every team that has any,
+are in the tile, so one pass over the tiles gives each team its plans in
+row-then-column order; a team's memory is its own table and needs no
+list of positions to walk; and one pass over the machines counts every
+team's bots, printers and prints in progress, for the hash's cap and for
+the print step. The hash writes the same bytes in the same order, so no
+replay hash moves, and the PR shows it: the golden fixtures untouched,
+and `crates/replay/benches/scale.rs` at a hundred teams before and
+after.

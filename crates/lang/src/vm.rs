@@ -1631,12 +1631,21 @@ impl Machine {
         slice
     }
 
-    /// Run the slice on, and close its books unless it stopped: what it
-    /// spent past its budget is the next tick's deficit.
+    /// Run the slice on, and close its books unless it stopped: the machine
+    /// then owes what it owed as the slice opened, plus what the slice
+    /// spent, less one tick's budget, and never less than nothing
+    /// (`execution.md`, Metering). So a deficit of several budgets is paid
+    /// down a budget a tick, by slices that open at zero and run no
+    /// operation, and nothing clears it. The deficit is read here as the
+    /// slice opened with it: nothing writes it while a slice runs, stopped
+    /// and resumed or not.
     fn close_slice(&mut self, host: &mut dyn Host, tracer: Option<&mut dyn Tracer>) -> Slice {
         let result = self.run(host, tracer);
         if result != Slice::Stopped {
-            self.deficit = self.spent.saturating_sub(self.slice_budget);
+            self.deficit = self
+                .deficit
+                .saturating_add(self.spent)
+                .saturating_sub(self.limits.budget_tick);
         }
         result
     }

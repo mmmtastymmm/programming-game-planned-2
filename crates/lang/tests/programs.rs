@@ -612,6 +612,121 @@ fn a_program_yields_when_the_budget_is_spent_and_carries_a_deficit() {
     }
 }
 
+/// `execution.md`, Metering: "each following tick's budget is reduced by
+/// what remains of it until it is paid, and nothing clears it" (T40). An
+/// operation that costs many budgets is paid for a budget a tick, by
+/// slices that open at zero and run nothing.
+#[test]
+fn a_deficit_of_many_budgets_is_paid_down_a_budget_a_tick() {
+    let (costs, limits) = tables();
+    let budget = limits.budget_tick;
+    let program = load("a = [0] * 3000\nn = 0\nwhile True:\n    n += 1\n");
+    let mut m = Machine::new(&program, costs, limits);
+    let mut host = TestHost::default();
+    assert_eq!(m.run_slice(&mut host), Slice::Yield);
+    let owed = m.deficit();
+    assert!(
+        owed > budget.saturating_mul(10),
+        "the list cost {} against a budget of {budget}",
+        m.spent()
+    );
+    assert_eq!(owed, m.spent().saturating_sub(budget));
+    // Every tick it cannot afford an operation in pays one budget off.
+    let idle = owed.wrapping_div(budget);
+    for tick in 1..=idle {
+        assert_eq!(m.run_slice(&mut host), Slice::Yield);
+        assert_eq!(m.spent(), 0, "tick {tick}: it ran in deficit");
+        assert_eq!(
+            m.deficit(),
+            owed.saturating_sub(tick.saturating_mul(budget))
+        );
+        assert!(m.global("n").is_none(), "tick {tick}: main flow went on");
+    }
+    // What is left is under a budget, so the next slice opens with the
+    // rest and the loop runs.
+    assert!(m.deficit() < budget);
+    assert_eq!(m.run_slice(&mut host), Slice::Yield);
+    assert!(m.spent() > 0 && m.global("n").is_some());
+}
+
+/// Nothing clears a deficit: not a `redeploy`, which is delivered to a
+/// machine in deficit and restarts it, and not a `fault`, whose own
+/// operation may be what ran it up.
+#[test]
+fn a_redeploy_and_a_fault_clear_none_of_a_deficit() {
+    let (costs, limits) = tables();
+    let budget = limits.budget_tick;
+    let program = load("a = [0] * 3000\n");
+    let mut m = Machine::new(&program, costs.clone(), limits.clone());
+    let mut host = TestHost::default();
+    assert_eq!(m.run_slice(&mut host), Slice::Yield);
+    let owed = m.deficit();
+    m.raise(lang::Interrupt::Redeploy);
+    let _ = m.run_slice(&mut host);
+    assert!(
+        m.take_events()
+            .iter()
+            .any(|e| matches!(e, lang::Event::Redeploy { .. })),
+        "the redeploy was not delivered to a machine in deficit"
+    );
+    assert_eq!(m.deficit(), owed.saturating_sub(budget));
+
+    // A search of a long list for what is not there costs the walk and
+    // then raises: the fault restarts main flow and the walk is still owed.
+    let program = load("a = [0] * 3000\na.index(1)\n");
+    let mut m = Machine::new(&program, costs, limits);
+    let mut faulted_owing = None;
+    for _ in 0..60 {
+        let _ = m.run_slice(&mut host);
+        if m.fault_record.is_some() {
+            faulted_owing = Some(m.deficit());
+            break;
+        }
+    }
+    let owed = faulted_owing.expect("the search faulted");
+    assert!(owed > budget, "the fault left {owed} owed");
+    let _ = m.run_slice(&mut host);
+    assert_eq!(m.spent(), 0);
+    assert_eq!(m.deficit(), owed.saturating_sub(budget));
+}
+
+/// A slice a debugger stops at every boundary and resumes closes its
+/// books once, as the match's does: the deficit comes off its budget once
+/// and is paid down once, however many times the slice was stopped.
+#[test]
+fn a_stopped_and_resumed_slice_pays_a_deficit_down_once() {
+    struct StopAlways;
+    impl lang::Tracer for StopAlways {
+        fn boundary(&mut self, _: &Machine) -> bool {
+            true
+        }
+    }
+    let (costs, limits) = tables();
+    let program = load("a = [0] * 3000\nn = 0\nwhile True:\n    n += 1\n");
+    let mut plain = Machine::new(&program, costs.clone(), limits.clone());
+    let mut stepped = Machine::new(&program, costs, limits);
+    let mut host = TestHost::default();
+    let mut stops = 0u32;
+    for tick in 1..=20 {
+        let a = plain.run_slice(&mut host);
+        let mut tracer = StopAlways;
+        let mut b = stepped.run_slice_traced(&mut host, Some(&mut tracer));
+        while b == Slice::Stopped {
+            stops = stops.saturating_add(1);
+            b = stepped.resume_slice(&mut host, Some(&mut tracer));
+        }
+        assert_eq!(a, b, "tick {tick}");
+        assert_eq!(plain.deficit(), stepped.deficit(), "tick {tick}");
+        assert_eq!(plain.spent(), stepped.spent(), "tick {tick}");
+        assert_eq!(plain.state_bytes(), stepped.state_bytes(), "tick {tick}");
+    }
+    assert!(stops > 40, "the slices were stopped only {stops} times");
+    assert!(
+        plain.global("n").is_some(),
+        "the deficit was never paid off"
+    );
+}
+
 #[test]
 fn an_empty_program_restarts_once_per_tick() {
     let (costs, limits) = tables();
