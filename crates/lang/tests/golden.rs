@@ -841,10 +841,12 @@ fn all_final_hashes() -> String {
     let (_, a) = showcase();
     let (_, b) = interrupts();
     let c = fnv_lines(fnv_start(), &wide_table());
+    let (_, d) = low_power();
     format!(
-        "{:016x} {:016x} {c:016x}",
+        "{:016x} {:016x} {c:016x} {:016x}",
         a.last().copied().unwrap_or(0),
-        b.last().copied().unwrap_or(0)
+        b.last().copied().unwrap_or(0),
+        d.last().copied().unwrap_or(0)
     )
 }
 
