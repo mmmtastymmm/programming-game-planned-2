@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-22: 10 opened, 8 fixed — 2 open.**
+**Status 2026-11-22: 10 opened, 9 fixed — 1 open.**
 
 ## Open
 
@@ -51,21 +51,3 @@ conversion and never rechecked against deconstruction once Q42 made it the
 way to take a printer down. The user deferred retuning them to
 playtesting; this entry holds the arithmetic until then, and closes with
 the commit that changes the numbers or the rule.
-
-**P8 — The code lags Q62: no batteries, charge costs, grids, chargers, pylons or wire**
-
-This entry was opened against Q59, whose power was never built; Q62
-withdrew Q59 and ruled power again, and Q63 amended it, so the gap is
-now theirs. They ruled that every bot has a battery its calls run down
-and its own solar refills, that a bot out of power waits to be charged
-back to a level, that `low_power` is a fifth interrupt, which returns to
-main flow, that buildings generate
-and drain and share power as grids served oldest first, that a building
-a grid cannot cover goes dark, and that grids are joined by pylons or by
-underground wire; `01`, `02`, `03`, `05`, `06`, `07` and `08` state it as
-current. The interpreter and the sim have it, from T39 and T31, merged in
-`a78bade`; what is missing is the renderer's half: it draws a solar panel,
-a charger and a pylon as depots, and no wire, no pylon's line, no mark
-over a flat bot or a dark building, no wire tool and no grid in the
-inspector. The work left is [T32](TASKS.md), and this entry closes with
-the commit that finishes it.
