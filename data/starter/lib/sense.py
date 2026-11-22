@@ -13,6 +13,8 @@ from geo import dist2
 
 # Wide enough to cover any map: tiles() clips the rectangle to the map.
 FAR: int = 1000
+# The least charge a building must hold to be worth walking to.
+SIP: int = 10
 
 
 def seen_tiles() -> list[Tile]:
@@ -84,7 +86,8 @@ def nearest(points: list[tuple[int, int]]) -> tuple[int, int] | None:
 def machines(model: str | None = None, team: int | None = None) -> list[Machine]:
     """The machines the team sees, nearest first.
 
-    model: only this model ("bot", "printer", "depot" or "site").
+    model: only this model ("bot", "printer", "depot", "solar", "charger",
+    "pylon" or "site").
     team: only this team's machines; None means this machine's own team.
     Pass team=-1 for every team.
     """
@@ -94,6 +97,24 @@ def machines(model: str | None = None, team: int | None = None) -> list[Machine]
     for m in see():
         if (model is None or m.model == model) and (team == -1 or m.team == team):
             found.append(m)
+    return found
+
+
+def charge_sources() -> list[tuple[int, int]]:
+    """Every place a bot can recharge: the team's own powered buildings
+    that hold at least SIP of charge, nearest first.
+
+    A rival's building would do as well, since recharge() takes from any
+    team's, but a rival's printer damages a bot beside it, and its own bots
+    crowd round it.
+    """
+    team = me().team
+    found = []
+    for m in see():
+        if m.team != team or m.kind != "building" or m.model == "site":
+            continue
+        if m.powered and m.charge >= SIP:
+            found.append(m.pos)
     return found
 
 

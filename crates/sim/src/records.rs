@@ -3,7 +3,7 @@
 
 use crate::command::TeamId;
 use crate::map::TilePos;
-use crate::world::{MachineRecord, Sound, TileMemory, TileState, World};
+use crate::world::{GridFigures, MachineRecord, Sound, TileMemory, TileState, World};
 use lang::Num;
 use lang::value::{DictObj, ListObj, Record, Value};
 use std::cell::RefCell;
@@ -82,7 +82,41 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
     if let Some(t) = r.printing {
         fields.push(("printing", int(i128::from(t))));
     }
+    // Power (`docs/08`): the charge held and the battery's capacity on
+    // every machine, `flat` on a bot, `powered` and `grid` on a building.
+    let battery = world.data.model(r.model.name()).battery;
+    fields.push(("charge", Value::Num(r.charge)));
+    fields.push(("battery", Value::Num(battery)));
+    if let Some(flat) = r.flat {
+        fields.push(("flat", Value::Bool(flat)));
+    }
+    if let Some(powered) = r.powered {
+        fields.push(("powered", Value::Bool(powered)));
+    }
+    if let Some(grid) = r.grid {
+        fields.push((
+            "grid",
+            match grid {
+                Some(id) => int(i128::from(id.0)),
+                None => Value::None,
+            },
+        ));
+    }
     record("machine", fields)
+}
+
+/// One grid's figures, as `power()` returns them (`docs/02`, Senses).
+pub fn power_record(g: &GridFigures) -> Value {
+    record(
+        "power",
+        vec![
+            ("grid", int(i128::from(g.grid.0))),
+            ("generation", Value::Num(g.generation)),
+            ("drain", Value::Num(g.drain)),
+            ("stored", Value::Num(g.stored)),
+            ("capacity", Value::Num(g.capacity)),
+        ],
+    )
 }
 
 pub fn sound_record(s: &Sound) -> Value {
@@ -106,32 +140,35 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
     if mem.state == TileState::Unknown {
         return Value::None;
     }
-    let (terrain, deposit, paint, overlay, building, seen_at) = if mem.state == TileState::Visible {
-        // The world now.
-        let tile = world.tiles[idx].clone();
-        let building = world
-            .machines
-            .values()
-            .find(|m| m.pos == p && m.is_building())
-            .map(MachineRecord::of);
-        (
-            tile.terrain,
-            tile.deposit.as_ref().map(|d| d.amount.clone()),
-            tile.paint.clone(),
-            tile.overlay.clone(),
-            building,
-            world.tick,
-        )
-    } else {
-        (
-            mem.terrain,
-            mem.deposit.clone(),
-            mem.paint.clone(),
-            mem.overlay.clone(),
-            mem.building.clone(),
-            mem.seen_at,
-        )
-    };
+    let (terrain, deposit, paint, overlay, wires, building, seen_at) =
+        if mem.state == TileState::Visible {
+            // The world now.
+            let tile = world.tiles[idx].clone();
+            let building = world
+                .machines
+                .values()
+                .find(|m| m.pos == p && m.is_building())
+                .map(MachineRecord::of);
+            (
+                tile.terrain,
+                tile.deposit.as_ref().map(|d| d.amount.clone()),
+                tile.paint.clone(),
+                tile.overlay.clone(),
+                tile.wires.clone(),
+                building,
+                world.tick,
+            )
+        } else {
+            (
+                mem.terrain,
+                mem.deposit.clone(),
+                mem.paint.clone(),
+                mem.overlay.clone(),
+                mem.wires.clone(),
+                mem.building.clone(),
+                mem.seen_at,
+            )
+        };
     let state = match mem.state {
         TileState::Unknown => "unknown",
         TileState::Visible => "visible",
@@ -145,6 +182,11 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
         Some(b) => machine_record(world, b),
         None => Value::None,
     };
+    // The teams with a wire on it, as sorted team numbers (Q62).
+    let wires_v = {
+        let teams: Vec<Value> = wires.iter().map(|t| int(i128::from(t.0))).collect();
+        list(world, teams)
+    };
     let plans = world.plans(team, p).cloned().unwrap_or_default();
     let plan_value = |pl: &Option<crate::world::Plan>| match pl {
         Some(crate::world::Plan::Set(v)) => Value::str(v),
@@ -155,6 +197,14 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
             (Value::str("paint"), plan_value(&plans.paint)),
             (Value::str("overlay"), plan_value(&plans.overlay)),
             (Value::str("building"), plan_value(&plans.building)),
+            // A wire plan to lay one reads `True`, to clear one `None`.
+            (
+                Value::str("wire"),
+                match &plans.wire {
+                    Some(crate::world::Plan::Set(_)) => Value::Bool(true),
+                    _ => Value::None,
+                },
+            ),
         ];
         Value::Dict(Rc::new(DictObj {
             id: world.host_object_id(),
@@ -173,6 +223,7 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
             ("seen_at", int(i128::from(seen_at))),
             ("paint", opt_str(paint.as_deref())),
             ("overlay", opt_str(overlay.as_deref())),
+            ("wires", wires_v),
             ("plans", plans_v),
         ],
     )

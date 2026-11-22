@@ -60,6 +60,22 @@ pub struct ModelData {
     pub attack_damage: Num,
     pub defence_damage: Num,
     pub build_reach: i64,
+    /// Power (`docs/08`): the battery's capacity, and charge per tick made
+    /// and, by a building, used; what a printer uses more while it prints.
+    pub battery: Num,
+    pub generation: Num,
+    pub drain: Num,
+    pub print_drain: Num,
+    /// The most charge one `recharge` takes from a building of the model.
+    pub recharge_rate: Num,
+    pub recharge_ticks: u64,
+    /// A bot's price for a tile of wire, per kind, and the ticks to lay
+    /// and remove one.
+    pub wire_cost: BTreeMap<String, Num>,
+    pub wire_ticks: u64,
+    pub unwire_ticks: u64,
+    /// How far a pylon joins, in tiles by squared distance.
+    pub span: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +88,30 @@ pub struct MachinesData {
     pub models: BTreeMap<String, ModelData>,
     /// Loudness per sound cause.
     pub loudness: BTreeMap<String, i64>,
+    /// The share of its battery at or below which a bot takes `low_power`,
+    /// and the share a flat bot wakes at (Q62, Q63).
+    pub low_power_level: Num,
+    pub wake_level: Num,
+    /// What a bot's call of each game builtin takes from its battery.
+    pub charge_cost: BTreeMap<String, Num>,
+}
+
+impl MachinesData {
+    /// The charge a bot's `low_power` level and wake level come to.
+    pub fn low_power_charge(&self) -> Num {
+        self.share_of_battery(self.low_power_level)
+    }
+
+    pub fn wake_charge(&self) -> Num {
+        self.share_of_battery(self.wake_level)
+    }
+
+    fn share_of_battery(&self, share: Num) -> Num {
+        self.models
+            .get("bot")
+            .and_then(|b| b.battery.checked_mul(share).ok())
+            .unwrap_or(Num::ZERO)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -253,17 +293,31 @@ impl MachinesData {
                     "attack_damage" => d.attack_damage = num(FILE, &key(k), v)?,
                     "defence_damage" => d.defence_damage = num(FILE, &key(k), v)?,
                     "build_reach" => d.build_reach = int(FILE, &key(k), v)?,
+                    "battery" => d.battery = num(FILE, &key(k), v)?,
+                    "generation" => d.generation = num(FILE, &key(k), v)?,
+                    "drain" => d.drain = num(FILE, &key(k), v)?,
+                    "print_drain" => d.print_drain = num(FILE, &key(k), v)?,
+                    "recharge_rate" => d.recharge_rate = num(FILE, &key(k), v)?,
+                    "recharge_ticks" => d.recharge_ticks = uint(FILE, &key(k), v)?,
+                    "wire_cost" => d.wire_cost = num_map(FILE, &key(k), v)?,
+                    "wire_ticks" => d.wire_ticks = uint(FILE, &key(k), v)?,
+                    "unwire_ticks" => d.unwire_ticks = uint(FILE, &key(k), v)?,
+                    "span" => d.span = int(FILE, &key(k), v)?,
                     other => {
                         return Err(err(
                             FILE,
-                            format!("`model.{name}.{other}` is not a field docs/02 names"),
+                            format!(
+                                "`model.{name}.{other}` is not a field docs/02 or docs/08 names"
+                            ),
                         ));
                     }
                 }
             }
             models.insert(name.clone(), d);
         }
-        for required in ["bot", "printer", "depot", "site"] {
+        for required in [
+            "bot", "printer", "depot", "solar", "charger", "pylon", "site",
+        ] {
             if !models.contains_key(required) {
                 return Err(err(FILE, format!("no `model.{required}`")));
             }
@@ -293,7 +347,17 @@ impl MachinesData {
         for (k, v) in loud_t {
             loudness.insert(k.clone(), int(FILE, &format!("loudness.{k}"), v)?);
         }
-        Ok(MachinesData {
+        let power = get(FILE, &t, "power")?
+            .as_table()
+            .ok_or_else(|| err(FILE, "`power` is not a table"))?;
+        let low_power_level = num(
+            FILE,
+            "power.low_power_level",
+            get(FILE, power, "low_power_level")?,
+        )?;
+        let wake_level = num(FILE, "power.wake_level", get(FILE, power, "wake_level")?)?;
+        let charge_cost = num_map(FILE, "power.cost", get(FILE, power, "cost")?)?;
+        let data = MachinesData {
             kinds,
             colors,
             bots_per_printer,
@@ -301,7 +365,109 @@ impl MachinesData {
             fault_damage,
             models,
             loudness,
-        })
+            low_power_level,
+            wake_level,
+            charge_cost,
+        };
+        data.check_power()?;
+        Ok(data)
+    }
+
+    /// The checks `docs/08` lists (Charge and batteries): what makes a
+    /// flat bot sure to wake and able then to pay for any one call, and a
+    /// printer never dark. Also that no power number is negative, and that
+    /// every game builtin has a charge cost and nothing else does.
+    fn check_power(&self) -> D<()> {
+        const FILE: &str = "data/machines.toml";
+        for (name, m) in &self.models {
+            for (field, v) in [
+                ("battery", m.battery),
+                ("generation", m.generation),
+                ("drain", m.drain),
+                ("print_drain", m.print_drain),
+                ("recharge_rate", m.recharge_rate),
+            ] {
+                if v < Num::ZERO {
+                    return Err(err(FILE, format!("`model.{name}.{field}` is negative")));
+                }
+            }
+            if m.span < 0 {
+                return Err(err(FILE, format!("`model.{name}.span` is negative")));
+            }
+            if let Some((k, _)) = m.wire_cost.iter().find(|(_, v)| **v < Num::ZERO) {
+                return Err(err(
+                    FILE,
+                    format!("`model.{name}.wire_cost.{k}` is negative"),
+                ));
+            }
+        }
+        let bot = &self.models["bot"];
+        if bot.battery <= Num::ZERO {
+            return Err(err(FILE, "`model.bot.battery` must be above zero"));
+        }
+        if bot.generation <= Num::ZERO {
+            return Err(err(
+                FILE,
+                "`model.bot.generation` must be above zero: a bot's own solar is what wakes it (docs/08)",
+            ));
+        }
+        if self.low_power_level <= Num::ZERO || self.low_power_level >= Num::ONE {
+            return Err(err(
+                FILE,
+                "`power.low_power_level` must be above zero and below one",
+            ));
+        }
+        if self.wake_level <= Num::ZERO || self.wake_level > Num::ONE {
+            return Err(err(
+                FILE,
+                "`power.wake_level` must be above zero and at most one",
+            ));
+        }
+        let wake = self.wake_charge();
+        for (name, cost) in &self.charge_cost {
+            if *cost < Num::ZERO {
+                return Err(err(FILE, format!("`power.cost.{name}` is negative")));
+            }
+            if *cost > wake {
+                return Err(err(
+                    FILE,
+                    format!(
+                        "`power.cost.{name}` is above `wake_level` of the bot's battery: a bot that has woken could not pay for it (docs/08)"
+                    ),
+                ));
+            }
+        }
+        let builtins: Vec<&str> = crate::host::BUILTINS.to_vec();
+        for b in &builtins {
+            if !self.charge_cost.contains_key(*b) {
+                return Err(err(
+                    FILE,
+                    format!("no `power.cost.{b}`: every game builtin has a charge cost"),
+                ));
+            }
+        }
+        if let Some(extra) = self
+            .charge_cost
+            .keys()
+            .find(|k| !builtins.contains(&k.as_str()))
+        {
+            return Err(err(
+                FILE,
+                format!("`power.cost.{extra}` is not a game builtin"),
+            ));
+        }
+        let printer = &self.models["printer"];
+        let need = printer
+            .drain
+            .checked_add(printer.print_drain)
+            .unwrap_or(Num::MAX);
+        if printer.generation < need {
+            return Err(err(
+                FILE,
+                "`model.printer.generation` is below its `drain` plus its `print_drain`: a printer must never be dark (docs/08)",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -409,6 +575,38 @@ mod tests {
         let text = MACHINES_TOML.replace("fault_damage = 1", "fault_damage = \"1.5\"");
         let d = MachinesData::parse(&text).expect("string literal");
         assert_eq!(d.fault_damage, Num::parse_literal("1.5").unwrap());
+    }
+
+    /// Q62, Q63 (`docs/08`, Charge and batteries): the data a flat bot's
+    /// waking and a printer's never being dark rest on is checked at load.
+    #[test]
+    fn power_data_that_could_lock_a_team_is_refused() {
+        let swap = |from: &str, to: &str| {
+            assert!(
+                MACHINES_TOML.contains(from),
+                "the shipped table lacks {from:?}"
+            );
+            MachinesData::parse(&MACHINES_TOML.replace(from, to))
+                .expect_err(to)
+                .message
+        };
+        assert!(swap("generation = \"0.1\"", "generation = 0").contains("solar"));
+        assert!(swap("battery = 100", "battery = 0").contains("battery"));
+        assert!(
+            swap("generation = 6\ndrain = 1", "generation = 1\ndrain = 1")
+                .contains("never be dark")
+        );
+        assert!(
+            swap("low_power_level = \"0.2\"", "low_power_level = 1").contains("low_power_level")
+        );
+        assert!(swap("wake_level = \"0.2\"", "wake_level = 0").contains("wake_level"));
+        // A call that costs more than a woken bot holds could never be paid.
+        assert!(swap("attack = 2", "attack = 21").contains("woken"));
+        assert!(swap("attack = 2\n", "").contains("power.cost.attack"));
+        assert!(swap("attack = 2", "attack = 2\nteleport = 1").contains("teleport"));
+        let d = Data::load().expect("data");
+        assert_eq!(d.machines.wake_charge(), Num::from_int(20).unwrap());
+        assert_eq!(d.machines.low_power_charge(), Num::from_int(20).unwrap());
     }
 
     /// Q42: a buildable model needs both parts of its price, neither

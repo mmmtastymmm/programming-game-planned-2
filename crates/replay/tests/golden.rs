@@ -13,8 +13,11 @@
 //! `bot` deployment (T7: the hash-affecting path most likely to differ
 //! between peers), a speed change, and marks — among them a printer plan
 //! the player's bots build, so the rising price, construction and two
-//! printers taking turns (Q42) all feed the hash. The alive test asserts on what the
-//! match must have done, so a run that did nothing cannot score green.
+//! printers taking turns (Q42) all feed the hash; and, for power (Q62,
+//! Q63), a charger, a pylon and a tile of wire that join the two printers
+//! and the charger into one grid, on a run long enough for bots to fall to
+//! low power, run their hook and recharge. The alive test asserts on what
+//! the match must have done, so a run that did nothing cannot score green.
 
 use replay::Replay;
 use sim::world::Model;
@@ -105,6 +108,41 @@ fn golden_replay() -> Replay {
             value: Some("printer".into()),
         },
     ));
+    // Power (Q62): a charger two tiles east of the start, a tile of wire
+    // between it and the starting printer, and a pylon whose span reaches
+    // the charger and the planned printer, so the three buildings that
+    // hold or make charge end as one grid. The wire plan waits for the
+    // team's first sight, like paint.
+    commands.push(Command::new(
+        0,
+        player,
+        5,
+        CommandKind::Mark {
+            at: charger_plan(&map),
+            plan: PlanKind::Building,
+            value: Some("charger".into()),
+        },
+    ));
+    commands.push(Command::new(
+        0,
+        player,
+        6,
+        CommandKind::Mark {
+            at: pylon_plan(&map),
+            plan: PlanKind::Building,
+            value: Some("pylon".into()),
+        },
+    ));
+    commands.push(Command::new(
+        2,
+        player,
+        2,
+        CommandKind::Mark {
+            at: wire_plan(&map),
+            plan: PlanKind::Wire,
+            value: Some("wire".into()),
+        },
+    ));
     // The Fool's script, tiles relative to its first start.
     let script =
         sim::script::Script::load(&data_dir().join("opposition/fool")).expect("the Fool's script");
@@ -121,7 +159,7 @@ fn golden_replay() -> Replay {
         },
     ));
     commands.push(Command::new(
-        360,
+        REDEPLOY,
         player,
         0,
         CommandKind::Deploy {
@@ -135,11 +173,31 @@ fn golden_replay() -> Replay {
     Replay {
         map: map_text,
         commands,
-        ticks: 400,
+        ticks: 640,
         version: None,
         final_hash: None,
         team: None,
     }
+}
+
+/// The tick the golden scenario's `bot` redeploy is agreed for, of its
+/// 640: late, so the hauling bots have run their batteries down to the
+/// low-power level and recharged before it.
+const REDEPLOY: u64 = 600;
+
+fn charger_plan(map: &Map) -> TilePos {
+    let start = map.teams[0][0];
+    TilePos::new(start.x.saturating_add(2), start.y)
+}
+
+fn wire_plan(map: &Map) -> TilePos {
+    let start = map.teams[0][0];
+    TilePos::new(start.x.saturating_add(1), start.y)
+}
+
+fn pylon_plan(map: &Map) -> TilePos {
+    let start = map.teams[0][0];
+    TilePos::new(start.x.saturating_add(2), start.y.saturating_sub(1))
 }
 
 /// Where the golden scenario's printer plan goes: two tiles south of the
@@ -147,6 +205,45 @@ fn golden_replay() -> Replay {
 fn printer_plan(map: &Map) -> TilePos {
     let start = map.teams[0][0];
     TilePos::new(start.x, start.y.saturating_sub(2))
+}
+
+/// The golden scenario stepped tick by tick, as `Replay::execute` steps
+/// it, counting what only shows on the way: bot-ticks spent in
+/// `on_low_power`, and recharges — a bot's charge jumping, where its own
+/// solar adds a tenth a tick.
+fn power_seen(replay: &Replay) -> (u32, u32) {
+    let data = Data::load().expect("data");
+    let mut sim = sim::Sim::new(Map::parse(&replay.map, &data).expect("map"));
+    let log = replay.log();
+    let five = lang::Num::from_int(5).expect("five");
+    let mut before: std::collections::BTreeMap<sim::EntityId, lang::Num> = Default::default();
+    let (mut hooks, mut recharges) = (0u32, 0u32);
+    for tick in 1..=replay.ticks {
+        let mut commands = if tick == 1 {
+            log.sets_for(0)
+        } else {
+            Vec::new()
+        };
+        commands.extend(log.sets_for(tick));
+        sim.step(&commands, &[]);
+        for m in sim.world.machines.values() {
+            if m.team != TeamId(0) || m.model != Model::Bot {
+                continue;
+            }
+            if let Some(was) = before.insert(m.id, m.charge)
+                && m.charge.checked_sub(was).is_ok_and(|gain| gain > five)
+            {
+                recharges = recharges.saturating_add(1);
+            }
+            if m.program
+                .as_ref()
+                .is_some_and(|p| p.mode_name() == "low_power")
+            {
+                hooks = hooks.saturating_add(1);
+            }
+        }
+    }
+    (hooks, recharges)
 }
 
 fn hashes_to_text(hashes: &[u64]) -> String {
@@ -192,9 +289,11 @@ fn golden_scenario_is_alive() {
         "commands were dropped: {:?}",
         run.dropped
     );
+    // Written out, not read from the scenario: a scenario cut short must
+    // fail here, not agree with itself.
     assert_eq!(
         run.hashes.len(),
-        400,
+        640,
         "the match ended early: {:?}",
         run.sim.ended()
     );
@@ -253,6 +352,54 @@ fn golden_scenario_is_alive() {
         .collect();
     assert_eq!(printers.len(), 2, "the planned printer was never built");
     assert!(w.plans(TeamId(0), printer_plan(&w.map)).is_none());
+    // Power (Q62, Q63): the charger and the pylon were built and the wire
+    // laid, and with the second printer they are one grid, labelled by
+    // its oldest building, the starting printer.
+    let player = TeamId(0);
+    let of = |model: Model| -> Vec<&sim::world::Machine> {
+        w.machines
+            .values()
+            .filter(|m| m.team == player && m.model == model)
+            .collect()
+    };
+    assert_eq!(
+        of(Model::Charger).len(),
+        1,
+        "the planned charger was never built"
+    );
+    assert_eq!(
+        of(Model::Pylon).len(),
+        1,
+        "the planned pylon was never built"
+    );
+    assert!(
+        of(Model::Pylon)[0].program.is_none(),
+        "a pylon runs no program"
+    );
+    assert!(
+        w.has_wire(player, wire_plan(&w.map)),
+        "the planned wire was never laid"
+    );
+    assert!(w.plans(player, wire_plan(&w.map)).is_none());
+    let first = printers.iter().min().copied().map(sim::EntityId);
+    for m in w
+        .machines
+        .values()
+        .filter(|m| m.team == player && m.is_building())
+    {
+        assert_eq!(m.grid, first, "{} is on another grid", m.name);
+        assert!(m.powered, "{} is dark", m.name);
+    }
+    assert_eq!(w.teams[&player].grids.len(), 1);
+    assert!(
+        of(Model::Charger)[0].charge > lang::Num::ZERO,
+        "no power ever reached the charger"
+    );
+    // And what the final state cannot show: bots fell to low power, ran
+    // their hook and recharged, before the redeploy.
+    let (hooks, recharges) = power_seen(&replay);
+    assert!(hooks > 0, "no bot ever ran its low-power hook");
+    assert!(recharges > 0, "no bot ever recharged");
     let remembered = w.teams[&TeamId(0)]
         .memory
         .iter()

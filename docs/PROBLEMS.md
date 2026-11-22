@@ -63,10 +63,9 @@ main flow, that buildings generate
 and drain and share power as grids served oldest first, that a building
 a grid cannot cover goes dark, and that grids are joined by pylons or by
 underground wire; `01`, `02`, `03`, `05`, `06`, `07` and `08` state it as
-current. None of it reaches a match: the interpreter has the fifth kind,
-its return to main flow and the wait before a call, from T39's work, which nothing yet raises or
-asks for; the sim has no charge, no grid, no power step and no `charger`,
-`solar` or `pylon` model, a print needs no power, and the renderer draws
-none of it. The work is [T39](TASKS.md), [T31](TASKS.md)
-and [T32](TASKS.md); this entry closes with the commit that finishes
-whichever lands last.
+current. The interpreter and the sim have it, from T39's and T31's work;
+what is missing is the renderer's half: it draws a solar panel, a charger
+and a pylon as depots, and no wire, no pylon's line, no mark over a flat
+bot or a dark building, no wire tool and no grid in the inspector. The
+work is [T39](TASKS.md), [T31](TASKS.md) and [T32](TASKS.md); this entry
+closes with the commit that finishes whichever lands last.

@@ -4,7 +4,7 @@
 use crate::command::TeamId;
 use crate::map::TilePos;
 use crate::tick::Sim;
-use crate::world::{LogEntry, Machine, MachineRecord, Plans, Sound, TileMemory};
+use crate::world::{GridFigures, LogEntry, Machine, MachineRecord, Plans, Sound, TileMemory};
 use lang::FaultRecord;
 use std::collections::BTreeMap;
 
@@ -43,6 +43,12 @@ pub struct TeamSnapshot {
     /// order (Q37). Plans are private (`docs/03`), so a renderer reads only
     /// its own team's; nothing here is in the state hash.
     pub plans: Vec<(TilePos, Plans)>,
+    /// The team's grids as its last power step kept them, ascending
+    /// label (Q62; `docs/08`).
+    pub grids: Vec<GridFigures>,
+    /// The tiles carrying this team's own wire, in the same order, each
+    /// with whether that power step found it part of a grid.
+    pub wires: Vec<(TilePos, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +93,15 @@ impl Sim {
                             .map(|plans| (p, plans.clone()))
                     })
                     .collect(),
+                grids: t.grids.clone(),
+                wires: {
+                    let mut tiles: Vec<TilePos> = t.wire_tiles.iter().copied().collect();
+                    tiles.sort_by(crate::map::row_then_column);
+                    tiles
+                        .into_iter()
+                        .map(|p| (p, t.live_wires.contains(&p)))
+                        .collect()
+                },
             })
             .collect();
         Snapshot {

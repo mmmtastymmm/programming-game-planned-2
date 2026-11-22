@@ -64,9 +64,9 @@ Every number is a row of the model in
 [data/machines.toml](../data/machines.toml): `battery`, `generation` and,
 for a building, `drain`, each charge or charge per tick and zero where the
 table says nothing; a printer's `print_drain`; and `recharge_rate` for a
-building bots recharge from. The table above is what the first data will
-hold, not a rule: the rules below read the numbers, never the model's
-name, so a depot given a drain would go dark like anything else.
+building bots recharge from. The table above is today's data, not a
+rule: the rules below read the numbers, never the model's name, so a
+depot given a drain would go dark like anything else.
 
 **What starts charged.** A bot is printed with a full battery, at no cost
 to anything. A printer the map places starts full. A building a site
@@ -230,7 +230,8 @@ match is built with its grids traced, every building powered and the
 figures kept as they then stand, no charge having moved, so every building
 has both and `power()` an answer from the first slice; a building
 completed in step 3 has them from the same tick's step 6, before its first
-slice. A site is on no
+slice, and from its placement until then it is powered and on no grid, so
+a printer completed this tick defends in this tick's step 4. A site is on no
 grid: its `grid` is `None` and its `powered` is `False`, and neither
 matters, since a site does nothing.
 

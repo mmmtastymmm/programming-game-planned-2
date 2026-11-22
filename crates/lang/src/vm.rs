@@ -342,6 +342,15 @@ pub trait Host {
     fn ready(&mut self, _name: &str) -> bool {
         true
     }
+
+    /// An interrupt the call just made has raised for this machine — a
+    /// bot's `low_power`, when the call's charge took its battery to the
+    /// level (`docs/08`). Asked after every game builtin's call, since the
+    /// host cannot reach a program that is running; delivered like any
+    /// raised kind, at the next boundary that takes it.
+    fn take_raised(&mut self) -> Option<Interrupt> {
+        None
+    }
 }
 
 /// The interrupt kinds, ascending priority (`execution.md`, Kinds). A
@@ -2796,7 +2805,11 @@ impl Machine {
             return Ok(Called::Held);
         }
         self.charge(cost);
-        match host.call(&name, args, kwargs)? {
+        let called = host.call(&name, args, kwargs);
+        if let Some(kind) = host.take_raised() {
+            self.raise(kind);
+        }
+        match called? {
             HostCall::Value(v) => Ok(Called::Value(v)),
             HostCall::Charged { value, extra } => {
                 self.charge(extra);

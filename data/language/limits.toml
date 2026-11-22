@@ -14,7 +14,7 @@ fault = 2000
 dying = 2000
 # on_low_power may be a whole trip to a charger and back (Q63), so its
 # budget is the largest; a placeholder until the game is played
-low_power = 20000
+low_power = 50000
 # cost units a hook's budget loses for every tick an action spends waiting (Q32)
 wait_per_tick = 1
 

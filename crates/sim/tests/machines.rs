@@ -624,15 +624,16 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
     let _ = mark;
 }
 
-/// Q42: a team's deployments are `bot`, `printer` and `depot`, and no
-/// others.
+/// Q42, Q62: a team's deployments are one per model that runs a program
+/// — `bot`, `printer`, `depot`, `solar` and `charger` — and no others; a
+/// pylon and a site run none.
 #[test]
 fn a_team_has_one_deployment_per_model() {
     let s = sim();
-    for good in ["bot", "printer", "depot"] {
+    for good in ["bot", "printer", "depot", "solar", "charger"] {
         assert!(s.validate(&deploy(0, good, "wait(1)\n")).is_ok());
     }
-    for bad in ["1", "9", "red", "site", ""] {
+    for bad in ["1", "9", "red", "site", "pylon", ""] {
         assert!(
             s.validate(&deploy(0, bad, "wait(1)\n")).is_err(),
             "`{bad}` accepted as a deployment"
@@ -642,7 +643,7 @@ fn a_team_has_one_deployment_per_model() {
     let team = snap.teams.iter().find(|t| t.id == TeamId(0)).unwrap();
     assert_eq!(
         team.deployments.keys().cloned().collect::<Vec<_>>(),
-        ["bot", "depot", "printer"]
+        ["bot", "charger", "depot", "printer", "solar"]
     );
 }
 
@@ -730,7 +731,12 @@ fn the_markable_values_are_exactly_what_validation_accepts() {
             },
         )
     };
-    for plan in [PlanKind::Building, PlanKind::Paint, PlanKind::Overlay] {
+    for plan in [
+        PlanKind::Building,
+        PlanKind::Paint,
+        PlanKind::Overlay,
+        PlanKind::Wire,
+    ] {
         let values = Sim::markable(&data, plan);
         assert!(!values.is_empty(), "{plan:?} has nothing to mark");
         for v in &values {
@@ -739,8 +745,11 @@ fn the_markable_values_are_exactly_what_validation_accepts() {
     }
     assert_eq!(
         Sim::markable(&data, PlanKind::Building),
-        vec!["printer", "depot"]
+        vec!["printer", "depot", "solar", "charger", "pylon"]
     );
+    // A wire has no kinds: one value, and nothing else is a wire plan.
+    assert_eq!(Sim::markable(&data, PlanKind::Wire), vec!["wire"]);
+    assert!(sim.validate(&mark(PlanKind::Wire, "red")).is_err());
     for refused in ["site", "bot"] {
         assert!(sim.validate(&mark(PlanKind::Building, refused)).is_err());
     }
@@ -1042,6 +1051,7 @@ fn memory_by_a_walk_of_the_whole_map(
                 deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
                 paint: tile.paint.clone(),
                 overlay: tile.overlay.clone(),
+                wires: tile.wires.clone(),
                 building: w
                     .machines
                     .values()

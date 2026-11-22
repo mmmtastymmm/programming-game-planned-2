@@ -18,6 +18,9 @@ pub fn row_key(plan: PlanKind) -> char {
         PlanKind::Building => 'B',
         PlanKind::Paint => 'P',
         PlanKind::Overlay => 'O',
+        // For cable, since `W` pans the camera (Q62). The strip gains
+        // the row with T32; until then no key arms it.
+        PlanKind::Wire => 'C',
     }
 }
 
@@ -28,6 +31,7 @@ pub struct MarkRows {
     pub building: Vec<String>,
     pub paint: Vec<String>,
     pub overlay: Vec<String>,
+    pub wire: Vec<String>,
 }
 
 impl MarkRows {
@@ -37,6 +41,7 @@ impl MarkRows {
             building: Sim::markable(&data, PlanKind::Building),
             paint: Sim::markable(&data, PlanKind::Paint),
             overlay: Sim::markable(&data, PlanKind::Overlay),
+            wire: Sim::markable(&data, PlanKind::Wire),
         })
     }
 
@@ -47,6 +52,7 @@ impl MarkRows {
             PlanKind::Building => &self.building,
             PlanKind::Paint => &self.paint,
             PlanKind::Overlay => &self.overlay,
+            PlanKind::Wire => &self.wire,
         };
         values.iter().cloned().map(Some).chain([None]).collect()
     }
@@ -67,11 +73,7 @@ pub fn toggle(current: &Tool, tool: Tool) -> Tool {
 
 /// The team's plan of `kind` in `plans`.
 pub fn slot(plans: &Plans, kind: PlanKind) -> &Option<Plan> {
-    match kind {
-        PlanKind::Building => &plans.building,
-        PlanKind::Paint => &plans.paint,
-        PlanKind::Overlay => &plans.overlay,
-    }
+    plans.of(kind)
 }
 
 /// What marking `at` with `tool` armed submits, given the team's plans
@@ -151,11 +153,7 @@ pub fn ghost_of(tool: &Tool) -> Option<Plans> {
         None => Plan::Clear,
     });
     let mut plans = Plans::default();
-    match plan {
-        PlanKind::Building => plans.building = p,
-        PlanKind::Paint => plans.paint = p,
-        PlanKind::Overlay => plans.overlay = p,
-    }
+    *plans.of_mut(*plan) = p;
     Some(plans)
 }
 
@@ -172,7 +170,14 @@ mod tests {
         let r = rows();
         assert_eq!(
             r.entries(PlanKind::Building),
-            vec![Some("printer".into()), Some("depot".into()), None]
+            vec![
+                Some("printer".into()),
+                Some("depot".into()),
+                Some("solar".into()),
+                Some("charger".into()),
+                Some("pylon".into()),
+                None
+            ]
         );
         let paint = r.entries(PlanKind::Paint);
         assert_eq!(paint.len(), 9, "eight colors and clear");
@@ -191,11 +196,11 @@ mod tests {
         );
         assert_eq!(r.pick(PlanKind::Paint, 1, &paint_red), Some(Tool::Select));
         assert_eq!(
-            r.pick(PlanKind::Building, 3, &paint_red),
+            r.pick(PlanKind::Building, 6, &paint_red),
             Some(Tool::Mark(PlanKind::Building, None)),
             "the last entry is clear"
         );
-        assert_eq!(r.pick(PlanKind::Building, 4, &Tool::Select), None);
+        assert_eq!(r.pick(PlanKind::Building, 7, &Tool::Select), None);
         assert_eq!(r.pick(PlanKind::Paint, 0, &Tool::Select), None);
     }
 
@@ -288,6 +293,7 @@ mod tests {
             paint: Some(Plan::Set("red".into())),
             overlay: Some(Plan::Clear),
             building: None,
+            wire: None,
         };
         assert_eq!(describe(&plans), "paint red · overlay clear");
         assert_eq!(ghost_of(&Tool::Select), None);

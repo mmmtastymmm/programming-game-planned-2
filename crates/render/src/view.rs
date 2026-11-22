@@ -119,7 +119,7 @@ impl Tuning {
     pub fn load() -> Tuning {
         let mut max_health = HashMap::new();
         if let Ok(d) = sim::Data::load() {
-            for m in [Model::Bot, Model::Printer, Model::Depot, Model::Site] {
+            for m in Model::ALL {
                 if let Some(md) = d.machines.models.get(m.name()) {
                     max_health.insert(m.name(), num_f32(md.health).max(1.0));
                 }
@@ -148,7 +148,7 @@ fn body_lift(model: Model) -> f32 {
     match model {
         Model::Bot => BOT_HALF,
         Model::Printer => 0.25,
-        Model::Depot => 0.15,
+        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => 0.15,
         Model::Site => 0.35,
     }
 }
@@ -157,7 +157,7 @@ fn bar_height(model: Model) -> f32 {
     match model {
         Model::Bot => 0.85,
         Model::Printer => 0.75,
-        Model::Depot => 0.6,
+        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => 0.6,
         Model::Site => 0.85,
     }
 }
@@ -787,7 +787,7 @@ fn body_mat(
             palette.printer_lights.clone(),
             0.5,
         ),
-        Model::Depot => (
+        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => (
             "depot".to_string(),
             palette.crate_texture.clone(),
             palette.crate_lights.clone(),
@@ -1032,7 +1032,8 @@ fn spawn_machine(
     let mesh = match model {
         Model::Bot => palette.bot_cube.clone(),
         Model::Printer => palette.printer_box.clone(),
-        Model::Depot => palette.crate_box.clone(),
+        // Drawn as a depot until T32 gives them their own art (Q62).
+        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => palette.crate_box.clone(),
         Model::Site => palette.site_cube.clone(),
     };
     let live_mat = body_mat(palette, interface, colors, materials, player, m);
@@ -1094,7 +1095,7 @@ fn spawn_machine(
                             .with_rotation(Quat::from_rotation_z(0.06)),
                     ));
                 }
-                Model::Depot | Model::Site => {}
+                Model::Depot | Model::Solar | Model::Charger | Model::Pylon | Model::Site => {}
             }
             // A site's team is its outline (Q43): the body's own mesh, a
             // little larger. Every other machine's is its lights (Q45, Q47).

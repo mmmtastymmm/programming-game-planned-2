@@ -104,3 +104,9 @@ unpaint = 1
 unoverlay = 1
 deconstruct = 1
 attack = 1
+# power (Q62, docs/08)
+power = 2
+wires = 2
+recharge = 1
+wire = 1
+unwire = 1

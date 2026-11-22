@@ -38,6 +38,33 @@ def try_pick(kind: str) -> bool:
         return False
 
 
+def try_recharge() -> bool:
+    """Take charge from an adjacent powered building that holds some."""
+    try:
+        recharge()
+        return True
+    except ValueError:
+        return False
+
+
+def try_wire(x: int, y: int) -> bool:
+    """Lay the team's wire under the adjacent tile (x, y); it costs ore."""
+    try:
+        wire(x, y)
+        return True
+    except ValueError:
+        return False
+
+
+def try_unwire(x: int, y: int) -> bool:
+    """Remove the team's wire from the adjacent tile (x, y)."""
+    try:
+        unwire(x, y)
+        return True
+    except ValueError:
+        return False
+
+
 def try_drop(kind: str) -> bool:
     """Drop kind into an adjacent building or site with room for it."""
     try:

@@ -1,8 +1,11 @@
 # The fixture's first bot program: haul ore from the nearest deposit into
-# the team's building plan — a printer, whose price rises with the team's
-# printers (Q42) — building the site when there is none, and keep a tally
-# that a redeploy will throw away. It wears its job as its color (Q43):
-# orange while hauling to the site, cyan while fetching ore.
+# the team's building plans, one at a time — a charger, a pylon and a
+# printer, whose price rises with the team's printers (Q42) — building the
+# site when there is none, lay the team's planned wire on the way (Q62),
+# and keep a tally that a redeploy will throw away. It wears its job as its
+# color (Q43): orange while hauling to the site, cyan while fetching ore.
+# The low-power hook beside it (interrupts/on_low_power.py) takes a bot
+# off to recharge, and this loop then goes on where it was (Q63).
 steps = 0
 CAPACITY = 10
 
@@ -20,6 +23,13 @@ def site():
     for m in see():
         if m.team == me().team and m.model == "site":
             return (m.pos[0], m.pos[1])
+    return None
+
+
+def wire_plan():
+    for p in plans("wire"):
+        if p[2]:
+            return (p[0], p[1])
     return None
 
 
@@ -43,7 +53,8 @@ while True:
     job = "orange" if full else "cyan"
     if me().color != job:
         set_color(job)
-    target = site() if full else deposit()
+    wiring = wire_plan() if full else None
+    target = wiring or (site() if full else deposit())
     if target is None:
         wait(5)
         continue
@@ -52,7 +63,13 @@ while True:
         step_off()
         continue
     if adjacent(target):
-        if full:
+        if wiring is not None:
+            try:
+                wire(target[0], target[1])
+                log("wired")
+            except ValueError:
+                wait(1)
+        elif full:
             for p in plans("building"):
                 if (p[0], p[1]) == target:
                     try:
