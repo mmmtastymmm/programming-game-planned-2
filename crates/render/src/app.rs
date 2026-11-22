@@ -251,6 +251,9 @@ pub fn run(setup: Setup, autostart: bool) {
             view::interpolate,
             view::health_bars,
             view::fault_marks,
+            // Power on the map (Q62): one entry of the chain, since a
+            // chain takes at most twenty.
+            (view::power_marks, view::charge_bars, view::pylon_lines),
             view::sounds,
             view::animate,
             orbit_camera,

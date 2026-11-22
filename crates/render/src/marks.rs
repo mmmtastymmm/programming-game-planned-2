@@ -10,16 +10,20 @@ use sim::world::{Plan, Plans};
 use sim::{CommandKind, PlanKind, Sim, TilePos};
 
 /// The strip: a row per plan kind, in the order the screen shows them.
-pub const ROWS: [PlanKind; 3] = [PlanKind::Building, PlanKind::Paint, PlanKind::Overlay];
+pub const ROWS: [PlanKind; 4] = [
+    PlanKind::Building,
+    PlanKind::Paint,
+    PlanKind::Overlay,
+    PlanKind::Wire,
+];
 
-/// The key that picks a row: `B`, `P` or `O`.
+/// The key that picks a row: `B`, `P`, `O` or `C`.
 pub fn row_key(plan: PlanKind) -> char {
     match plan {
         PlanKind::Building => 'B',
         PlanKind::Paint => 'P',
         PlanKind::Overlay => 'O',
-        // For cable, since `W` pans the camera (Q62). The strip gains
-        // the row with T32; until then no key arms it.
+        // For cable, since `W` pans the camera (Q62).
         PlanKind::Wire => 'C',
     }
 }
@@ -134,12 +138,24 @@ pub fn describe(plans: &Plans) -> String {
     ROWS.into_iter()
         .filter_map(|kind| {
             slot(plans, kind).as_ref().map(|p| match p {
+                // A wire has no kinds: its plan reads `wire`, not
+                // `wire wire`.
+                Plan::Set(_) if kind == PlanKind::Wire => kind.name().to_string(),
                 Plan::Set(v) => format!("{} {v}", kind.name()),
                 Plan::Clear => format!("{} clear", kind.name()),
             })
         })
         .collect::<Vec<_>>()
         .join(" · ")
+}
+
+/// Whether a wire mark would change anything on a tile (`docs/03`, Q62):
+/// a plan to lay one only where the team's wire does not lie, and a plan
+/// to clear one only where it does — or where the team holds a wire plan,
+/// which a clear withdraws as any clear does (Q44). The sim drops the rest
+/// on their tick; the strip does not offer them.
+pub fn wire_changes(lay: bool, wired: bool, holds_plan: bool) -> bool {
+    if lay { !wired } else { wired || holds_plan }
 }
 
 /// The plans the armed tool would leave on a tile, for its ghost under the
@@ -184,6 +200,35 @@ mod tests {
         assert_eq!(paint[0], Some("red".into()));
         assert_eq!(paint[8], None);
         assert_eq!(r.entries(PlanKind::Overlay).last(), Some(&None));
+        // The wire row (Q62): the wire, and its clear.
+        assert_eq!(r.entries(PlanKind::Wire), vec![Some("wire".into()), None]);
+        assert_eq!(ROWS.map(row_key), ['B', 'P', 'O', 'C']);
+    }
+
+    #[test]
+    fn a_wire_mark_is_offered_only_where_it_would_change_the_tile() {
+        // Lay: only where the team's wire does not lie.
+        assert!(wire_changes(true, false, false));
+        assert!(!wire_changes(true, true, false));
+        assert!(
+            wire_changes(true, false, true),
+            "over its own plan to clear"
+        );
+        // Clear: where a wire lies, or where a plan stands to withdraw.
+        assert!(wire_changes(false, true, false));
+        assert!(wire_changes(false, false, true));
+        assert!(!wire_changes(false, false, false));
+        let lay = Plans {
+            wire: Some(Plan::Set("wire".into())),
+            ..Plans::default()
+        };
+        assert_eq!(describe(&lay), "wire");
+        let clear = Plans {
+            wire: Some(Plan::Clear),
+            paint: Some(Plan::Set("red".into())),
+            ..Plans::default()
+        };
+        assert_eq!(describe(&clear), "paint red · wire clear");
     }
 
     #[test]

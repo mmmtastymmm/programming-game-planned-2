@@ -81,6 +81,8 @@ pub fn keys(
         (KeyCode::KeyB, PlanKind::Building),
         (KeyCode::KeyP, PlanKind::Paint),
         (KeyCode::KeyO, PlanKind::Overlay),
+        // For cable: `W` pans the camera (Q62).
+        (KeyCode::KeyC, PlanKind::Wire),
     ] {
         if keys.just_pressed(key) && !resting {
             state.row = Some(plan);
@@ -259,6 +261,7 @@ fn mark_tiles(
         .find(|t| t.id == player)
         .map(|t| t.plans.iter().cloned().collect())
         .unwrap_or_default();
+    let wired = driver.wired();
     let mut skipped = 0;
     for p in tiles {
         let on_map = (min.x..=max.x).contains(&p.x) && (min.y..=max.y).contains(&p.y);
@@ -267,17 +270,25 @@ fn mark_tiles(
         };
         // Paint and overlay only on ground the team has seen (Q49): a
         // stroke over rock, water or fog marks the rest and skips those.
-        if let CommandKind::Mark { at, plan, .. } = &kind
-            && driver.may_plan(*at, *plan).is_err()
-        {
-            skipped += 1;
-            continue;
+        if let CommandKind::Mark { at, plan, value } = &kind {
+            // A wire plan only where it would change the tile (Q62): the
+            // sim would drop the rest on their tick.
+            let idle_wire = *plan == sim::PlanKind::Wire
+                && !marks::wire_changes(
+                    value.is_some(),
+                    wired.contains(at),
+                    held.get(at).is_some_and(|h| h.wire.is_some()),
+                );
+            if driver.may_plan(*at, *plan).is_err() || idle_wire {
+                skipped += 1;
+                continue;
+            }
         }
         submit(driver, state, kind);
     }
     if skipped > 0 {
         state.status = format!(
-            "skipped {skipped} tile(s): paint and overlays go only on ground your team has seen"
+            "skipped {skipped} tile(s): paint, overlays and wire go only on ground your team has seen, and wire only where it would change the tile"
         );
     }
 }

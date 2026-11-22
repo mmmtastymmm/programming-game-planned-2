@@ -186,15 +186,62 @@ fn hatch_image() -> Image {
     )
 }
 
+/// The mark over a flat bot and a dark building (`docs/07`, Power): a
+/// bolt struck through, drawn here so it needs no art file. Its pixels are
+/// fully there or not at all, so the material masks instead of blending.
+fn bolt_image() -> Image {
+    const SIZE: u32 = 32;
+    // Distance from a point to a segment, for strokes of a given width.
+    let near = |p: Vec2, a: Vec2, b: Vec2| -> f32 {
+        let ab = b - a;
+        let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+        (p - (a + ab * t)).length()
+    };
+    let bolt = [
+        (Vec2::new(20.0, 2.0), Vec2::new(10.0, 16.0)),
+        (Vec2::new(10.0, 16.0), Vec2::new(18.0, 15.0)),
+        (Vec2::new(18.0, 15.0), Vec2::new(11.0, 30.0)),
+    ];
+    let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+            let strike = near(p, Vec2::new(4.0, 27.0), Vec2::new(28.0, 5.0)) < 1.7;
+            let on_bolt = bolt.iter().any(|(a, b)| near(p, *a, *b) < 2.8);
+            data.extend_from_slice(if strike {
+                &[235, 50, 40, 255]
+            } else if on_bolt {
+                &[255, 214, 40, 255]
+            } else {
+                &[0, 0, 0, 0]
+            });
+        }
+    }
+    Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+}
+
 /// A machine's body as half extents: its mesh, and the outline drawn round
 /// it (Q43).
 pub fn body_half(model: Model) -> Vec3 {
     match model {
         Model::Bot => Vec3::splat(BOT_HALF),
         Model::Printer => Vec3::new(0.45, 0.25, 0.45),
-        // The solar panel, the charger and the pylon (Q62) are drawn as a
-        // depot until T32 gives them their own art.
-        Model::Depot | Model::Solar | Model::Charger | Model::Pylon => Vec3::new(0.39, 0.15, 0.39),
+        Model::Depot => Vec3::new(0.39, 0.15, 0.39),
+        // Q62: the panel's foot, under its tilted plate; the charger, a
+        // squat block; the pylon, a thin mast.
+        Model::Solar => Vec3::new(0.25, 0.04, 0.15),
+        Model::Charger => Vec3::new(0.3, 0.2, 0.3),
+        Model::Pylon => Vec3::new(0.05, 0.45, 0.05),
         Model::Site => Vec3::splat(0.35),
     }
 }
@@ -361,8 +408,26 @@ pub struct Palette {
     pub bar: Handle<Mesh>,
     pub lens_barrel: Handle<Mesh>,
     pub lens_glass: Handle<Mesh>,
-    /// A unit cube, scaled into each segment of a bot's number (Q46).
+    /// A unit cube, scaled into each segment of a bot's number (Q46), a
+    /// pylon's line, a lamp and a charger's gauge (Q62).
     pub segment: Handle<Mesh>,
+    /// A wire on its tile (Q62): the short bar across the centre, and the
+    /// line from the centre to an edge, turned toward each neighbour.
+    pub wire_node: Handle<Mesh>,
+    pub wire_line: Handle<Mesh>,
+    /// A wire plan's see-through line and a plan to clear one, hatched:
+    /// a mesh each, and neither shared with anything else that can lie
+    /// over paint or over the other (`crates/render/CLAUDE.md`).
+    pub wire_plan_bar: Handle<Mesh>,
+    pub wire_hatch_bar: Handle<Mesh>,
+    /// A solar panel's foot and tilted plate, a charger's block and a
+    /// pylon's mast (Q62).
+    pub panel_foot: Handle<Mesh>,
+    pub panel_plate: Handle<Mesh>,
+    pub charger_block: Handle<Mesh>,
+    pub pylon_mast: Handle<Mesh>,
+    /// The quad the power mark is drawn on.
+    pub power_quad: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
@@ -410,6 +475,16 @@ pub struct Palette {
     pub lens_glass_mat: Handle<StandardMaterial>,
     /// An unlit segment of a bot's number (Q46).
     pub segment_off_mat: Handle<StandardMaterial>,
+    /// The neutral body of a solar panel's foot, a charger and a pylon,
+    /// and the panel's plate (Q62). Their team is their lamp.
+    pub neutral_mat: Handle<StandardMaterial>,
+    pub panel_mat: Handle<StandardMaterial>,
+    /// A charger's gauge, behind and filled; and a charge bar's fill.
+    pub gauge_bg_mat: Handle<StandardMaterial>,
+    pub gauge_fill_mat: Handle<StandardMaterial>,
+    pub charge_fill_mat: Handle<StandardMaterial>,
+    /// The struck-through bolt over a flat bot and a dark building.
+    pub bolt_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -549,6 +624,15 @@ impl Palette {
             lens_barrel: meshes.add(Cylinder::new(LENS_BARREL_RADIUS, LENS_BARREL_LEN)),
             lens_glass: meshes.add(Cylinder::new(LENS_GLASS_RADIUS, LENS_GLASS_LEN)),
             segment: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+            wire_node: meshes.add(Cuboid::new(0.26, 0.012, 0.1)),
+            wire_line: meshes.add(Cuboid::new(0.05, 0.012, 0.5)),
+            wire_plan_bar: meshes.add(Cuboid::new(0.7, 0.012, 0.14)),
+            wire_hatch_bar: meshes.add(Cuboid::new(0.7, 0.012, 0.14)),
+            panel_foot: meshes.add(Cuboid::from_size(2.0 * body_half(Model::Solar))),
+            panel_plate: meshes.add(Cuboid::new(0.8, 0.04, 0.62)),
+            charger_block: meshes.add(Cuboid::from_size(2.0 * body_half(Model::Charger))),
+            pylon_mast: meshes.add(Cylinder::new(0.05, 0.9)),
+            power_quad: meshes.add(Rectangle::new(0.42, 0.42)),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
             ground_frames,
             water_mats,
@@ -612,6 +696,29 @@ impl Palette {
             ring_mats,
             bar_bg_mat: plain(materials, Color::srgb(0.05, 0.05, 0.06), true),
             bar_fill_mat: plain(materials, Color::srgb(0.9, 0.2, 0.15), true),
+            neutral_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.6, 0.62, 0.66),
+                metallic: 0.2,
+                perceptual_roughness: 0.7,
+                ..default()
+            }),
+            panel_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.07, 0.13, 0.32),
+                metallic: 0.6,
+                perceptual_roughness: 0.25,
+                ..default()
+            }),
+            gauge_bg_mat: plain(materials, Color::srgb(0.05, 0.05, 0.06), true),
+            gauge_fill_mat: plain(materials, Color::srgb(0.95, 0.85, 0.25), true),
+            charge_fill_mat: plain(materials, Color::srgb(0.95, 0.8, 0.2), true),
+            bolt_mat: materials.add(StandardMaterial {
+                base_color_texture: Some(assets.add(bolt_image())),
+                alpha_mode: AlphaMode::Mask(0.5),
+                unlit: true,
+                double_sided: true,
+                cull_mode: None,
+                ..default()
+            }),
             dim: HashMap::new(),
             ghosts: HashMap::new(),
             solids: HashMap::new(),

@@ -48,8 +48,14 @@ pub struct TeamMats {
     pub outline: Handle<StandardMaterial>,
     /// A bot's 3D lens glass (Q45).
     pub glass: Handle<StandardMaterial>,
-    /// A lit segment of a bot's number (Q46).
+    /// A lit segment of a bot's number (Q46); also the lamp of a solar
+    /// panel, a charger and a pylon (Q62).
     pub segment: Handle<StandardMaterial>,
+    /// The team's wire and a pylon's lines (Q62), and the same dimmed for
+    /// the player's own wire that is part of no grid. Opaque, so neither
+    /// is a see-through layer over paint.
+    pub wire: Handle<StandardMaterial>,
+    pub wire_off: Handle<StandardMaterial>,
 }
 
 /// The player's outline choices for this match, and the materials every

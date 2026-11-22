@@ -890,6 +890,17 @@ impl Driver {
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshots.cur
     }
+
+    /// The tiles carrying the player's team's own wire, as the sim last
+    /// reported them (Q62).
+    pub fn wired(&self) -> std::collections::BTreeSet<sim::TilePos> {
+        self.snapshot()
+            .teams
+            .iter()
+            .find(|t| t.id == self.player)
+            .map(|t| t.wires.iter().map(|(p, _)| *p).collect())
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
