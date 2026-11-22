@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-21: 9 opened, 7 fixed — 2 open.**
+**Status 2026-11-21: 10 opened, 7 fixed — 3 open.**
 
 ## Open
 
@@ -69,3 +69,20 @@ a charger and a pylon as depots, and no wire, no pylon's line, no mark
 over a flat bot or a dark building, no wire tool and no grid in the
 inspector. The work left is [T32](TASKS.md), and this entry closes with
 the commit that finishes it.
+
+**P10 — A deficit above one tick's budget is forgiven after a tick**
+
+`01`'s Metering has one statement of the rule: an operation that
+completes past the tick budget leaves a deficit, each following tick's
+budget is reduced by what remains of it until it is paid, and nothing
+clears it, "so a large traversal costs its full price however the ticks
+fall". The interpreter carries a deficit below one tick's budget
+correctly and forgives the rest of a larger one: `Machine::close_slice`
+(`crates/lang/src/vm.rs`) sets the new deficit to what the slice spent
+past the budget it opened with, and a slice that opens at zero spends
+nothing, so it closes owing nothing. A program whose one operation cost
+3,006 units against a budget of 200 sat out one tick, where the rule has
+it sit out fourteen. Every program with an operation that large runs
+cheaper than ruled. From [I11](history/inbox-triaged/inbox-triaged-0011.md);
+the work is [T40](TASKS.md), and this entry closes with the commit that
+finishes it.
