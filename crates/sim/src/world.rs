@@ -454,6 +454,13 @@ pub struct Team {
     /// scanning the map for them (I9); derived from the memory, and no
     /// part of the hash beyond it.
     pub seen: Vec<usize>,
+    /// Per tile index, whether the team knows the tile: exactly whether
+    /// its memory's state is other than `Unknown`. Set where the vision
+    /// pass first sees a tile, and never cleared, since nothing forgets
+    /// one. Kept so the state hash writes an unknown tile's byte without
+    /// reading its memory, which is a wide record (I12); derived from
+    /// the memory, and no part of the hash beyond it.
+    pub known: Vec<bool>,
     /// The starting tiles, for scripts.
     pub starts: Vec<TilePos>,
     /// The printer that began the team's last print; `0`, which no entity
@@ -563,7 +570,7 @@ impl World {
                 .iter()
                 .map(|d| (d.to_string(), Deployment::default()))
                 .collect();
-            let memory = world
+            let memory: Vec<TileMemory> = world
                 .tiles
                 .iter()
                 .map(|t| TileMemory {
@@ -584,6 +591,7 @@ impl World {
                     deployments,
                     out: false,
                     resigned: false,
+                    known: vec![false; memory.len()],
                     memory,
                     seen: Vec::new(),
                     starts: starts.clone(),
@@ -662,6 +670,7 @@ impl World {
                     resigned: t.resigned,
                     memory: t.memory.clone(),
                     seen: t.seen.clone(),
+                    known: t.known.clone(),
                     starts: t.starts.clone(),
                     print_turn: t.print_turn,
                     grids: t.grids.clone(),

@@ -129,6 +129,13 @@ export function runRustGates(repo) {
     { name: "golden replay: a move the sight cache is not told of", check: "replay-golden",
       expect: "the sight cache is stale", files: ["crates/sim/src/world.rs"],
       mutate: (d) => edit(join(d, "crates/sim/src/world.rs"), /m\.pos = to;\n\s*self\.sight_changed\(\);/, "m.pos = to;") },
+    // The state hash tells a tile a team has never seen from an index the
+    // vision pass keeps, and no longer from the team's memory (I12, T42),
+    // so a pass that forgets the index hashes known tiles as unknown. The
+    // debug build the gate runs in reads both, and names the rule.
+    { name: "golden replay: a tile the vision pass sees and does not index", check: "replay-golden",
+      expect: "fell out of step with its memory", files: ["crates/sim/src/tick.rs"],
+      mutate: (d) => edit(join(d, "crates/sim/src/tick.rs"), /t\.known\[idx\] = true;\n/, "") },
 
     // ── the language fixtures ───────────────────────────────────────────────
     { name: "language fixture: a stored hash changed", check: "lang-golden",
