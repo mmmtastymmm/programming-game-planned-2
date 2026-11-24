@@ -10,7 +10,7 @@ use crate::map::{Map, TilePos};
 use crate::sense;
 use crate::world::{
     Effect, EntityId, LoadedBundle, MachineRecord, Model, PickSource, Plan, Roster, Slot,
-    TileMemory, TileState, WIRE, World,
+    TileState, WIRE, World,
 };
 use lang::data::{COSTS_TOML, LIMITS_TOML};
 use lang::{Costs, Event, Interrupt, Limits, Num, Program, Slice, Tracer, Value};
@@ -956,19 +956,35 @@ impl Sim {
                     mem.state = TileState::Remembered;
                 }
             }
+            // A tile it sees is remembered as it stands. Only what differs
+            // is replaced: on most ticks that is `seen_at` alone, and a
+            // copy of every deposit, paint, overlay, wire set and building
+            // record for every tile in sight was most of the pass (I12).
             for &p in visible {
                 let idx = crate::map::index(p, width, height).expect("in bounds");
                 let tile = &w.tiles[idx];
-                t.memory[idx] = TileMemory {
-                    state: TileState::Visible,
-                    seen_at: tick,
-                    terrain: tile.terrain,
-                    deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
-                    paint: tile.paint.clone(),
-                    overlay: tile.overlay.clone(),
-                    wires: tile.wires.clone(),
-                    building: buildings.get(&p).cloned(),
-                };
+                let mem = &mut t.memory[idx];
+                mem.state = TileState::Visible;
+                mem.seen_at = tick;
+                mem.terrain = tile.terrain;
+                let amount = tile.deposit.as_ref().map(|d| &d.amount);
+                if mem.deposit.as_ref() != amount {
+                    mem.deposit = amount.cloned();
+                }
+                if mem.paint != tile.paint {
+                    mem.paint.clone_from(&tile.paint);
+                }
+                if mem.overlay != tile.overlay {
+                    mem.overlay.clone_from(&tile.overlay);
+                }
+                if mem.wires != tile.wires {
+                    mem.wires.clone_from(&tile.wires);
+                }
+                let building = buildings.get(&p);
+                if mem.building.as_ref() != building {
+                    mem.building = building.cloned();
+                }
+                t.known[idx] = true;
                 t.seen.push(idx);
             }
         }
@@ -1023,7 +1039,24 @@ impl Sim {
                     }
                 }
             }
+            // A tile the team has never seen is one zero byte, and a run
+            // of them one step of the hash (`Fnv1a::write_zeros`): told
+            // from `known`, so that its memory, a wide record, is not
+            // read to learn it (T42). The bytes are those of a walk that
+            // read every memory.
+            let mut unknown = 0u64;
             for (_, idx) in w.map.walk() {
+                debug_assert_eq!(
+                    team.known[idx],
+                    team.memory[idx].state != TileState::Unknown,
+                    "a team's index of the tiles it knows fell out of step with its memory"
+                );
+                if !team.known[idx] {
+                    unknown = unknown.saturating_add(1);
+                    continue;
+                }
+                h.write_zeros(unknown);
+                unknown = 0;
                 let m = &team.memory[idx];
                 h.write_u8(match m.state {
                     TileState::Unknown => 0,
@@ -1046,6 +1079,8 @@ impl Sim {
                     }
                 }
             }
+            // The run the table ends in.
+            h.write_zeros(unknown);
         }
         for (_, idx) in w.map.walk() {
             let t = &w.tiles[idx];

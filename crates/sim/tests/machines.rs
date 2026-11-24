@@ -5,6 +5,7 @@
 use lang::Num;
 use sim::world::{MachineRecord, Model, TileMemory, TileState};
 use sim::{Command, CommandKind, Data, Map, PlanKind, Sim, TeamId, TilePos, bundle_of};
+use std::collections::BTreeSet;
 
 /// 9 by 7, origin at the centre: x in -4..=4, y in -3..=3. Team 0 starts
 /// at (-3, 0) with a deposit north of it at (-3, 1); rock at (-1, 2) and
@@ -1123,7 +1124,39 @@ fn the_vision_pass_writes_what_a_walk_of_the_whole_map_writes() {
     let teams: Vec<TeamId> = s.world.teams.keys().copied().collect();
     let started: Vec<TilePos> = walkers.iter().map(|id| s.world.machines[id].pos).collect();
     let (mut demoted, mut moved) = (0usize, false);
+    // A tile beside team 0's printer, in its sight throughout, whose
+    // contents change under it and change back: the pass replaces a field
+    // of a memory only where it differs (T42), so each kind of field is
+    // made to differ, and then to differ again by going back.
+    let changing = TilePos::new(-5, 0);
+    let changing_idx = s.world.tile_index(changing).unwrap();
+    let mut remembered_as: BTreeSet<String> = BTreeSet::new();
+    let mut depot = None;
     for tick in 1..=80u64 {
+        match tick {
+            10 => {
+                let tile = s.world.tile_mut(changing).unwrap();
+                tile.paint = Some("red".into());
+                tile.overlay = Some("a".into());
+                s.world.lay_wire(TeamId(1), changing);
+            }
+            20 => {
+                depot =
+                    Some(
+                        s.world
+                            .place(Model::Depot, TeamId(0), changing, Some("depot".into())),
+                    );
+            }
+            30 => {
+                let tile = s.world.tile_mut(changing).unwrap();
+                tile.paint = Some("blue".into());
+                tile.overlay = None;
+                s.world.remove_wire(TeamId(1), changing);
+                s.world.remove(depot.take().unwrap());
+            }
+            40 => s.world.tile_mut(changing).unwrap().paint = None,
+            _ => {}
+        }
         let before: Vec<Vec<TileMemory>> = teams
             .iter()
             .map(|t| s.world.teams[t].memory.clone())
@@ -1147,6 +1180,14 @@ fn the_vision_pass_writes_what_a_walk_of_the_whole_map_writes() {
                 memory_by_a_walk_of_the_whole_map(&s, *team, before)
             };
             assert!(t.memory == expected, "tick {tick}, team {team:?}");
+            // What the team holds as known is every tile its memory does
+            // not say is unknown (T42), a team that is out included.
+            let known: Vec<bool> = t
+                .memory
+                .iter()
+                .map(|m| m.state != TileState::Unknown)
+                .collect();
+            assert!(t.known == known, "tick {tick}, team {team:?}");
             // What the team holds as seen is what its memory says it sees.
             let visible: Vec<usize> = (0..t.memory.len())
                 .filter(|i| t.memory[*i].state == TileState::Visible)
@@ -1165,7 +1206,39 @@ fn the_vision_pass_writes_what_a_walk_of_the_whole_map_writes() {
             .iter()
             .zip(&started)
             .any(|(id, at)| s.world.machines.get(id).is_some_and(|m| m.pos != *at));
+        // The hash reads the index in place of the memory, and a debug
+        // build holds the two together as it does.
+        let hash = s.state_hash();
+        // A fork's copy carries the index with the memory it indexes.
+        if tick % 20 == 0 {
+            let copy = s.world.copy();
+            for team in &teams {
+                assert!(copy.teams[team].known == s.world.teams[team].known);
+                assert!(copy.teams[team].memory == s.world.teams[team].memory);
+            }
+            let fork = sim::Fork::open(&s.save(), TeamId(0), false);
+            assert_eq!(fork.state_hash(), Some(hash), "tick {tick}");
+        }
+        let mem = &s.world.teams[&TeamId(0)].memory[changing_idx];
+        assert_eq!(mem.state, TileState::Visible, "tick {tick}");
+        remembered_as.insert(format!(
+            "{:?} {:?} {} {}",
+            mem.paint,
+            mem.overlay,
+            mem.wires.len(),
+            mem.building.is_some()
+        ));
     }
+    // Every content the changing tile was given was remembered in turn.
+    assert_eq!(
+        remembered_as.into_iter().collect::<Vec<_>>(),
+        [
+            "None None 0 false",
+            "Some(\"blue\") None 0 false",
+            "Some(\"red\") Some(\"a\") 1 false",
+            "Some(\"red\") Some(\"a\") 1 true",
+        ]
+    );
     assert!(s.world.teams[&TeamId(2)].out, "the resignation landed");
     assert!(moved, "no walker moved, so the pass was never tested");
     assert!(
