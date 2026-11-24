@@ -35,17 +35,4 @@ still has to say why.
 
 ## Open
 
-**I12 — After T41 the hash at a hundred teams is each team's memory of the map**
-
-`crates/replay/benches/scale.rs` at 10,000 bots that only wait, on a
-hundred teams and a 208 by 208 map, after T41: about 66 ms a step and
-60 ms a state hash, where two teams pay 26 ms and 8 ms. Timed by
-section, 51 of the hash's 60 ms are the teams' part, which is nearly all
-each team's memory: a hundred teams by 43,264 tiles is 4.3 million
-entries, 876,004 of them known. A known entry costs about 30 ns to
-write, as it does at two teams; the 3.4 million unknown ones write one
-byte each and still cost about 7 ns apiece, which looks like the read
-of one field out of a wide record a tile. The tiles themselves take
-1 ms and the machines 4 ms. In the step, what I10 said is left is still
-there: the vision pass writes every visible tile's memory anew each
-tick.
+*(none — every observation so far is triaged)*

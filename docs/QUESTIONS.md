@@ -26,8 +26,8 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-11-16.** Every question this file has issued, Q1 through Q63,
-is answered. Q33 through Q39 and Q41 were each opened and answered in one
+**Status 2026-11-23.** Every question this file has issued is answered
+except the one under **Open** below, which I12 raised. Q33 through Q39 and Q41 were each opened and answered in one
 commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
 window, Q41 the working copies to one tree and the hook binding in `01`.
@@ -73,8 +73,7 @@ Q22, Q23, Q24, Q25, Q30, Q42, Q43 and Q62 are
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and
 Q55 are [06-architecture](06-architecture.md)'s, Q4 and Q29 are
 [04-opposition](04-opposition.md)'s, Q42 is also
-[05-progression](05-progression.md)'s, and Q43 is also `07`'s. Nothing is
-undecided, and **Open** below is empty until the next question is opened.
+[05-progression](05-progression.md)'s, and Q43 is also `07`'s.
 The framing rulings are owned by [00-overview.md](00-overview.md)'s Decided
 section and the language's by [01-language](01-language.md)'s parts; none
 is repeated here. Each worksheet is a file of its own in
@@ -99,4 +98,23 @@ writing and answered after. The overview's table says the same.
 
 ## Open
 
-*(none — every question issued so far is answered)*
+**Q64 — Should the state hash cover a team's memory by a digest kept as it changes, not a walk of the whole table?**
+
+`06` has the state hash write every team's memory table, tile by tile,
+on every tick, so that part costs teams times the tiles they know
+whatever changed that tick: at a hundred teams on a 208 by 208 map it is
+most of the hash (I12), and what T42 leaves of it is the 876,004 known
+tiles written in full. The question is whether a team's memory may enter
+the hash as a digest the sim keeps beside the table and brings up to
+date wherever the vision pass changes a tile, so that the hash costs
+what changed. With it come three more. What the digest is, so that it
+is a function of the table and not of the order the writes came in: a
+wrapping sum, or an exclusive-or, of each tile's own hash keyed by its
+index. What it gives up, since FNV-1a over the whole table is one chain
+and a combination of per-tile hashes is a weaker check of the same
+bytes. And whether the tiles and the plans, which are walked whole too,
+go the same way. Any of it moves every replay hash. *Leaning:* only if a
+hundred teams is still too slow once T42 is measured; then the memory
+alone, as a wrapping sum of per-tile hashes keyed by index, with a build
+with debug assertions recomputing it from the table and comparing, as
+the sight cache does.
