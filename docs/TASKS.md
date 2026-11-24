@@ -31,4 +31,27 @@ Two conventions carried over from the predecessor project:
   the gap; this file owns the work. A task is only lag once it is actually
   buildable; before that it is merely pending.
 
-*(none — every task so far is completed, and no milestone is open)*
+## M12 — Scale
+
+**T42 — The hash reads no memory of a tile a team has never seen, and the vision pass copies nothing unchanged**
+
+From [I12](history/inbox-triaged/inbox-triaged-0012.md). After T41, at
+a hundred teams on a 208 by 208 map, 51 of the state hash's 60 ms are
+the teams' memory tables: 4.3 million entries, 3.4 million of them
+unknown, each of which the hash reads a wide record to learn and then
+writes one byte for. Two changes, and neither moves a hash. Each team
+keeps, beside its memory, which tiles it knows, written where the vision
+pass first sees a tile, since that pass is the only writer of a tile's
+state; the hash writes an unknown tile's byte from that and reads the
+memory of the known ones only, and may fold a run of unknown tiles into
+one step, FNV-1a over a zero byte being one multiplication. And the
+vision pass, for a tile the team sees, sets `seen_at` and the state and
+replaces a field of its memory only where it differs from the tile, so
+a tick on which nothing changed copies no deposit, paint, overlay, wire
+set or building record. A test holds the index to the memory's states
+across walking bots, a fork's copy and a team that goes out, and the
+existing one that holds the pass to a walk of the whole map still
+passes. The PR shows the golden fixtures untouched and
+`crates/replay/benches/scale.rs` at a hundred teams and at two, before
+and after. Whether the hash should stop writing the known tiles in full
+is `Q64`, and no part of this task.
