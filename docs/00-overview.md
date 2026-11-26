@@ -101,9 +101,12 @@ pass.
   and Q65 (a height on every tile, and bots that dig, fill and mine) are
   its Decided entries, and they are not repeated here; Q21 and Q22, which
   `03` cites, are `02`'s.
-- **Water's ruling lives in [09-water](09-water.md)** — Q65 (water as
-  small parts that flow a tile a tick, springs, sinks and the ground
-  water, and flooding) is its Decided entry, and it is not repeated here.
+- **Water's rulings live in [09-water](09-water.md)** — Q65 (water as
+  small parts that flow, springs, sinks and the ground water, and
+  flooding) and Q66 (a fifth to each lower tile, the flow in passes, a
+  film that dries only unfed, a spring's head and a sink's sill, and
+  water written in levels) are its Decided entries, and they are not
+  repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q55

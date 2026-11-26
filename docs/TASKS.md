@@ -77,7 +77,11 @@ walk from each end, since the ray is not symmetric.
 
 **T45 — Water in `sim`: parts that flow, springs, sinks and the ground water, wading and flooding** `⚠HASH`
 
-All of `09`. `water` leaves the terrain kinds; a tile holds its parts.
+All of `09`, as Q66 amended it: a fifth to each lower tile, the flow in
+`water.passes` passes, a film that dries only on a tick when nothing
+reaches it, a spring's head and a sink's sill, a thousand parts to a
+level, and every amount in a map, the tables and a tile's record in
+levels. `water` leaves the terrain kinds; a tile holds its parts.
 The water step in step 7, in `09`'s order: springs, the flow worked out
 from one state and applied together, sinks, drying, and `flooded`. The
 ground water, in the hash where `06` puts it. A map's `~` tiles full to
