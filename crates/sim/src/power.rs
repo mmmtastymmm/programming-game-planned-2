@@ -140,6 +140,16 @@ impl World {
             .fold(Num::ZERO, |sum, id| add(sum, self.machines[id].charge))
     }
 
+    /// The charge a grid's batteries can give: every one but a flooded
+    /// building's, which neither gives nor is filled (`docs/08`).
+    fn drawable_on(&self, grid: &Grid) -> Num {
+        grid.buildings
+            .iter()
+            .map(|id| &self.machines[id])
+            .filter(|m| !m.flooded)
+            .fold(Num::ZERO, |sum, m| add(sum, m.charge))
+    }
+
     /// Serve one grid, oldest building first, three times over (`docs/08`,
     /// The power step): each building's own generation covers its own need
     /// and the rest is pooled; each still short is paid from the pool and
@@ -158,22 +168,35 @@ impl World {
         // Its own first.
         let mut pool = Num::ZERO;
         let mut rows: Vec<(EntityId, Num, Num)> = Vec::new();
+        // A flooded building takes no part in the three (`docs/08`): it
+        // is dark without being tried, and its generation is not pooled.
+        let mut flooded: Vec<EntityId> = Vec::new();
         for &id in &grid.buildings {
             let need = self.need_of(id);
             let md = self.data.model(self.machines[&id].model.name());
-            let kept = md.generation.min(need);
-            pool = add(pool, sub(md.generation, kept));
-            rows.push((id, kept, sub(need, kept)));
             figures.generation = add(figures.generation, md.generation);
             figures.drain = add(figures.drain, need);
             figures.capacity = add(figures.capacity, md.battery);
+            if self.machines[&id].flooded {
+                flooded.push(id);
+                continue;
+            }
+            let kept = md.generation.min(need);
+            pool = add(pool, sub(md.generation, kept));
+            rows.push((id, kept, sub(need, kept)));
         }
         let mut changed = false;
+        for id in flooded {
+            let m = self.machines.get_mut(&id).expect("on the grid");
+            changed |= m.powered;
+            m.powered = false;
+            m.grid = Some(grid.label);
+        }
         // The shortfalls.
         for (id, kept, short) in rows {
             let powered = if !moving || short <= Num::ZERO {
                 true
-            } else if add(pool, self.stored_on(grid)) >= short {
+            } else if add(pool, self.drawable_on(grid)) >= short {
                 let from_pool = pool.min(short);
                 pool = sub(pool, from_pool);
                 let mut rest = sub(short, from_pool);
@@ -182,6 +205,9 @@ impl World {
                         break;
                     }
                     let m = self.machines.get_mut(battery).expect("on the grid");
+                    if m.flooded {
+                        continue;
+                    }
                     let take = m.charge.min(rest);
                     m.charge = sub(m.charge, take);
                     rest = sub(rest, take);
@@ -201,6 +227,9 @@ impl World {
             for id in &grid.buildings {
                 let capacity = self.data.model(self.machines[id].model.name()).battery;
                 let m = self.machines.get_mut(id).expect("on the grid");
+                if m.flooded {
+                    continue;
+                }
                 let give = pool.min(sub(capacity, m.charge));
                 m.charge = add(m.charge, give);
                 pool = sub(pool, give);

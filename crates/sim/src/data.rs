@@ -164,6 +164,8 @@ pub struct WaterData {
     pub max_rate: u32,
     /// How many times the flow runs in a tick.
     pub passes: u32,
+    /// The health a flooded machine loses a tick.
+    pub flood_damage: Num,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -609,6 +611,11 @@ impl WorldData {
             wade: levels("wade")?,
             max_rate: levels("max_rate")?,
             passes: parts("passes")?,
+            flood_damage: num(
+                FILE,
+                "water.flood_damage",
+                get(FILE, water_t, "flood_damage")?,
+            )?,
         };
         // `docs/09`, Data: water thin enough to dry is never wet, and
         // what a bot wades is water. A level of nothing is no level.

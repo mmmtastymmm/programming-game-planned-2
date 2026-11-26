@@ -102,6 +102,7 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
             },
         ));
     }
+    fields.push(("flooded", Value::Bool(r.flooded)));
     record("machine", fields)
 }
 

@@ -301,6 +301,9 @@ pub struct Machine {
     pub powered: bool,
     /// The label of the grid the last power step found a building on.
     pub grid: Option<EntityId>,
+    /// Flooded as the last water step left it (`docs/09`): a bot in more
+    /// water than it wades, a building or a site on a wet tile.
+    pub flooded: bool,
     /// `low_power` fell due during the machine's own slice, where its
     /// program is out of its body: the interpreter collects it after the
     /// call that caused it (`Host::take_raised`). Never set between calls.
@@ -398,6 +401,8 @@ pub struct MachineRecord {
     /// A building's `powered` and `grid`; absent on a bot.
     pub powered: Option<bool>,
     pub grid: Option<Option<EntityId>>,
+    /// Whether the last water step left it flooded (`docs/09`).
+    pub flooded: bool,
 }
 
 impl MachineRecord {
@@ -421,6 +426,7 @@ impl MachineRecord {
             flat: m.is_bot().then_some(m.flat),
             powered: m.is_building().then_some(m.powered),
             grid: m.is_building().then_some(m.grid),
+            flooded: m.flooded,
         }
     }
 }
@@ -734,6 +740,7 @@ impl World {
                     armed: m.armed,
                     powered: m.powered,
                     grid: m.grid,
+                    flooded: m.flooded,
                     low_power_due: m.low_power_due,
                     program: m.program.as_ref().map(|p| p.deep_copy()),
                     log: m.log.clone(),
@@ -1017,6 +1024,7 @@ impl World {
                 armed: model == Model::Bot,
                 powered: model != Model::Bot && model != Model::Site,
                 grid: None,
+                flooded: false,
                 low_power_due: false,
                 program,
                 log: Vec::new(),

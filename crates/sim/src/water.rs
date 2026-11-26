@@ -2,7 +2,7 @@
 //! lower ground a tile a tick. The water step is the only thing in the sim
 //! that moves water.
 
-use crate::map::Terrain;
+use crate::map::{Terrain, index};
 use crate::world::World;
 use std::collections::BTreeSet;
 
@@ -55,8 +55,9 @@ impl World {
     /// the flow — one whose own surface and whose neighbours' surfaces are
     /// what they were when it last gave nothing gives nothing again — so
     /// still water costs nothing, and the result is the one a walk of
-    /// every tile gives.
-    pub(crate) fn water_step(&mut self) {
+    /// every tile gives. A match runs it in step 7 and nowhere else; it
+    /// is public so that the scaling benchmark can time it alone.
+    pub fn water_step(&mut self) {
         let wd = self.data.world.water;
         // Every tile this step looks at or changes, for the drying at
         // its end; and the tiles given water in it, by a spring or by a
@@ -180,6 +181,28 @@ impl World {
                 // which dries it if nothing more arrives.
                 self.stirred.insert(idx);
             }
+        }
+
+        // 5. `flooded`, from the water as the drying left it: a bot in
+        // more than it wades, a building or a site on a wet tile. A
+        // building is dark from here, before the next power step runs.
+        let mut darkened = false;
+        for m in self.machines.values_mut() {
+            let water = index(m.pos, self.map.width, self.map.height)
+                .map_or(0, |idx| self.tiles[idx].water);
+            m.flooded = if m.is_bot() {
+                water > wd.wade
+            } else {
+                water >= wd.wet
+            };
+            if m.flooded && m.powered {
+                m.powered = false;
+                darkened = true;
+            }
+        }
+        // A dark building sees nothing, so what its team sees changed.
+        if darkened {
+            self.sight_changed();
         }
     }
 
