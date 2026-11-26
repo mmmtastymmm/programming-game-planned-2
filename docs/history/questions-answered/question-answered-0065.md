@@ -5,7 +5,8 @@
 ## Ruling
 
 *Ruling (2026-11-24):* **yes. Every tile has a height; bots dig it down,
-fill it up and mine rock away; and water is small parts that stand on
+fill it up and mine rock away, and move over it with pace, falls and
+bonks; and water is small parts that stand on
 the ground and flow to lower ground a tile a tick, brought up by springs
 and taken down by sinks from one store of ground water, flooding what
 they cover.** Made under a new
@@ -29,58 +30,76 @@ is dark when flooded though never for want of power.
 
 ### The rules
 
-Rules 1 to 14 are the sim's and are hash-affecting; rule 15 is the
+Rules 1 to 16 are the sim's and are hash-affecting; rule 17 is the
 renderer's.
 
 1. **Every tile has a height**, a whole number of levels from the map,
    rock included.
-2. **A bot steps at most one level.** A move needs ground, heights at
-   most one apart, and water no deeper than a bot wades.
-3. **Bots change the ground.** `dig` lowers an adjacent tile a level,
+2. **A bot climbs at most one level and may drop any number.** A move
+   needs ground and water no deeper than a bot wades. A drop of more
+   than a level is a fall: the bot loses health for each level beyond
+   the first, unless it lands in water.
+3. **Pace.** A move takes fewer ticks the longer a bot keeps moving,
+   through turns too; more ticks uphill and fewer down. A bot that does
+   not begin its next move in the slice after the last completed starts
+   again from a standstill.
+4. **A bonk.** A bot with pace that moves onto a tile holding another
+   bot, any team's, puts that bot a tile onward, off a cliff if there is
+   one, and stops dead. It does no damage itself. A bot with no pace is
+   only blocked, and buildings are never bonked.
+5. **Bots change the ground.** `dig` lowers an adjacent tile a level,
    `fill` raises one a level, `mine` turns rock to ground at its height.
    Not a tile with a building, a site, a deposit, a spring or a machine.
    Any team's bot may do any of them.
-4. **Earth is carried.** Digging puts earth in the bot's load and filling
+6. **Earth is carried.** Digging puts earth in the bot's load and filling
    takes it; it is a second resource, held in depots like ore. Mining
    yields nothing.
-5. **The player plans a height.** A ground plan is a fifth kind of plan,
+7. **The player plans a height.** A ground plan is a fifth kind of plan,
    on any tile the team has seen without a deposit or a spring; on rock
    it means mine it. The team's own bot that brings the tile there
    consumes it.
-6. **Height blocks sight**: a tile standing above the straight line
+8. **Height blocks sight**: a tile standing above the straight line
    between the ground of the seer's tile and the ground of the seen one,
    in integers.
-7. **Height stretches sight**: a machine sees one tile further for each
+9. **Height stretches sight**: a machine sees one tile further for each
    level it stands above the tile looked at, and one less for each below.
-8. **Water is not terrain.** A tile is ground or rock, and water is a
+10. **Water is not terrain.** A tile is ground or rock, and water is a
    whole number of parts standing on ground, a hundred to a level. Rock
    and the map's edge are walls to it.
-9. **Water flows a tile a tick.** In a water step after regrowth and
+11. **Water flows a tile a tick.** In a water step after regrowth and
    before the vision pass, every tile offers each lower tile beside it
    its share of the difference between their surfaces, counting itself
    among those sharing, and every flow is applied together.
-10. **Level water stays put.** Surfaces within a part of each other
+12. **Level water stays put.** Surfaces within a part of each other
     exchange nothing, and a share that rounds to nothing is not given.
-11. **Springs and sinks.** A spring moves ground water onto its tile and
+13. **Springs and sinks.** A spring moves ground water onto its tile and
     a sink moves water on its tile into the ground water, each at its
     rate.
-12. **Thin water dries** into the ground water: a tile holding four
+14. **Thin water dries** into the ground water: a tile holding four
     parts or fewer loses them, a spring's own tile aside.
-13. **The total is fixed.** The parts on the tiles and the ground water
+15. **The total is fixed.** The parts on the tiles and the ground water
     together never change; water only moves.
-14. **Flooding.** A bot wades one level and is flooded by more; a
+16. **Flooding.** A bot wades one level and is flooded by more; a
     building or a site is flooded on a wet tile, one holding a tenth of
     a level or more. A flooded bot cannot move; a
     flooded building is dark; every flooded machine loses health each
     tick.
-15. **The map shows it.** Tiles at their heights, water at its surface,
+17. **The map shows it.** Tiles at their heights with a ramp where two
+    differ by a level, water at its surface,
     damp ground tinted, springs and sinks marked, a ground row in the
     strip, a mark over a flooded machine.
 
 ### Consequences
 
 - **The ground is a tool.** A ramp, a wall, a moat and a sump are all
-  dug or filled; a cliff two levels high stops a bot.
+  dug or filled; a cliff two levels high stops a bot going up, and hurts
+  one going down.
+- **Speed is earned and can be lost.** A bot that keeps moving is faster
+  than one that stops to think, by as much as the data allows, and a
+  program that spends its slice elsewhere starts again from a
+  standstill.
+- **A bot is a weapon by running.** A bonk does no damage, but it moves
+  a rival off its work, into water, or over an edge.
 - **Water can be moved without a pump.** A channel dug from a lake
   fills as the lake runs into it; a rim cut open drains a lake to the
   sill, over time, and the flood runs downhill with a front that can be
@@ -158,6 +177,21 @@ Cite the ruling above; open this half only to recover *why*.
 | a flooded machine | **Both** *(chosen)* | A flooded base is lost unless drained quickly. |
 | wading | Never | Any channel is a barrier. |
 | wading | **One level deep** *(chosen)* | Only deep water blocks; a bot is flooded by more than a level. |
+| a cliff down | Closed both ways *(drafted first)* | A pit is a trap; nothing falls. |
+| a cliff down | **A fall that hurts, water aside** *(chosen)* | A bot can be walked, or shoved, off an edge. |
+| a slope | The same ticks as level ground *(drafted first)* | Hills cost nothing to cross. |
+| a slope | **Slower up, faster down** *(chosen)* | Two more numbers a model. |
+| speed | Every move the same ticks | Nothing to gain by keeping going. |
+| speed | **Pace that builds while a bot keeps moving** *(chosen)* | A move from a standstill is slower than today's; a slow program is a slow bot. |
+| pace through a turn | **Kept** *(chosen)* | Only stopping loses it. |
+| pace through a turn | Lost, or part lost | Straight lines are worth more than they need be. |
+| moving onto a bot | An error, as it was | Bots are walls to each other. |
+| moving onto a bot | **A bonk that puts it a tile onward** *(chosen)* | A bot can be moved against its program. |
+| who may be bonked | **Any bot, the mover's own team's too** *(chosen)* | Friendly bonks happen. |
+| a bonk from a standstill | A shove like any other | Any two bots side by side push each other about. |
+| a bonk from a standstill | **Only a block** *(the drafting's call)* | Running is what bonks. |
+| a bonk's harm | Damage by the mover's pace | Ramming is a second attack. |
+| a bonk's harm | **None but the fall** *(the drafting's call)* | Position is all a bonk changes. |
 | dig and fill | Dig is time, fill is ore | No new resource. |
 | dig and fill | **Earth is carried** *(chosen)* | A second resource in every load, and earth to haul. |
 | dig and fill | Both time only | Terrain is cheap to reshape. |
@@ -203,6 +237,15 @@ that the water of a map is by default a fixed amount. The drafting made
 the first "four parts or fewer", since the share rule can leave specks
 that never reach one part; and read the second as one store of ground
 water that sinks and drying fill and springs draw on.
+
+After the ruling was first committed the user came back to how bots
+move over height, before it was merged. They wanted bots to fall and be
+hurt, to be slower uphill and faster down, a step of one level drawn as
+a ramp, and movement that gets faster as it goes on, so that slopes
+matter and a bot run into is bonked. Asked, they chose pace kept through
+a turn, a bonk that moves the bot hit a tile onward, anyone bonked, and
+water that breaks a fall. That a bonk needs pace and does no damage of
+its own were the drafting's calls, said before writing.
 
 The calls that were the drafting's, put to the user and accepted, still
 stand: that a bot is flooded only by more than it wades; that water is

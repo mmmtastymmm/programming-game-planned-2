@@ -18,8 +18,11 @@ overrides those.
 
 - **Every tile has a height, and bots change the ground (Q65, amending
   Q7, Q10, Q21, Q22, Q27, Q28, Q37 and Q49).** A tile's `height` is a whole
-  number of levels from the map. A bot steps between tiles at most one
-  level apart; more is a cliff. A bot `dig`s a tile down a level, `fill`s
+  number of levels from the map. A bot climbs at most one level a step,
+  slower up and faster down, and may drop any number, which is a fall
+  that hurts unless it lands in water. A bot gathers **pace** as it keeps
+  moving, and one with pace that runs into another bot **bonks** it a
+  tile onward. A bot `dig`s a tile down a level, `fill`s
   one up a level and `mine`s rock away, which leaves ground at the rock's
   height; digging puts **earth**, a second resource, in the bot's load,
   and filling takes it. The player plans a height for a tile, a fifth
@@ -120,14 +123,63 @@ zero to `height.max` in data. The map gives it, and only `dig` and `fill`
 change it. Height does three things: it limits a step, it steers water
 (`09`), and it decides what is seen (Line of sight, below).
 
-**A step.** A bot may move from the tile it is on to an adjacent tile only
-if that tile is `ground`, the two tiles' heights differ by at most
-`height.step` in data, one level, and the water on that tile is at most
-`water.wade`, one level (`09`). Wherever a rule asks whether a tile
-is passable *for a bot on a given tile* — `move`, `move_to`, where a
-printed bot appears (`02`) — it asks this. A bot that the ground or the
-water has changed under keeps its tile: nothing moves a bot but its own
-move.
+**A step.** A bot may **step** from the tile it is on to an adjacent tile
+only if that tile is `ground`, is higher or lower than its own by at most
+`height.step` in data, one level, and holds water of at most `water.wade`,
+one level (`09`). Wherever a rule asks whether a tile is passable *for a
+bot on a given tile* — `move_to`, where a printed bot appears (`02`), a
+map's check that a start reaches a deposit — it asks this.
+
+**A drop.** `move(dir)` (`02`), and it alone, may also take a bot onto an
+adjacent `ground` tile that is *lower* by more than `height.step`, with
+water of at most `water.wade`: a drop, which ends in a fall (below). No
+bot climbs more than `height.step`.
+
+A bot that the ground or the water has changed under keeps its tile.
+Nothing moves a bot but its own move and a bonk.
+
+## Moving
+
+How long a move takes, what a bot gains by keeping going, and what happens
+when it leaves a cliff or meets another bot (Q65). A bot is on both tiles
+of a move, for occupancy, from when the move begins until it completes
+(`02`).
+
+**Pace.** A bot has a `pace` (`02`), a whole number from zero to
+`pace_max` in its model's data, zero when it is printed. A move's ticks
+are fixed as it begins: the model's `move_ticks`, less the bot's pace,
+plus `up_ticks` if the tile it moves onto is higher, less `down_ticks` if
+it is lower, and never fewer than one. When a move completes, the bot's
+pace rises by one, by two if the move went down a level, and not at all
+if it went up, to at most `pace_max`. The direction does not matter: a
+bot keeps its pace through a turn.
+
+At the end of every tick's slices (`06`, step 2), a bot that is not in a
+move has its pace set to zero. So a bot keeps its pace only by beginning
+its next move in the slice after the last completed; a wait, any other
+action, a failed move, or being out of power loses it.
+
+**A fall.** A move onto a tile lower by more than `height.step` is a
+drop. It takes the ticks of a move down. When it completes the bot has
+**fallen** as many levels as the two heights differ by: its pace is zero,
+and in this tick's damage step (`06`, step 4) it loses `fall_damage` in
+data for each level fallen beyond `height.step` — unless the tile it
+landed on holds at least `water.cushion` parts of water (`09`), which
+takes all of it.
+
+**A bonk.** `move(dir)` by a bot whose pace is above zero, onto a tile
+that holds another bot — any team's — that is not itself in a move, does
+not fail as a move onto an occupied tile otherwise does. It begins as a
+bonk: it takes `bonk_ticks`, during which the bot is on its own tile
+alone, and makes the sound `"bonk"`. When it completes, the bot's pace is
+zero, and if the other bot is still on that tile and not in a move, and
+the tile beyond it in the same direction is one it could step or drop
+onto and no machine is on it or moving onto it, the other bot is put on
+that tile at once. Its action in progress ends with nothing done, its
+pace is zero, and if the tile was a drop it has fallen. Otherwise nothing
+happens to it. A bonk does no damage; the fall may. A building and a site
+are never bonked, and a bot with no pace bonks nothing: for both the move
+is the `ValueError` it always was.
 
 ## Changing the ground
 

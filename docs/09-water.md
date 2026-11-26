@@ -185,7 +185,8 @@ program.
 ## Data
 
 `[water]` in [data/world.toml](../data/world.toml) holds `parts`, `wet`,
-`film`, `wade` and `flood_damage`, and `max_rate`, the most a map may
+`film`, `wade`, `flood_damage`, `cushion` — the water that breaks a fall
+(`03`, Moving) — and `max_rate`, the most a map may
 give a spring or a sink. Every key is hash-affecting. The sim refuses
 data in which `film` is not below `wet`, or `wet` is above `wade`.
 

@@ -57,7 +57,8 @@ the commit that changes the numbers or the rule.
 Q65 ruled that every tile has a height bots change, and that water is a
 conserved volume standing on the ground; `02`, `03`, `06`, `07`, `08` and
 `09` state it as current. None of it is built. In the sim a tile has no
-height, a move tests only terrain, sight tests only rock, and `water` is
+height, a move tests only terrain and always takes the same ticks, no
+bot falls or is bonked, sight tests only rock, and `water` is
 a third terrain kind that never moves; there is no `dig`, `fill` or
 `mine`, no `earth`, no ground plan, no spring or sink, no water step and
 no `flooded`. The renderer draws a flat map with water as a sunken tile.

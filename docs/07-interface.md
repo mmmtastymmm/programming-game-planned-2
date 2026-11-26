@@ -79,7 +79,8 @@ hash; a peer with a different renderer sees the same match.
   does.
 - **Height and water show on the map, and the strip plans the ground
   (Q65, amending Q37).** A tile is drawn at its height, so higher ground
-  stands above lower and a cliff shows its face. Water is a see-through
+  stands above lower, a step of one level is drawn as a small ramp between
+  the two tiles, and a cliff shows its face. Water is a see-through
   sheet at its surface over each wet tile, so moving water shows its
   slope; damp ground is only a darker tint; a spring and a sink are each
   marked on their tile. The strip gains a

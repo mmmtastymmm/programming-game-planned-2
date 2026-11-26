@@ -197,8 +197,10 @@ loop:
    `on_low_power` waits at the call it could not pay for, though any
    other handler runs (`08`; Q62, Q63). Actions begun in a slice begin in this order, and actions
    completing on this tick complete in ascending entity id after every
-   slice has run.
-3. **Action completions**, in ascending entity id: moves land, transfers
+   slice has run. As the slices end, a bot that is not in a move has no
+   pace (Q65; `03`, Moving).
+3. **Action completions**, in ascending entity id: moves land, a bonk
+   puts the bot it hit a tile onward (Q65; `03`), transfers
    happen, prints count down and place bots, sites complete,
    deconstructions finish, recharges move charge, wires are laid and
    removed (`02`), ground is dug, filled and mined (Q65; `03`); a dark building's main-flow action and a dark
@@ -206,8 +208,9 @@ loop:
    this tick has its first slice next tick.
 4. **Damage and death**: health changes from this tick's causes are applied
    — attacks that completed, and every powered printer's defence against
-   adjacent enemy bots (Q30; `08`), and what every machine the last water
-   step left flooded loses (Q65; `09`) — `dying` and `death` are raised where Q24 says, and
+   adjacent enemy bots (Q30; `08`), what every machine the last water
+   step left flooded loses and what a bot that fell this tick loses
+   (Q65; `09`, `03`) — `dying` and `death` are raised where Q24 says, and
    `death` epilogues remove machines; a printer left at or below zero health
    loses its print in progress (`02`, Printing). Every machine whose `death`
    epilogue ran this tick — here, or earlier in its own step-2 slice — is

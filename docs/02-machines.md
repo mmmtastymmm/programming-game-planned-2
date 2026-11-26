@@ -153,7 +153,8 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   (Q65).** The rulings are [03-world](03-world.md)'s and
   [09-water](09-water.md)'s. This doc carries what they add to a machine:
   the actions `dig`, `fill` and `mine`, the resource `earth`, the
-  attribute `flooded`, the step a `move` may take, and flood damage.
+  attributes `flooded` and `pace`, what a `move` may do, and the damage
+  of a flood and a fall.
 
 ## A machine
 
@@ -323,6 +324,7 @@ writable except through an action.
 | `flat` | `bool` | whether the bot is out of power, from a call it could not pay for until it wakes (`08`, Q63); absent on a building |
 | `powered` | `bool` | whether the last power step powered the building or left it dark (`08`); `False` on a site; absent on a bot |
 | `grid` | `num`, integral, or `None` | the label of the grid the last power step found the building on (`08`); `None` on a site; absent on a bot |
+| `pace` | `num`, integral | what a bot has gained by keeping moving (`03`, Moving; Q65); absent on a building |
 | `flooded` | `bool` | whether the last water step left the machine flooded (`09`, Q65): a bot in more water than it wades, a building or a site on a wet tile |
 
 **Occupancy.** A tile holds at most one machine. A bot cannot move onto an
@@ -380,7 +382,7 @@ The causes, which are the `cause` strings a sound carries:
 | `"build"` | a bot placing a site, and a site completing |
 | `"deconstruct"` | a bot beginning a deconstruction |
 | `"attack"` | a bot beginning an attack |
-| `"dig"`, `"fill"`, `"mine"` | a bot beginning to dig, fill or mine (Q65) |
+| `"dig"`, `"fill"`, `"mine"`, `"bonk"` | a bot beginning to dig, fill, mine or bonk (Q65) |
 
 Loudness per cause is in `data/machines.toml`. A sound never names its
 emitter.
@@ -417,7 +419,7 @@ A failed precondition takes none.
 
 | Action | Who | Does | Takes | Noisy |
 |---|---|---|---|---|
-| `move(dir)` | bot | `dir` one of `"n"`, `"e"`, `"s"`, `"w"`; the target tile must be passable for a bot on this one (`03`, A step) and unoccupied at the moment the move begins, and the bot not `flooded` (`09`); the bot is on the target tile when the move completes, and occupies **both** tiles meanwhile for occupancy purposes | `move_ticks` | yes |
+| `move(dir)` | bot | `dir` one of `"n"`, `"e"`, `"s"`, `"w"`; the target tile must be a step or a drop from this one (`03`) and unoccupied at the moment the move begins — or hold a bot to bonk (`03`, Moving) — and the bot not `flooded` (`09`); the bot is on the target tile when the move completes, and occupies **both** tiles meanwhile for occupancy purposes | by pace (`03`) | yes |
 | `move_to(x, y)` | bot | **one step** toward `(x, y)`: of the adjacent tiles that are passable and unoccupied, the one with the least squared distance to `(x, y)`, ties in the order `n`, `e`, `s`, `w`; a `ValueError` if none qualifies or the bot is already there. A program that wants to arrive loops; there is no pathfinding, and a bot can be led into a dead end | `move_ticks` | yes |
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
@@ -503,8 +505,8 @@ own making — a fault in `on_dying` — escalates as the language rules and
 deals nothing. A tile is never destroyed (`03`), so damage is the only
 cause of `death` today.
 
-The causes of damage are four. **A flooded machine loses `flood_damage`**
-each tick, in the damage step (Q65; `09`). **A fault costs `fault_damage` health**,
+The causes of damage are five. **A flooded machine loses `flood_damage`**
+each tick, and **a fallen bot `fall_damage`** a level (Q65; `09`, `03`). **A fault costs `fault_damage` health**,
 charged by the `fault` prologue beside the record it writes, so a program
 that faults on every restart dies after `health / fault_damage` faults
 instead of looping forever. **An attack costs `attack_damage`** (Q25), landed
