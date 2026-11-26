@@ -77,6 +77,18 @@ hash; a peer with a different renderer sees the same match.
   change the tile — and never on a tile already carrying exactly that plan;
   a clear on a tile holding the team's wire plan withdraws it, as any clear
   does.
+- **Height and water show on the map, and the strip plans the ground
+  (Q65, amending Q37).** A tile is drawn at its height, so higher ground
+  stands above lower, a step of one level is drawn as a small ramp between
+  the two tiles, and a cliff shows its face. Water is a see-through
+  sheet at its surface over each wet tile, so moving water shows its
+  slope; damp ground is only a darker tint; a spring and a sink are each
+  marked on their tile. The strip gains a
+  **ground** row on `G`: *lower*, *raise*, *level* and its clear. A ground
+  plan shows as the tile's outline at the planned height. A flooded
+  machine carries a mark over it, beside the power mark's place. The
+  inspector gives the hovered tile's height and water, a spring's or a
+  sink's rate, and a selected machine's `flooded`.
 - **A stall is a banner with a resign; a desync freezes the match with
   the report and the replay saved (Q38).** The banner names the peer, the
   tick and the wait; everything else keeps working. A desync's banner
@@ -162,8 +174,8 @@ floats over it (Q39, Q41):
 | **the time bar** — fixed, across the top | the tick, the speed and its `−`/`+`, the delay, the state hash, the peers, a stall or desync report, the match's end, and on a replay its seek; nothing else | Q6, Q12, `06`, Q41, Q55 |
 | **the tree** — fixed, down the left | `robots`, `interrupts`, then the player's folders and files, each marked ahead, error or open; new file and folder, rename, delete on the player's; at its foot the inspector, the tools, the log, and the debugger while a fork is open | Q41, Q55 |
 | **one per open file** | the file being edited and its gutter breakpoints, the versions it is deployed as and those the team's machines run, each opening a version window, the deploy and export buttons, and while a fork is open *try in the fork* and *take it*; the faults naming this file | Q33, Q34, Q39, Q41, Q55 |
-| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change; the player's own team's grids — each one's generation and drain per second and its stored charge against its capacity — and the selected machine's `charge` against its `battery`, with a bot's `flat` or a building's `powered` and `grid` | Q34, Q43, Q45, Q55, Q62 |
-| **tools** | the mark strip, its wire tool among it, and resign | Q37, Q62 |
+| **inspector** | the hovered tile as the team knows it, the selected machine's record and fault, and for a machine of the team the version of each file it runs, opening a version window; the teams and their deployments' versions, each team's color to change; the player's own team's grids — each one's generation and drain per second and its stored charge against its capacity — and the selected machine's `charge` against its `battery`, with a bot's `flat` or a building's `powered` and `grid`; the hovered tile's height and water, a spring's or a sink's rate, and the selected machine's `flooded` | Q34, Q43, Q45, Q55, Q62, Q65 |
+| **tools** | the mark strip, its wire tool and its ground row among it, and resign | Q37, Q62, Q65 |
 | **log** | machines' `log` lines, dropped commands, exchange events, the match's end | `02`, `06` |
 | **debugger** | while a fork is open: its tick, state and controls, why the last step stopped, the hit list, the selected machine's stack, locals, globals, action, budget and interrupts | Q55 |
 | **one per version window** | one version of a file — one content hash (`06`) — that a machine runs or a replay ran, read-only, apart from the tree; its breakpoints | Q55 |
@@ -343,8 +355,9 @@ The tools window is a strip (Q37): a row of the building models a plan may
 name (`printer`, `solar`, `charger` and `pylon` among them, Q42, Q62), a row of the eight paint
 colors, a row of the overlay labels in data (Q10, Q26, Q27), each row
 ending in a *clear* — the plan to empty that slot — and a row holding the
-**wire** tool and its *clear* (Q62). `B`, `P`, `O` and `C` — for cable,
-since `W` pans the camera — pick a row and `1`–`9` an entry; a click arms a
+**wire** tool and its *clear* (Q62), and a **ground** row (Q65). `B`,
+`P`, `O`, `C` — for cable, since `W` pans the camera — and `G` pick a row
+and `1`–`9` an entry; a click arms a
 tool, `Esc` or a second click disarms it.
 
 With a tool armed, a left click on a tile is a `Mark` of that kind and
@@ -355,6 +368,12 @@ map's edge, the ghost covers every tile in it, and release marks them all
 — `Esc` first fills nothing. *Clear* on a tile where the team already
 holds a plan of that kind is an `Unmark` of it, and elsewhere the plan to
 empty the slot, decided per tile against the plans the sim last reported.
+The ground row's tools each send a `Mark` of a height (Q65; `03`, The
+ground plan): *lower* one below, and *raise* one above, the height the
+tile's plan already holds or else the height the team knows it at;
+*level*, for every tile of a stroke, the known height of the tile the
+stroke began on; its *clear* is the `Unmark`. None is sent for a tile the
+team has not seen, or one already known to be ground at that height.
 With none armed, a click selects and a drag pans. The renderer submits
 and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.

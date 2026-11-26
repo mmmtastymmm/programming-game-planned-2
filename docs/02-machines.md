@@ -66,7 +66,8 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   and its terrain are; `06` places the pass in the tick loop.
 - **One resource today, gathered by bots from deposits that regrow, carried
   to buildings that hold it, and spent from where it is held (Q22).**
-  Resources are a table keyed by kind, holding `ore`, and every capacity,
+  Resources are a table keyed by kind, holding `ore` and, as Q65 added,
+  `earth` (`03`), and every capacity,
   cost, load and deposit amount is a map from kind to `num`, so a second
   resource is a data row. Deposits are terrain with an amount, a cap and a
   regrowth rate per tick, remembered by Q21 as last seen. A bot has a
@@ -148,6 +149,12 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   `grid`; the senses `power()` and `wires()`; the actions `recharge`,
   `wire` and `unwire`; a print's hold while its printer is dark; and what
   `low_power` does to a bot's body. Q59 has no entry here.
+- **The ground has a height that bots change, and water stands on it
+  (Q65).** The rulings are [03-world](03-world.md)'s and
+  [09-water](09-water.md)'s. This doc carries what they add to a machine:
+  the actions `dig`, `fill` and `mine`, the resource `earth`, the
+  attributes `flooded` and `pace`, what a `move` may do, and the damage
+  of a flood and a fall.
 
 ## A machine
 
@@ -317,6 +324,8 @@ writable except through an action.
 | `flat` | `bool` | whether the bot is out of power, from a call it could not pay for until it wakes (`08`, Q63); absent on a building |
 | `powered` | `bool` | whether the last power step powered the building or left it dark (`08`); `False` on a site; absent on a bot |
 | `grid` | `num`, integral, or `None` | the label of the grid the last power step found the building on (`08`); `None` on a site; absent on a bot |
+| `pace` | `num`, integral | what a bot has gained by keeping moving (`03`, Moving; Q65); absent on a building |
+| `flooded` | `bool` | whether the last water step left the machine flooded (`09`, Q65): a bot in more water than it wades, a building or a site on a wet tile |
 
 **Occupancy.** A tile holds at most one machine. A bot cannot move onto an
 occupied tile, a print needs a free adjacent tile, and a build needs a free
@@ -343,10 +352,10 @@ their `[game]` row plus `factor.traverse` per element returned
 |---|---|
 | `see()` | a list of **sightings**: every machine any of the team's machines sees now, each once, sorted by squared distance from the calling machine then by `id`. A sighting is a machine's attribute record. The team's own machines are always included. |
 | `hear()` | a list of **sounds** emitted during the previous tick that any of the team's machines hears, each once, sorted by squared distance from the calling machine, then by position, then by cause. A sound is a record `cause`, `pos`, `loudness`, `tick`. |
-| `tile(x, y)` | the tile's record for the team — `x` and `y`; `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain` as `03` defines it; `deposit`, a `dict` of resource kind to amount or `None` (`03`); `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, `wires`, the sorted team numbers with a wire on it (Q62), and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
+| `tile(x, y)` | the tile's record for the team — `x` and `y`; `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain`, `height`, `water`, `spring` and `sink` as `03` and `09` define them (Q65); `deposit`, a `dict` of resource kind to amount or `None` (`03`); `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, `wires`, the sorted team numbers with a wire on it (Q62), and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
 | `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle, clipped to the map, that is not unknown, sorted by row then column. |
 | `me()` | the calling machine's own attribute record. |
-| `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"`, `"building"` (Q27) or `"wire"` (Q62) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label, a model or `True` for a wire, or `None` for a plan to clear. |
+| `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"`, `"building"` (Q27), `"wire"` (Q62) or `"ground"` (Q65) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label, a model, `True` for a wire or a height for the ground, or `None` for a plan to clear. |
 | `painted(color)` | every tile the team sees or remembers whose paint is `color` — paint is the tile's, not a team's (Q28) — as `(x, y)` tuples, sorted by row then column. |
 | `overlaid(label)` | every tile the team sees or remembers whose overlay is `label`, as `(x, y)` tuples, sorted by row then column. |
 | `power()` | the team's grids as the last power step kept them (`08`): a list of records, one per grid, each `grid`, its label, and `generation`, `drain`, `stored` and `capacity`, sorted by `grid`. |
@@ -373,6 +382,7 @@ The causes, which are the `cause` strings a sound carries:
 | `"build"` | a bot placing a site, and a site completing |
 | `"deconstruct"` | a bot beginning a deconstruction |
 | `"attack"` | a bot beginning an attack |
+| `"dig"`, `"fill"`, `"mine"`, `"bonk"` | a bot beginning to dig, fill, mine or bonk (Q65) |
 
 Loudness per cause is in `data/machines.toml`. A sound never names its
 emitter.
@@ -409,7 +419,7 @@ A failed precondition takes none.
 
 | Action | Who | Does | Takes | Noisy |
 |---|---|---|---|---|
-| `move(dir)` | bot | `dir` one of `"n"`, `"e"`, `"s"`, `"w"`; the target tile must be passable (`03`) and unoccupied at the moment the move begins; the bot is on the target tile when the move completes, and occupies **both** tiles meanwhile for occupancy purposes | `move_ticks` | yes |
+| `move(dir)` | bot | `dir` one of `"n"`, `"e"`, `"s"`, `"w"`; the target tile must be a step or a drop from this one (`03`) and unoccupied at the moment the move begins — or hold a bot to bonk (`03`, Moving) — and the bot not `flooded` (`09`); the bot is on the target tile when the move completes, and occupies **both** tiles meanwhile for occupancy purposes | by pace (`03`) | yes |
 | `move_to(x, y)` | bot | **one step** toward `(x, y)`: of the adjacent tiles that are passable and unoccupied, the one with the least squared distance to `(x, y)`, ties in the order `n`, `e`, `s`, `w`; a `ValueError` if none qualifies or the bot is already there. A program that wants to arrive loops; there is no pathfinding, and a bot can be led into a dead end | `move_ticks` | yes |
 | `pick(kind)` | bot | from an adjacent deposit or depot — the nearest by squared distance, ties by lower `x` then `y` for deposits and lower `id` for depots, deposits before depots — take `min(pick_rate, available, free capacity)` of `kind`; the transfer happens when the action **completes**; a result of zero is a `ValueError` before it begins | `pick_ticks` | yes |
 | `drop(kind)` | bot | into the adjacent building or site with the most free capacity for `kind`, ties by lower `id`, transfer `min(load, free capacity)` on completion; a printer never qualifies; nothing adjacent with free capacity is a `ValueError` | `drop_ticks` | yes |
@@ -420,6 +430,9 @@ A failed precondition takes none.
 | `overlay(x, y)`, `unoverlay(x, y)` | bot | as `paint` and `unpaint`, for the overlay slot | `overlay_ticks`, `unoverlay_ticks` | no |
 | `wire(x, y)` | bot | `(x, y)` adjacent, `ground` (`03`) and without the team's wire, and the bot's load holding `wire_cost` (Q62); a load short of it is a `ValueError`. A tile carrying the team's wire plan to lay one is the usual target. On completion, if the tile still has no wire of the team's, the wire is laid, `wire_cost` leaves the load and the tile's plan to lay one, if any, is consumed; if another of the team's bots laid one first this tick, nothing happens and nothing is taken | `wire_ticks` | no |
 | `unwire(x, y)` | bot | `(x, y)` adjacent and carrying the team's own wire. On completion, if the wire is still there it is gone, nothing refunded, and the tile's wire plan to clear, if any, is consumed; if another of the team's bots removed it first this tick, nothing happens. Only the wire's team may do it | `unwire_ticks` | no |
+| `dig(x, y)` | bot | lower the adjacent tile `(x, y)` a level and take its earth into the load (Q65); `03`, Changing the ground, has what it needs and does | `dig_ticks` | yes |
+| `fill(x, y)` | bot | raise the adjacent tile `(x, y)` a level with earth from the load (Q65; `03`) | `fill_ticks` | yes |
+| `mine(x, y)` | bot | turn the adjacent `rock` tile `(x, y)` to ground at its height (Q65; `03`) | `mine_ticks` | yes |
 | `deconstruct(x, y)` | bot | `(x, y)` adjacent and holding a building or a site; on completion it is gone — its store and any print in progress lost, and its team's cap updated as on its death (Q24). Any team's bot may do it. A building plan whose value is `None` is realised by this action and consumed | the model's `deconstruct_ticks` | yes |
 | `build_nearest(model)` | bot | as `build`, on the nearest tile to the bot that is buildable and unoccupied, by squared distance, ties by lower `x` then `y`, within `build_reach` tiles; none is a `ValueError` | `0` | yes, twice |
 | `attack(id)` | bot | `id` a machine the team can currently see — a sighting's `id` — within `attack_range` by squared distance and in the attacker's line of sight (`03`); any team, the bot's own included; anything with health: a bot, a building, a site. On completion, if the target still exists and is still in range and sight, `attack_damage` is subtracted from its health in the tick's damage step (`06`), where hits on one target are summed before `dying` or `death` is raised (Q25); otherwise nothing | `attack_ticks` | yes |
@@ -492,7 +505,8 @@ own making — a fault in `on_dying` — escalates as the language rules and
 deals nothing. A tile is never destroyed (`03`), so damage is the only
 cause of `death` today.
 
-The causes of damage are three. **A fault costs `fault_damage` health**,
+The causes of damage are five. **A flooded machine loses `flood_damage`**
+each tick, and **a fallen bot `fall_damage`** a level (Q65; `09`, `03`). **A fault costs `fault_damage` health**,
 charged by the `fault` prologue beside the record it writes, so a program
 that faults on every restart dies after `health / fault_damage` faults
 instead of looping forever. **An attack costs `attack_damage`** (Q25), landed

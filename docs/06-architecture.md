@@ -197,16 +197,20 @@ loop:
    `on_low_power` waits at the call it could not pay for, though any
    other handler runs (`08`; Q62, Q63). Actions begun in a slice begin in this order, and actions
    completing on this tick complete in ascending entity id after every
-   slice has run.
-3. **Action completions**, in ascending entity id: moves land, transfers
+   slice has run. As the slices end, a bot that is not in a move has no
+   pace (Q65; `03`, Moving).
+3. **Action completions**, in ascending entity id: moves land, a bonk
+   puts the bot it hit a tile onward (Q65; `03`), transfers
    happen, prints count down and place bots, sites complete,
    deconstructions finish, recharges move charge, wires are laid and
-   removed (`02`); a dark building's main-flow action and a dark
+   removed (`02`), ground is dug, filled and mined (Q65; `03`); a dark building's main-flow action and a dark
    printer's print do not count down (`08`). A bot printed
    this tick has its first slice next tick.
 4. **Damage and death**: health changes from this tick's causes are applied
    — attacks that completed, and every powered printer's defence against
-   adjacent enemy bots (Q30; `08`) — `dying` and `death` are raised where Q24 says, and
+   adjacent enemy bots (Q30; `08`), what every machine the last water
+   step left flooded loses and what a bot that fell this tick loses
+   (Q65; `09`, `03`) — `dying` and `death` are raised where Q24 says, and
    `death` epilogues remove machines; a printer left at or below zero health
    loses its print in progress (`02`, Printing). Every machine whose `death`
    epilogue ran this tick — here, or earlier in its own step-2 slice — is
@@ -227,10 +231,14 @@ loop:
    inside this step is `08`'s, The power step, and is stated there alone.
    An out team has no grids. The match is built with its grids traced and
    every building powered at tick 0.
-7. **Regrowth**: every deposit grows (`03`).
+7. **Regrowth and water**: every deposit grows (`03`); then the water
+   step: springs run, water flows a tile, sinks run and thin water
+   dries, which sets each machine's `flooded` and darkens a flooded
+   building until the next (Q65; `09`). The match is built with its water as the
+   map gives it and nothing flooded.
 8. **The vision pass**: each team's visible tiles are computed, from every
-   machine of the team but a dark building (`08`), and their snapshots
-   refreshed (Q21).
+   machine of the team but a dark building (`08`), by line of sight over
+   the ground's heights (Q65; `03`), and their snapshots refreshed (Q21).
 9. **The state hash** over everything below.
 
 Nothing else happens in a tick. A rule that needs another step is a change
@@ -258,8 +266,9 @@ A **command** is:
   to load (`01`) — so the log holds only commands every peer would accept.
   A command that cannot apply *on its tick* — a `Mark` on a tile the sender
   has since lost the right to, or a paint, overlay or wire plan on a tile
-  that is not ground the sender has seen (Q49, Q62), a wire plan asking for
-  what the tile already has (`03`), a `Resign` from a team already out — is
+  that is not ground the sender has seen (Q49, Q62), a wire or ground plan
+  asking for what the tile already has, a ground plan on a tile the sender
+  has not seen or one with a deposit, a spring or a sink (Q65; `03`), a `Resign` from a team already out — is
   dropped in `sim.step` and recorded nowhere.
 - **The log is append-only and complete**: every command every peer ever
   applied, in order — a scripted team's commands (`04`) among them, since
@@ -289,7 +298,7 @@ value with no reference into the sim:
 |---|---|
 | `tick` | the tick just completed, and the speed in force — the driver's number, carried for the renderer, not the sim's |
 | `machines` | every machine's attribute record (`02`), the version of the bundle its program runs, which a deploy since may have left behind (Q11), plus its diagnostic log entries from this tick |
-| `tiles`, per team | every tile's record as that team sees it: state, terrain, deposit, paint, overlay, wires, building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is part of a grid (Q62; `08`) |
+| `tiles`, per team | every tile's record as that team sees it: state, terrain, height, water, spring and sink (Q65), deposit, paint, overlay, wires, building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is part of a grid (Q62; `08`) |
 | `sounds` | every sound emitted this tick, with its cause, position, loudness and tick |
 | `faults` | every machine's fault record (`01`) |
 | `teams` | each team's deployments, their bundles' versions, its cap, its bot count, and the figures of each of its grids as its last power step kept them (Q62; `08`) |
@@ -307,7 +316,8 @@ The hash is FNV-1a 64-bit over a canonical encoding of the world after step
 deployments, the version of each bundle, its cap, its print turn (Q42), its
 grids' figures in label order (Q62), its plans by tile in row-then-column order,
 its memory table by tile; every tile in row-then-column order — terrain,
-deposit, paint, overlay, its wires' teams in order (Q62); the next entity
+height and water (Q65), deposit, paint, overlay, its wires' teams in order
+(Q62); the ground water (Q65; `09`); the next entity
 id; every machine in ascending entity id — every attribute, whether it is
 `dying`, whether a bot is armed for `low_power` (Q62), its action in progress and `progress`, a site's construction ticks
 and the model it becomes, its store capacity, which for a site is its

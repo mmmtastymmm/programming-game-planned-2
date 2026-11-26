@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-22: 10 opened, 9 fixed — 1 open.**
+**Status 2026-11-24: 11 opened, 9 fixed — 2 open.**
 
 ## Open
 
@@ -51,3 +51,18 @@ conversion and never rechecked against deconstruction once Q42 made it the
 way to take a printer down. The user deferred retuning them to
 playtesting; this entry holds the arithmetic until then, and closes with
 the commit that changes the numbers or the rule.
+
+**P11 — The code lags Q65: no height, no digging, and water that is still terrain**
+
+Q65 ruled that every tile has a height bots change, and that water is a
+conserved volume standing on the ground; `02`, `03`, `06`, `07`, `08` and
+`09` state it as current. None of it is built. In the sim a tile has no
+height, a move tests only terrain and always takes the same ticks, no
+bot falls or is bonked, sight tests only rock, and `water` is
+a third terrain kind that never moves; there is no `dig`, `fill` or
+`mine`, no `earth`, no ground plan, no spring or sink, no water step and
+no `flooded`. The renderer draws a flat map with water as a sunken tile.
+The maps and the starter library know nothing of height. The work is
+[T43](TASKS.md), [T44](TASKS.md), [T45](TASKS.md), [T46](TASKS.md) and
+[T47](TASKS.md), and this entry closes with the commit that finishes the
+last of them.

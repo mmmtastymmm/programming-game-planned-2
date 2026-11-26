@@ -96,10 +96,14 @@ pass.
   grids, chargers, pylons and wire) and Q63 (a `low_power` that returns,
   and a bot out of power) are its Decided entries, and they are not
   repeated here.
-- **The world's ruling lives in [03-world](03-world.md)** — Q49 (paint,
+- **The world's rulings live in [03-world](03-world.md)** — Q49 (paint,
   overlays and, as Q62 extends it, wires only on ground the team has seen)
-  is its Decided entry, and it is not repeated here; Q21 and Q22, which
+  and Q65 (a height on every tile, and bots that dig, fill and mine) are
+  its Decided entries, and they are not repeated here; Q21 and Q22, which
   `03` cites, are `02`'s.
+- **Water's ruling lives in [09-water](09-water.md)** — Q65 (water as
+  small parts that flow a tile a tick, springs, sinks and the ground
+  water, and flooding) is its Decided entry, and it is not repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
   Q12 (scheduling), Q15 (the renderer), Q32 (the paused driver) and Q55
@@ -139,6 +143,7 @@ inserted without renumbering:
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 | `07` | Interface — the screen, the editor, how a fault reaches the player, how a machine on the map reads | — |
 | `08` | Power — batteries and charge, a bot's low power, grids and how they are served, dark buildings, pylons and wire | — |
+| `09` | Water — what stands on the ground and how it flows, springs, sinks and the ground water, wading and flooding | — |
 
 Each becomes a doorway plus a parts directory only when it outgrows one file
 (CLAUDE.md, *Splitting a doc*).
@@ -151,6 +156,7 @@ map from question to doc. **Every numbered doc is written** —
 [01-language](01-language.md), [02-machines](02-machines.md),
 [03-world](03-world.md), [04-opposition](04-opposition.md),
 [05-progression](05-progression.md), [06-architecture](06-architecture.md),
-[07-interface](07-interface.md) and [08-power](08-power.md) — and the table
+[07-interface](07-interface.md), [08-power](08-power.md) and
+[09-water](09-water.md) — and the table
 above, not this sentence, is the authority on what blocks the rest: earlier
 passes misread `01` as having a single blocker while it had three.
