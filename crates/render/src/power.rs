@@ -160,6 +160,7 @@ mod tests {
             state: TileState::Visible,
             seen_at: 1,
             terrain: Terrain::Ground,
+            height: sim::map::Height::default(),
             deposit: None,
             paint: None,
             overlay: None,

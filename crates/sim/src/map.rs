@@ -66,6 +66,68 @@ impl Terrain {
     }
 }
 
+/// A tile's height (`docs/03`, Height; Q65): a whole number of levels. It
+/// is its own type so that no bare number is taken for one, and the only
+/// way to make one from outside checks it against the most the tables
+/// allow, so a height out of range does not exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct Height(u8);
+
+impl Height {
+    /// `level`, if it is at most `max`.
+    pub fn new(level: u8, max: u8) -> Option<Height> {
+        (level <= max).then_some(Height(level))
+    }
+
+    pub fn level(self) -> u8 {
+        self.0
+    }
+
+    /// How the ground lies for something on a tile of this height that
+    /// looks to a tile of height `to`, where a step may cross `step`
+    /// levels.
+    pub fn slope_to(self, to: Height, step: u8) -> Slope {
+        let levels = self.0.abs_diff(to.0);
+        match to.0.cmp(&self.0) {
+            std::cmp::Ordering::Equal => Slope::Level,
+            std::cmp::Ordering::Greater if levels <= step => Slope::Up,
+            std::cmp::Ordering::Greater => Slope::Cliff,
+            std::cmp::Ordering::Less if levels <= step => Slope::Down,
+            std::cmp::Ordering::Less => Slope::Drop(levels),
+        }
+    }
+}
+
+/// How the ground lies between a tile and one beside it (`docs/03`, A
+/// step and A drop). Every rule that looks at two tiles — a move, where a
+/// printed bot appears, a map's check, and in time a move's ticks, a fall
+/// and what is drawn — matches on this, so that none can leave a case
+/// out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slope {
+    /// The same height.
+    Level,
+    /// Higher, by no more than a step.
+    Up,
+    /// Lower, by no more than a step.
+    Down,
+    /// Higher by more than a step: nothing climbs it.
+    Cliff,
+    /// Lower by more than a step, by this many levels: a fall.
+    Drop(u8),
+}
+
+impl Slope {
+    /// Whether a bot may **step** across it (`docs/03`): not up a cliff,
+    /// and not over a drop, which only a `move` that means to may take.
+    pub fn is_step(self) -> bool {
+        match self {
+            Slope::Level | Slope::Up | Slope::Down => true,
+            Slope::Cliff | Slope::Drop(_) => false,
+        }
+    }
+}
+
 /// A deposit as the map places it: per resource kind, an amount, a cap and
 /// a regrowth per tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +140,7 @@ pub struct DepositSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TileSpec {
     pub terrain: Terrain,
+    pub height: Height,
     pub deposit: Option<DepositSpec>,
 }
 
@@ -143,6 +206,30 @@ impl Map {
                 rows.len()
             )));
         }
+        // A height for every tile (Q65): a grid of digits shaped as the
+        // terrain is, or none, when every tile stands at the default and
+        // a `~` tile the lake's depth below it.
+        let hd = data.world.height;
+        let height_rows: Option<Vec<Vec<char>>> = match t.get("heights") {
+            None => None,
+            Some(v) => {
+                let text = v
+                    .as_str()
+                    .ok_or_else(|| err("`heights` is not a string".into()))?;
+                let lines: Vec<Vec<char>> = text
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| l.chars().collect())
+                    .collect();
+                if lines.len() != height as usize {
+                    return Err(err(format!(
+                        "`heights` has {} rows, `height` is {height}",
+                        lines.len()
+                    )));
+                }
+                Some(lines)
+            }
+        };
         let default_dep = t
             .get("deposit_default")
             .map(|v| deposit_of(v, data))
@@ -166,6 +253,7 @@ impl Map {
         let mut tiles = vec![
             TileSpec {
                 terrain: Terrain::Ground,
+                height: Height::default(),
                 deposit: None
             };
             (width as usize).saturating_mul(height as usize)
@@ -178,6 +266,15 @@ impl Map {
                     "`terrain` row {} has {} columns, `width` is {width}",
                     row_from_north.saturating_add(1),
                     chars.len()
+                )));
+            }
+            if let Some(hr) = &height_rows
+                && hr[row_from_north].len() != width as usize
+            {
+                return Err(err(format!(
+                    "`heights` row {} has {} columns, `width` is {width}",
+                    row_from_north.saturating_add(1),
+                    hr[row_from_north].len()
                 )));
             }
             let y = (height as i64)
@@ -214,8 +311,29 @@ impl Map {
                 } else {
                     None
                 };
+                let level = match &height_rows {
+                    Some(hr) => {
+                        let digit = hr[row_from_north][col];
+                        digit
+                            .to_digit(10)
+                            .map(|d| d as u8)
+                            .ok_or_else(|| err(format!("`heights` holds `{digit}`, not a digit")))?
+                    }
+                    None if terrain == Terrain::Water => hd.default.saturating_sub(hd.lake_depth),
+                    None => hd.default,
+                };
+                let tile_height = Height::new(level, hd.max).ok_or_else(|| {
+                    err(format!(
+                        "the height {level} at ({x}, {y}) is above `height.max`, {}",
+                        hd.max
+                    ))
+                })?;
                 let idx = index(pos, width, height).ok_or_else(|| err("index".into()))?;
-                tiles[idx] = TileSpec { terrain, deposit };
+                tiles[idx] = TileSpec {
+                    terrain,
+                    height: tile_height,
+                    deposit,
+                };
             }
         }
         let teams_v = get("team")?
@@ -255,7 +373,7 @@ impl Map {
 
     /// `docs/03`'s validity: every starting tile buildable, no two the
     /// same, every team with at least one, every start able to reach a
-    /// deposit over passable terrain.
+    /// deposit by steps a bot may take.
     fn validate(&self, data: &Data) -> Result<(), DataError> {
         let err = |m: String| DataError {
             file: "map",
@@ -303,6 +421,10 @@ impl Map {
             for n in p.neighbours() {
                 if let Some(nt) = self.tile(n)
                     && data.world.terrain[nt.terrain.name()].passable
+                    && tile
+                        .height
+                        .slope_to(nt.height, data.world.height.step)
+                        .is_step()
                     && seen.insert(n)
                 {
                     queue.push_back(n);

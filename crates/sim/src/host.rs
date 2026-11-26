@@ -299,7 +299,7 @@ impl<'a> GameHost<'a> {
     }
 
     fn move_to_tile(&mut self, to: TilePos) -> R<HostCall> {
-        if !self.world.passable(to) || self.world.occupied(to) {
+        if !self.world.steps(self.pos(), to) || self.world.occupied(to) {
             return Err(value_error());
         }
         let ticks = self.model_data().move_ticks;
@@ -335,7 +335,7 @@ impl<'a> GameHost<'a> {
         }
         let mut best: Option<(i64, TilePos)> = None;
         for n in here.neighbours() {
-            if self.world.passable(n) && !self.world.occupied(n) {
+            if self.world.steps(here, n) && !self.world.occupied(n) {
                 let d = n.dist2(target);
                 if best.is_none_or(|(bd, _)| d < bd) {
                     best = Some((d, n));

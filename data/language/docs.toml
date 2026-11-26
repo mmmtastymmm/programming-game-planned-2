@@ -28,7 +28,9 @@ it."""
 signature = "tile(x: int, y: int) -> Tile | None"
 doc = """
 The tile at (x, y) as your team knows it: `state` ("visible" or
-"remembered"), `terrain`, `deposit`, `building`, `paint`, `overlay`,
+"remembered"), `terrain`, `height` (its level, a whole number; a bot
+steps between tiles at most one level apart), `deposit`, `building`,
+`paint`, `overlay`,
 `wires` (the numbers of the teams with a wire under it), `plans` and
 `seen_at`. None for a tile your team has never seen."""
 
