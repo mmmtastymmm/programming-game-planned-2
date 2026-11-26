@@ -33,6 +33,9 @@ pub struct TileLook {
     /// Whether that water counts (`docs/09`): drawn as a sheet at its
     /// surface.
     pub wet: bool,
+    /// Whether a spring is here, or a sink (`docs/09`).
+    pub spring: bool,
+    pub sink: bool,
     pub ore: bool,
     pub mask: u8,
     pub paint: Option<String>,
@@ -396,6 +399,8 @@ fn look_of(
         height: mem.height.level(),
         water: mem.water,
         wet,
+        spring: mem.spring.is_some(),
+        sink: mem.sink.is_some(),
         ore,
         mask,
         paint: mem.paint.clone(),
@@ -834,8 +839,47 @@ fn spawn_tile(
     // Water (Q65): a see-through sheet at its surface, over everything
     // that lies on the ground; a mesh of its own, since it covers paint,
     // plans and markers that are see-through too.
+    let depth = look.water as f32 / water_parts.max(1) as f32 * LEVEL_RISE;
+    // A spring and a sink (Q65): a ring on the ground, and a cone that
+    // floats above the water's surface however deep it stands — point up
+    // where water comes up, point down where it goes down.
+    if look.spring || look.sink {
+        let live = if look.spring {
+            palette.spring_mat.clone()
+        } else {
+            palette.sink_mat.clone()
+        };
+        let marker = mat(palette, live);
+        let turn = if look.spring {
+            Quat::IDENTITY
+        } else {
+            Quat::from_rotation_x(std::f32::consts::PI)
+        };
+        for (mesh, y, rotation) in [
+            (
+                palette.source_ring.clone(),
+                ground + SLAB_HALF + 0.02,
+                Quat::IDENTITY,
+            ),
+            (
+                palette.source_cone.clone(),
+                ground + SLAB_HALF + depth + 0.32,
+                turn,
+            ),
+        ] {
+            out.push(
+                commands
+                    .spawn((
+                        DespawnOnEnter(Screen::Start),
+                        Mesh3d(mesh),
+                        MeshMaterial3d(marker.clone()),
+                        Transform::from_translation(frame.tile_xyz(p, y)).with_rotation(rotation),
+                    ))
+                    .id(),
+            );
+        }
+    }
     if look.wet && look.terrain == Terrain::Ground {
-        let depth = look.water as f32 / water_parts.max(1) as f32 * LEVEL_RISE;
         let sheet = mat(palette, palette.water_mat.clone());
         out.push(
             commands

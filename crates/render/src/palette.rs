@@ -435,6 +435,11 @@ pub struct Palette {
     /// over paint, plans and markers, so a mesh of its own
     /// (`crates/render/CLAUDE.md`).
     pub water_sheet: Handle<Mesh>,
+    /// A spring's and a sink's marker (Q65): a cone that floats at the
+    /// water's surface, point up for a spring and down for a sink, over
+    /// a ring on the ground.
+    pub source_cone: Handle<Mesh>,
+    pub source_ring: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
@@ -495,6 +500,10 @@ pub struct Palette {
     /// The earth under a raised tile, and water (Q65).
     pub earth_mat: Handle<StandardMaterial>,
     pub water_mat: Handle<StandardMaterial>,
+    /// A spring's marker, pale and bright, and a sink's, amber: neither
+    /// is water's blue, and each glows, so that it reads under water.
+    pub spring_mat: Handle<StandardMaterial>,
+    pub sink_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -644,6 +653,8 @@ impl Palette {
             pylon_mast: meshes.add(Cylinder::new(0.05, 0.9)),
             power_quad: meshes.add(Rectangle::new(0.42, 0.42)),
             water_sheet: meshes.add(Cuboid::new(1.0, 0.012, 1.0)),
+            source_cone: meshes.add(Cone::new(0.2, 0.34)),
+            source_ring: meshes.add(Torus::new(0.3, 0.38)),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
             ground_frames,
             water_mats,
@@ -731,6 +742,16 @@ impl Palette {
                 base_color: Color::srgba(0.2, 0.5, 0.85, 0.6),
                 alpha_mode: AlphaMode::Blend,
                 perceptual_roughness: 0.15,
+                ..default()
+            }),
+            spring_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.75, 1.0, 0.95),
+                unlit: true,
+                ..default()
+            }),
+            sink_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(1.0, 0.6, 0.15),
+                unlit: true,
                 ..default()
             }),
             bolt_mat: materials.add(StandardMaterial {

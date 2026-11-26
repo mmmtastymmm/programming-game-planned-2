@@ -23,14 +23,21 @@ step = 1
 
 [water]
 # water is counted in parts, parts of them to a level of height (Q65,
-# docs/09); a tile is wet from wet parts up and damp below; a tile holding
-# film parts or fewer dries into the ground water; a bot wades up to wade
-# parts; a map's spring or sink moves at most max_rate parts a tick
-parts = 100
-wet = 10
+# docs/09): how finely it is counted, and nothing else. wet, wade and
+# max_rate are in levels, so that changing parts changes none of them: a
+# tile is wet from wet levels of water up and damp below; a bot wades up
+# to wade levels; a map's spring or sink moves at most max_rate levels a
+# tick. film is in parts, since it is the rounding it clears up: a tile
+# holding film parts or fewer, and given none, dries into the ground
+# water. The flow runs passes times in a tick, so water moves up to
+# passes tiles a tick and a slope carries passes times what one pass
+# would.
+parts = 1000
+wet = "0.1"
 film = 4
-wade = 100
-max_rate = 100
+wade = 1
+max_rate = 1
+passes = 4
 
 [deposit.ore]
 # a map may set a deposit's cap and regrowth per tile up to these

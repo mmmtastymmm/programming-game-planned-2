@@ -144,6 +144,12 @@ pub struct TileSpec {
     /// A spring's rate, parts a tick, if one is here; and a sink's.
     pub spring: Option<u32>,
     pub sink: Option<u32>,
+    /// The spring's head, if it has one (`docs/09`): the surface, in
+    /// parts, it will not raise the water on its own tile above. And the
+    /// sink's sill, if it has one: the surface it will not take the
+    /// water on its own tile below.
+    pub head: Option<u32>,
+    pub sill: Option<u32>,
     pub deposit: Option<DepositSpec>,
 }
 
@@ -157,7 +163,8 @@ pub struct Map {
     pub tiles: Vec<TileSpec>,
     /// Each team's starting tiles, in team order; a printer stands on each.
     pub teams: Vec<Vec<TilePos>>,
-    /// The ground water the match begins with, in parts (`docs/09`).
+    /// The ground water the match begins with, in parts (`docs/09`); a
+    /// map writes it in levels.
     pub ground_water: u64,
     /// The file's bytes, for the replay's identity.
     pub source: String,
@@ -262,6 +269,8 @@ impl Map {
                 water: 0,
                 spring: None,
                 sink: None,
+                head: None,
+                sill: None,
                 deposit: None
             };
             (width as usize).saturating_mul(height as usize)
@@ -345,6 +354,8 @@ impl Map {
                     water: 0,
                     spring: None,
                     sink: None,
+                    head: None,
+                    sill: None,
                     deposit,
                 };
                 lake[idx] = under_water;
@@ -365,13 +376,12 @@ impl Map {
                 )?;
                 let rate = entry
                     .get("rate")
-                    .and_then(toml::Value::as_integer)
-                    .and_then(|r| u32::try_from(r).ok())
+                    .and_then(|v| surface_in_parts(v, data))
                     .filter(|r| *r >= 1 && *r <= data.world.water.max_rate)
                     .ok_or_else(|| {
                         err(format!(
-                            "the {key} at ({}, {}) needs a whole `rate` from 1 to `water.max_rate`, {}",
-                            at.x, at.y, data.world.water.max_rate
+                            "the {key} at ({}, {}) needs a `rate` in levels a tick, of at least a part and at most `water.max_rate`",
+                            at.x, at.y
                         ))
                     })?;
                 let idx = index(at, width, height).ok_or_else(|| {
@@ -388,19 +398,67 @@ impl Map {
                         at.x, at.y
                     )));
                 }
+                let ground = u32::from(tile.height.level()).saturating_mul(data.world.water.parts);
+                // A spring may have a head: a height above its own tile's
+                // that it will not raise its water past.
+                let head = match entry.get("head") {
+                    None => None,
+                    Some(_) if !is_spring => {
+                        return Err(err(format!(
+                            "the sink at ({}, {}) has a `head`, which only a spring has",
+                            at.x, at.y
+                        )));
+                    }
+                    Some(v) => Some(
+                        surface_in_parts(v, data)
+                            .filter(|h| *h > ground)
+                            .ok_or_else(|| {
+                                err(format!(
+                                    "the spring at ({}, {}) needs a `head` in levels above its tile's height, {}",
+                                    at.x,
+                                    at.y,
+                                    tile.height.level()
+                                ))
+                            })?,
+                    ),
+                };
+                // A sink may have a sill: a level, at or above its own
+                // tile's, that it will not take its water below.
+                let sill = match entry.get("sill") {
+                    None => None,
+                    Some(_) if is_spring => {
+                        return Err(err(format!(
+                            "the spring at ({}, {}) has a `sill`, which only a sink has",
+                            at.x, at.y
+                        )));
+                    }
+                    Some(v) => Some(
+                        surface_in_parts(v, data)
+                            .filter(|h| *h >= ground)
+                            .ok_or_else(|| {
+                                err(format!(
+                                    "the sink at ({}, {}) needs a `sill` in levels at or above its tile's height, {}",
+                                    at.x,
+                                    at.y,
+                                    tile.height.level()
+                                ))
+                            })?,
+                    ),
+                };
                 if is_spring {
                     tile.spring = Some(rate);
+                    tile.head = head;
                 } else {
                     tile.sink = Some(rate);
+                    tile.sill = sill;
                 }
             }
         }
         let ground_water = match t.get("ground_water") {
             None => 0,
-            Some(v) => v
-                .as_integer()
-                .and_then(|n| u64::try_from(n).ok())
-                .ok_or_else(|| err("`ground_water` is not a whole number of parts".into()))?,
+            Some(v) => surface_in_parts(v, data).map(u64::from).ok_or_else(|| {
+                err("`ground_water` is not an amount in levels that comes to whole parts".into())
+            })?,
         };
         let teams_v = get("team")?
             .as_array()
@@ -552,6 +610,22 @@ impl Map {
             ),
         )
     }
+}
+
+/// An amount of water as a map writes it — a head, a sill, a rate, the
+/// ground water — in levels, whole or a decimal in a string as the tables
+/// write one, that comes to a whole number of parts. Returned in parts.
+/// Written in levels so that a map means the same however finely the
+/// tables count water.
+fn surface_in_parts(v: &toml::Value, data: &Data) -> Option<u32> {
+    let levels = match v {
+        toml::Value::Integer(i) => Num::from_int(i128::from(*i)).ok()?,
+        toml::Value::String(s) => Num::parse_literal(s)?,
+        _ => return None,
+    };
+    let parts = Num::from_int(i128::from(data.world.water.parts)).ok()?;
+    let surface = levels.checked_mul(parts).ok()?.as_integral()?;
+    u32::try_from(surface).ok()
 }
 
 /// `docs/09`, The map's water: each set of `~` tiles joined by adjacency

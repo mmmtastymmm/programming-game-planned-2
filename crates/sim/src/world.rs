@@ -81,6 +81,10 @@ pub struct Tile {
     pub water: u32,
     pub spring: Option<u32>,
     pub sink: Option<u32>,
+    /// A spring's head, and a sink's sill, where they have one
+    /// (`docs/09`): each a surface, in parts.
+    pub head: Option<u32>,
+    pub sill: Option<u32>,
     pub deposit: Option<Deposit>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
@@ -409,11 +413,14 @@ pub struct TileMemory {
     pub terrain: Terrain,
     /// The tile's height as last seen (Q65).
     pub height: Height,
-    /// Its water as last seen, and the spring and the sink on it, which
-    /// never change once seen (`docs/09`).
+    /// Its water as last seen, and the spring and the sink on it, with
+    /// the one's head and the other's sill, which never change once seen
+    /// (`docs/09`).
     pub water: u32,
     pub spring: Option<u32>,
     pub sink: Option<u32>,
+    pub head: Option<u32>,
+    pub sill: Option<u32>,
     pub deposit: Option<BTreeMap<String, Num>>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
@@ -556,6 +563,8 @@ impl World {
                 water: t.water,
                 spring: t.spring,
                 sink: t.sink,
+                head: t.head,
+                sill: t.sill,
                 deposit: t.deposit.as_ref().map(|d| Deposit {
                     amount: d.amount.clone(),
                     cap: d.cap.clone(),
@@ -628,6 +637,8 @@ impl World {
                     water: 0,
                     spring: None,
                     sink: None,
+                    head: None,
+                    sill: None,
                     deposit: None,
                     paint: None,
                     overlay: None,

@@ -155,6 +155,8 @@ pub struct WaterData {
     pub wade: u32,
     /// The most a map may give a spring or a sink, parts a tick.
     pub max_rate: u32,
+    /// How many times the flow runs in a tick.
+    pub passes: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -569,17 +571,41 @@ impl WorldData {
             let v = uint(FILE, &name, get(FILE, water_t, key)?)?;
             u32::try_from(v).map_err(|_| err(FILE, format!("`{name}` is too large")))
         };
+        // `wet`, `wade` and `max_rate` are written in levels and kept in
+        // parts, each a whole number of them.
+        let per_level = parts("parts")?;
+        let levels = |key: &str| -> D<u32> {
+            let name = format!("water.{key}");
+            let amount = num(FILE, &name, get(FILE, water_t, key)?)?;
+            Num::from_int(i128::from(per_level))
+                .and_then(|p| amount.checked_mul(p))
+                .ok()
+                .and_then(Num::as_integral)
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| {
+                    err(
+                        FILE,
+                        format!(
+                            "`{name}` is not a whole number of parts, at `water.parts` to a level"
+                        ),
+                    )
+                })
+        };
         let water = WaterData {
-            parts: parts("parts")?,
-            wet: parts("wet")?,
+            parts: per_level,
+            wet: levels("wet")?,
             film: parts("film")?,
-            wade: parts("wade")?,
-            max_rate: parts("max_rate")?,
+            wade: levels("wade")?,
+            max_rate: levels("max_rate")?,
+            passes: parts("passes")?,
         };
         // `docs/09`, Data: water thin enough to dry is never wet, and
         // what a bot wades is water. A level of nothing is no level.
         if water.parts == 0 {
             return Err(err(FILE, "`water.parts` is zero"));
+        }
+        if water.passes == 0 {
+            return Err(err(FILE, "`water.passes` is zero"));
         }
         if water.film >= water.wet {
             return Err(err(FILE, "`water.film` is not below `water.wet`"));

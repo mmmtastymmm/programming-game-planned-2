@@ -135,6 +135,47 @@ pub fn machine_lines(r: &MachineRecord, battery: Option<lang::Num>) -> Vec<Strin
     out
 }
 
+/// The inspector's lines on a tile's ground (`docs/07`; Q65): its height
+/// and the water on it, in levels, and a spring's or a sink's rate with
+/// its head or its sill. `parts` is how many parts of water stand a level
+/// deep.
+pub fn ground_lines(mem: &TileMemory, parts: u32) -> Vec<String> {
+    let mut out = Vec::new();
+    let height = mem.height.level();
+    let parts = parts.max(1);
+    // An amount of parts as levels, to the hundredth.
+    let levels = |amount: u32| format!("{}.{:02}", amount / parts, amount % parts * 100 / parts);
+    if mem.water == 0 {
+        out.push(format!("height {height}"));
+    } else {
+        out.push(format!(
+            "height {height} · water {} deep",
+            levels(mem.water)
+        ));
+    }
+    if let Some(rate) = mem.spring {
+        out.push(match mem.head {
+            Some(head) => format!(
+                "spring: {} a tick, up to height {}",
+                levels(rate),
+                levels(head)
+            ),
+            None => format!("spring: {} a tick", levels(rate)),
+        });
+    }
+    if let Some(rate) = mem.sink {
+        out.push(match mem.sill {
+            Some(sill) => format!(
+                "drain: {} a tick, down to height {}",
+                levels(rate),
+                levels(sill)
+            ),
+            None => format!("drain: {} a tick", levels(rate)),
+        });
+    }
+    out
+}
+
 /// The inspector's line on one of the player's own grids: its generation
 /// and drain per second, and its stored charge against its capacity.
 pub fn grid_line(g: &GridFigures, speed: u64) -> String {
@@ -164,6 +205,8 @@ mod tests {
             water: 0,
             spring: None,
             sink: None,
+            head: None,
+            sill: None,
             deposit: None,
             paint: None,
             overlay: None,
@@ -287,6 +330,38 @@ mod tests {
         );
         bot.flat = Some(false);
         assert_eq!(machine_lines(&bot, Some(num("100"))).len(), 1);
+    }
+
+    #[test]
+    fn the_inspector_says_a_tiles_height_its_water_and_what_feeds_or_drains_it() {
+        let at = TilePos::new(0, 0);
+        let mut dry = tile(&[], None, at);
+        dry.height = sim::map::Height::new(5, 9).unwrap();
+        assert_eq!(ground_lines(&dry, 100), ["height 5"]);
+        // Water in levels, to the hundredth.
+        let mut wet = dry.clone();
+        wet.water = 168;
+        assert_eq!(ground_lines(&wet, 100), ["height 5 · water 1.68 deep"]);
+        wet.water = 5;
+        assert_eq!(ground_lines(&wet, 100), ["height 5 · water 0.05 deep"]);
+        // A spring with a head, and one without.
+        let mut spring = wet.clone();
+        (spring.spring, spring.head) = (Some(40), Some(700));
+        assert_eq!(
+            ground_lines(&spring, 100)[1],
+            "spring: 0.40 a tick, up to height 7.00"
+        );
+        spring.head = None;
+        assert_eq!(ground_lines(&spring, 100)[1], "spring: 0.40 a tick");
+        // A drain with a sill, and one without.
+        let mut drain = dry.clone();
+        (drain.sink, drain.sill) = (Some(25), Some(690));
+        assert_eq!(
+            ground_lines(&drain, 100),
+            ["height 5", "drain: 0.25 a tick, down to height 6.90"]
+        );
+        drain.sill = None;
+        assert_eq!(ground_lines(&drain, 100)[1], "drain: 0.25 a tick");
     }
 
     #[test]
