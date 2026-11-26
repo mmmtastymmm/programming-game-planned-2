@@ -56,6 +56,33 @@ def try_wire(x: int, y: int) -> bool:
         return False
 
 
+def try_dig(x: int, y: int) -> bool:
+    """Lower the adjacent tile (x, y) a level; its earth joins the load."""
+    try:
+        dig(x, y)
+        return True
+    except ValueError:
+        return False
+
+
+def try_fill(x: int, y: int) -> bool:
+    """Raise the adjacent tile (x, y) a level with earth from the load."""
+    try:
+        fill(x, y)
+        return True
+    except ValueError:
+        return False
+
+
+def try_mine(x: int, y: int) -> bool:
+    """Turn the adjacent rock tile (x, y) into ground."""
+    try:
+        mine(x, y)
+        return True
+    except ValueError:
+        return False
+
+
 def try_unwire(x: int, y: int) -> bool:
     """Remove the team's wire from the adjacent tile (x, y)."""
     try:

@@ -225,6 +225,14 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
                     _ => Value::None,
                 },
             ),
+            // A ground plan reads the height it asks for (Q65).
+            (
+                Value::str("ground"),
+                match &plans.ground {
+                    Some(crate::world::Plan::Set(v)) => v.parse::<i128>().map_or(Value::None, int),
+                    _ => Value::None,
+                },
+            ),
         ];
         Value::Dict(Rc::new(DictObj {
             id: world.host_object_id(),

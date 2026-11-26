@@ -118,6 +118,12 @@ def charge_sources() -> list[tuple[int, int]]:
     return found
 
 
+def earth_sources() -> list[tuple[int, int]]:
+    """The team's depots holding earth, which a fill is fed from. No
+    deposit holds earth: digging is where it comes from."""
+    return [m.pos for m in machines("depot", me().team) if m.store["earth"] > 0]
+
+
 def ore_sources() -> list[tuple[int, int]]:
     """Every place a bot can pick ore: deposits with ore left, and the
     team's depots holding some. Costs a pass over every seen tile."""

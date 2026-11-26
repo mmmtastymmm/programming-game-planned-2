@@ -660,6 +660,15 @@ fn spawn_plans(
         };
         spawn(mesh, mat, at.with_scale(Vec3::splat(scale)));
     }
+    if plans.ground.is_some() {
+        // A ground plan (Q65): a see-through frame on the tile, the color
+        // of earth, with the height it asks for as a label over it.
+        spawn(
+            palette.ground_plan_frame.clone(),
+            palette.ground_plan_mat.clone(),
+            Transform::from_translation(frame.tile_xyz(p, surface + WIRE_LIFT + 0.04)),
+        );
+    }
     if let Some(plan) = &plans.wire {
         // A see-through line across the tile in the team's color for a
         // wire to lay, and the same line hatched for one to take up (Q62).

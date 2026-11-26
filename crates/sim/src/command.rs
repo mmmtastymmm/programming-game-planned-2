@@ -17,6 +17,8 @@ pub enum PlanKind {
     Building,
     /// The team's underground wire, to lay or to clear (Q62).
     Wire,
+    /// A height the team wants a tile brought to (Q65).
+    Ground,
 }
 
 impl PlanKind {
@@ -26,6 +28,7 @@ impl PlanKind {
             PlanKind::Overlay => "overlay",
             PlanKind::Building => "building",
             PlanKind::Wire => "wire",
+            PlanKind::Ground => "ground",
         }
     }
 
@@ -35,6 +38,7 @@ impl PlanKind {
             "overlay" => Some(PlanKind::Overlay),
             "building" => Some(PlanKind::Building),
             "wire" => Some(PlanKind::Wire),
+            "ground" => Some(PlanKind::Ground),
             _ => None,
         }
     }

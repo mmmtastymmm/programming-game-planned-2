@@ -9,7 +9,7 @@ use crate::host::GameHost;
 use crate::map::{Map, TilePos};
 use crate::sense;
 use crate::world::{
-    Effect, EntityId, LoadedBundle, MachineRecord, Model, PickSource, Plan, Roster, Slot,
+    EARTH, Effect, EntityId, LoadedBundle, MachineRecord, Model, PickSource, Plan, Roster, Slot,
     TileState, WIRE, World,
 };
 use lang::data::{COSTS_TOML, LIMITS_TOML};
@@ -109,6 +109,11 @@ impl Sim {
             PlanKind::Overlay => data.world.overlays.clone(),
             // A wire has no kinds: the one value is the plan to lay one.
             PlanKind::Wire => vec![WIRE.to_string()],
+            // A ground plan's value is a height (Q65), written as its
+            // number: every one the tables allow.
+            PlanKind::Ground => (0..=data.world.height.max)
+                .map(|level| level.to_string())
+                .collect(),
         }
     }
 
@@ -147,6 +152,19 @@ impl Sim {
                     }
                     (PlanKind::Overlay, Some(v)) if !w.data.world.overlays.contains(v) => {
                         Err(format!("`{v}` is not an overlay label"))
+                    }
+                    (PlanKind::Ground, Some(v))
+                        if v.parse::<u8>()
+                            .ok()
+                            .is_none_or(|l| l > w.data.world.height.max || l.to_string() != *v) =>
+                    {
+                        Err(format!(
+                            "`{v}` is not a height from 0 to {}",
+                            w.data.world.height.max
+                        ))
+                    }
+                    (PlanKind::Ground, None) => {
+                        Err("a ground plan has no plan to clear: withdraw it with an unmark".into())
                     }
                     _ => Ok(()),
                 }
@@ -322,6 +340,17 @@ impl Sim {
                 // dropped, so every wire plan is one a bot can carry out
                 // (`docs/03`).
                 if *plan == PlanKind::Wire && w.has_wire(c.sender, *at) == matches!(p, Plan::Set(_))
+                {
+                    return Err(());
+                }
+                // A ground plan for the height the tile's ground already
+                // has is dropped the same way (`docs/03`, The ground plan).
+                if *plan == PlanKind::Ground
+                    && let Plan::Set(v) = &p
+                    && w.tile(*at).is_some_and(|t| {
+                        t.terrain == crate::map::Terrain::Ground
+                            && v.parse::<u8>().ok() == Some(t.height.level())
+                    })
                 {
                     return Err(());
                 }
@@ -701,6 +730,60 @@ impl Sim {
                     w.tidy_plans(at);
                 }
             }
+            // The ground (Q65; `docs/03`, Changing the ground): each takes
+            // effect only if the tile still meets what it met when the
+            // action began.
+            Effect::Dig { at } => {
+                let team = w.machines[&id].team;
+                let earth = Num::from_int(i128::from(w.data.world.height.earth_per_level))
+                    .unwrap_or(Num::ZERO);
+                let room = w.machines.get(&id).is_some_and(|m| {
+                    let cap = w.data.model("bot").capacity.get(EARTH).copied();
+                    let held = m.load.get(EARTH).copied().unwrap_or(Num::ZERO);
+                    cap.is_some_and(|c| held.checked_add(earth).is_ok_and(|n| n <= c))
+                });
+                let ground = w
+                    .tile(at)
+                    .is_some_and(|t| t.terrain == crate::map::Terrain::Ground);
+                if ground && room && w.clear(at) && w.shift_height(at, false) {
+                    if let Some(m) = w.machines.get_mut(&id) {
+                        let l = m.load.entry(EARTH.to_string()).or_insert(Num::ZERO);
+                        *l = l.checked_add(earth).unwrap_or(Num::MAX);
+                    }
+                    w.settle_ground_plan(team, at);
+                }
+            }
+            Effect::Fill { at } => {
+                let team = w.machines[&id].team;
+                let earth = Num::from_int(i128::from(w.data.world.height.earth_per_level))
+                    .unwrap_or(Num::ZERO);
+                let has = w
+                    .machines
+                    .get(&id)
+                    .is_some_and(|m| m.load.get(EARTH).copied().unwrap_or(Num::ZERO) >= earth);
+                let ground = w
+                    .tile(at)
+                    .is_some_and(|t| t.terrain == crate::map::Terrain::Ground);
+                if ground && has && w.clear(at) && w.shift_height(at, true) {
+                    if let Some(m) = w.machines.get_mut(&id) {
+                        let l = m.load.entry(EARTH.to_string()).or_insert(Num::ZERO);
+                        *l = l.checked_sub(earth).unwrap_or(Num::ZERO).max(Num::ZERO);
+                    }
+                    w.settle_ground_plan(team, at);
+                }
+            }
+            Effect::Mine { at } => {
+                let team = w.machines[&id].team;
+                if let Some(idx) = w.tile_index(at)
+                    && w.tiles[idx].terrain == crate::map::Terrain::Rock
+                {
+                    w.tiles[idx].terrain = crate::map::Terrain::Ground;
+                    // The rock was a wall to water and to sight.
+                    w.stir(idx);
+                    w.sight_changed();
+                    w.settle_ground_plan(team, at);
+                }
+            }
             Effect::Wait => {}
         }
         Value::None
@@ -1035,7 +1118,7 @@ impl Sim {
             h.write_u64(planned.len() as u64);
             for (p, pl) in planned {
                 write_pos(&mut h, *p);
-                for plan in [&pl.paint, &pl.overlay, &pl.building, &pl.wire] {
+                for plan in [&pl.paint, &pl.overlay, &pl.building, &pl.wire, &pl.ground] {
                     match plan {
                         None => h.write_u8(0),
                         Some(Plan::Clear) => h.write_u8(1),

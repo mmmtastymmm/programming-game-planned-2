@@ -110,3 +110,7 @@ wires = 2
 recharge = 1
 wire = 1
 unwire = 1
+# the ground (Q65, docs/03)
+dig = 1
+fill = 1
+mine = 1

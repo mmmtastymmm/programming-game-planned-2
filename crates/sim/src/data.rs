@@ -74,6 +74,11 @@ pub struct ModelData {
     pub wire_cost: BTreeMap<String, Num>,
     pub wire_ticks: u64,
     pub unwire_ticks: u64,
+    /// The ticks to dig a tile down a level, to fill one up a level and
+    /// to mine a rock away (`docs/03`, Changing the ground).
+    pub dig_ticks: u64,
+    pub fill_ticks: u64,
+    pub mine_ticks: u64,
     /// How far a pylon joins, in tiles by squared distance.
     pub span: i64,
 }
@@ -139,6 +144,8 @@ pub struct HeightData {
     pub default: u8,
     pub lake_depth: u8,
     pub step: u8,
+    /// The earth a level of a tile is, dug or filled.
+    pub earth_per_level: u8,
 }
 
 /// `[water]` (`docs/09`; Q65): how water is counted and what its amounts
@@ -332,6 +339,9 @@ impl MachinesData {
                     "wire_cost" => d.wire_cost = num_map(FILE, &key(k), v)?,
                     "wire_ticks" => d.wire_ticks = uint(FILE, &key(k), v)?,
                     "unwire_ticks" => d.unwire_ticks = uint(FILE, &key(k), v)?,
+                    "dig_ticks" => d.dig_ticks = uint(FILE, &key(k), v)?,
+                    "fill_ticks" => d.fill_ticks = uint(FILE, &key(k), v)?,
+                    "mine_ticks" => d.mine_ticks = uint(FILE, &key(k), v)?,
                     "span" => d.span = int(FILE, &key(k), v)?,
                     other => {
                         return Err(err(
@@ -544,6 +554,7 @@ impl WorldData {
             default: level("default")?,
             lake_depth: level("lake_depth")?,
             step: level("step")?,
+            earth_per_level: level("earth_per_level")?,
         };
         // A map writes a height as one digit; a default no tile could
         // stand at, a lake below the lowest level, and a step of nothing
@@ -672,7 +683,7 @@ mod tests {
     #[test]
     fn the_shipped_tables_load() {
         let d = Data::load().expect("data");
-        assert_eq!(d.machines.kinds, ["ore"]);
+        assert_eq!(d.machines.kinds, ["ore", "earth"]);
         assert_eq!(d.machines.colors[0], "red");
         assert_eq!(d.model("bot").move_ticks, 2);
         assert_eq!(d.model("printer").defence_damage, Num::ONE);

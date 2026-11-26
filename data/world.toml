@@ -20,6 +20,9 @@ max = 9
 default = 4
 lake_depth = 2
 step = 1
+# the earth a bot takes into its load on digging a tile down a level, and
+# spends on filling one up a level
+earth_per_level = 1
 
 [water]
 # water is counted in parts, parts of them to a level of height (Q65,

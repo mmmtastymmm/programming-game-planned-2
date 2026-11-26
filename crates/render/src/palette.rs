@@ -440,6 +440,9 @@ pub struct Palette {
     /// a ring on the ground.
     pub source_cone: Handle<Mesh>,
     pub source_ring: Handle<Mesh>,
+    /// A ground plan's frame on its tile (Q65): see-through, over paint
+    /// and other plans, so a mesh of its own.
+    pub ground_plan_frame: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
@@ -504,6 +507,8 @@ pub struct Palette {
     /// is water's blue, and each glows, so that it reads under water.
     pub spring_mat: Handle<StandardMaterial>,
     pub sink_mat: Handle<StandardMaterial>,
+    /// A ground plan: the color of earth, see-through.
+    pub ground_plan_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -655,6 +660,7 @@ impl Palette {
             water_sheet: meshes.add(Cuboid::new(1.0, 0.012, 1.0)),
             source_cone: meshes.add(Cone::new(0.2, 0.34)),
             source_ring: meshes.add(Torus::new(0.3, 0.38)),
+            ground_plan_frame: meshes.add(Cuboid::new(0.86, 0.014, 0.86)),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
             ground_frames,
             water_mats,
@@ -746,6 +752,12 @@ impl Palette {
             }),
             spring_mat: materials.add(StandardMaterial {
                 base_color: Color::srgb(0.75, 1.0, 0.95),
+                unlit: true,
+                ..default()
+            }),
+            ground_plan_mat: materials.add(StandardMaterial {
+                base_color: Color::srgba(0.95, 0.75, 0.35, 0.55),
+                alpha_mode: AlphaMode::Blend,
                 unlit: true,
                 ..default()
             }),

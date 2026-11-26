@@ -6,7 +6,7 @@
 
 [resource]
 # the resource table (Q22): one row per kind, in this order
-kinds = ["ore"]
+kinds = ["ore", "earth"]
 
 [deployment]
 # a team's deployments are one per model that runs a program — `bot`,
@@ -27,10 +27,10 @@ vision = 6
 hearing = 4
 health = 10
 death_threshold = -5
-capacity = { ore = 10 }
+capacity = { ore = 10, earth = 4 }
 move_ticks = 2
 pick_ticks = 3
-pick_rate = { ore = 5 }
+pick_rate = { ore = 5, earth = 4 }
 drop_ticks = 1
 # attack (Q25): range in tiles (squared before comparison), damage per hit,
 # ticks per attack
@@ -56,6 +56,11 @@ recharge_ticks = 2
 wire_cost = { ore = 3 }
 wire_ticks = 2
 unwire_ticks = 2
+# changing the ground (Q65, docs/03): the ticks to dig a tile down a level,
+# to fill one up a level, and to mine a rock away
+dig_ticks = 4
+fill_ticks = 3
+mine_ticks = 8
 
 [model.printer]
 vision = 8
@@ -94,7 +99,7 @@ vision = 4
 hearing = 4
 health = 40
 death_threshold = -20
-store = { ore = 500 }
+store = { ore = 500, earth = 200 }
 cost = { ore = 40 }
 # depots do not get dearer (Q42)
 cost_step = { ore = 0 }
@@ -168,6 +173,9 @@ print = 4
 build = 4
 deconstruct = 3
 attack = 3
+dig = 3
+fill = 2
+mine = 4
 
 [power]
 # the share of its battery at or below which a bot takes `low_power`, and
@@ -204,6 +212,9 @@ overlay = 1
 unoverlay = 1
 wire = 1
 unwire = 1
+dig = 2
+fill = 2
+mine = 2
 deconstruct = 2
 attack = 2
 wait = 0

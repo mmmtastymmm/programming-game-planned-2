@@ -34,7 +34,10 @@ pub enum Plan {
 /// kinds, so there is one.
 pub const WIRE: &str = "wire";
 
-/// A team's four plans on one tile.
+/// The resource a dug tile yields and a filled one takes (Q65).
+pub const EARTH: &str = "earth";
+
+/// A team's five plans on one tile.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Plans {
     pub paint: Option<Plan>,
@@ -42,6 +45,9 @@ pub struct Plans {
     pub building: Option<Plan>,
     /// To lay the team's wire ([`WIRE`]) or to clear it (Q62).
     pub wire: Option<Plan>,
+    /// The height the team wants the tile brought to (Q65), as its digit;
+    /// never a plan to clear.
+    pub ground: Option<Plan>,
 }
 
 impl Plans {
@@ -50,6 +56,7 @@ impl Plans {
             && self.overlay.is_none()
             && self.building.is_none()
             && self.wire.is_none()
+            && self.ground.is_none()
     }
 
     pub fn of(&self, kind: PlanKind) -> &Option<Plan> {
@@ -58,6 +65,7 @@ impl Plans {
             PlanKind::Overlay => &self.overlay,
             PlanKind::Building => &self.building,
             PlanKind::Wire => &self.wire,
+            PlanKind::Ground => &self.ground,
         }
     }
 
@@ -67,6 +75,7 @@ impl Plans {
             PlanKind::Overlay => &mut self.overlay,
             PlanKind::Building => &mut self.building,
             PlanKind::Wire => &mut self.wire,
+            PlanKind::Ground => &mut self.ground,
         }
     }
 }
@@ -207,6 +216,17 @@ pub enum Effect {
         at: TilePos,
     },
     Unwire {
+        at: TilePos,
+    },
+    /// Lower a tile a level, raise one a level, or turn rock to ground
+    /// (Q65).
+    Dig {
+        at: TilePos,
+    },
+    Fill {
+        at: TilePos,
+    },
+    Mine {
         at: TilePos,
     },
     Wait,
@@ -1074,6 +1094,7 @@ impl World {
             PlanKind::Paint => "paint",
             PlanKind::Overlay => "an overlay",
             PlanKind::Wire => "a wire",
+            PlanKind::Ground => return self.may_plan_ground(team, p),
         };
         let idx = self
             .tile_index(p)
@@ -1172,6 +1193,82 @@ impl World {
     }
 
     /// Drop empty plan entries so the hash and the snapshot see none.
+    /// Whether `team` may plan a height for `p` (`docs/03`, The ground
+    /// plan): a tile it has seen, rock or ground, holding no deposit, no
+    /// spring and no sink.
+    fn may_plan_ground(&self, team: TeamId, p: TilePos) -> Result<(), String> {
+        let idx = self
+            .tile_index(p)
+            .ok_or_else(|| format!("({}, {}) is off the map", p.x, p.y))?;
+        let seen = self
+            .teams
+            .get(&team)
+            .is_some_and(|t| t.memory[idx].state != TileState::Unknown);
+        if !seen {
+            return Err(format!(
+                "({}, {}) is unknown to your team: only a tile it has seen takes a ground plan",
+                p.x, p.y
+            ));
+        }
+        let t = &self.tiles[idx];
+        if t.deposit.is_some() || t.spring.is_some() || t.sink.is_some() {
+            return Err(format!(
+                "({}, {}) holds a deposit, a spring or a sink: its ground does not change",
+                p.x, p.y
+            ));
+        }
+        Ok(())
+    }
+
+    /// Whether the tile's ground may be dug or filled (`docs/03`, a tile
+    /// that is **clear**): no building, no site, no deposit, no spring, no
+    /// sink, and no machine on it or moving onto it.
+    pub fn clear(&self, p: TilePos) -> bool {
+        self.tile(p)
+            .is_some_and(|t| t.deposit.is_none() && t.spring.is_none() && t.sink.is_none())
+            && !self.occupied(p)
+    }
+
+    /// The team's ground plan on `p` is done with if the tile is ground
+    /// at the planned height (`docs/03`).
+    pub(crate) fn settle_ground_plan(&mut self, team: TeamId, p: TilePos) {
+        let Some(tile) = self.tile(p) else { return };
+        let done = tile.terrain == Terrain::Ground
+            && matches!(
+                tile.plans.get(&team).and_then(|pl| pl.ground.as_ref()),
+                Some(Plan::Set(v)) if v.parse::<u8>().ok() == Some(tile.height.level())
+            );
+        if done {
+            if let Some(pl) = self.plans_mut(team, p) {
+                pl.ground = None;
+            }
+            self.tidy_plans(p);
+        }
+    }
+
+    /// Change a tile's height by one level, up or down, if the tables
+    /// allow the result; `false` if they do not. Its water and what a
+    /// team sees may both change with it.
+    pub(crate) fn shift_height(&mut self, p: TilePos, up: bool) -> bool {
+        let max = self.data.world.height.max;
+        let Some(idx) = self.tile_index(p) else {
+            return false;
+        };
+        let level = self.tiles[idx].height.level();
+        let next = if up {
+            level.checked_add(1)
+        } else {
+            level.checked_sub(1)
+        };
+        let Some(height) = next.and_then(|l| Height::new(l, max)) else {
+            return false;
+        };
+        self.tiles[idx].height = height;
+        self.stir(idx);
+        self.sight_changed();
+        true
+    }
+
     pub fn tidy_plans(&mut self, p: TilePos) {
         if let Some(t) = self.tile_mut(p) {
             t.plans.retain(|_, v| !v.is_empty());
