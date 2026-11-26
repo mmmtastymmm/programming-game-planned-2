@@ -1,12 +1,12 @@
 # 03 — The world
 
-What the map is made of: tiles, the terrain on them, the deposits that
-regrow, what blocks sight and how a line of sight is decided, and where a
-match begins. This doc is what the world half of `crates/sim` is built from,
+What the map is made of: tiles, the terrain on them and its height, how
+bots change the ground, the deposits that regrow, what blocks sight and
+how a line of sight is decided, and where a match begins. This doc is what the world half of `crates/sim` is built from,
 and it is normative: two implementers reading it must produce the same
 tick-by-tick behavior (design-invariant DI7). Machines and what they do on
 the world are [02-machines](02-machines.md); this doc says what they stand
-on.
+on. The water that stands on the ground is [09-water](09-water.md)'s.
 
 ## Decided
 
@@ -16,11 +16,23 @@ grid of tiles that the colony remembers, and **Q22**, which made deposits
 terrain that regrows. Everything below is this doc's own, and none of it
 overrides those.
 
+- **Every tile has a height, and bots change the ground (Q65, amending
+  Q7, Q10, Q21, Q22, Q27, Q28, Q37 and Q49).** A tile's `height` is a whole
+  number of levels from the map. A bot steps between tiles at most one
+  level apart; more is a cliff. A bot `dig`s a tile down a level, `fill`s
+  one up a level and `mine`s rock away, which leaves ground at the rock's
+  height; digging puts **earth**, a second resource, in the bot's load,
+  and filling takes it. The player plans a height for a tile, a fifth
+  kind of plan, and bots carry it out. Higher ground blocks a line of
+  sight, and a machine sees one tile further for each level it stands
+  above the tile it looks at and one less for each level below. `water`
+  is no longer a terrain kind: it stands on ground (`09`). The rule that
+  a tile's terrain never changes is withdrawn.
 - **Paint, overlays and wires are planned only on ground the team has seen
   (Q49, as Q62 extends it to wires).** A `Mark` of a paint, an overlay or a
   wire plan, a value or a clear, applies only on a `ground` tile the
   sending team has seen — visible or remembered — and is dropped on its
-  tick otherwise: never on rock or water, and never on a tile still unknown
+  tick otherwise: never on rock, and never on a tile still unknown
   to the team, which is tested first so that marking cannot scout. A wire
   plan that asks for what the tile already has — to lay where the team's
   wire lies, or to clear where none does — is dropped on its tick too, and
@@ -47,12 +59,15 @@ Every tile holds exactly:
 
 | Field | Holds |
 |---|---|
-| `terrain` | one of the three terrain kinds below, fixed for the match |
+| `terrain` | one of the two terrain kinds below; `rock` becomes `ground` when mined, and nothing else changes it (Q65) |
+| `height` | a whole number of levels from zero to `height.max` in data, from the map; changed a level at a time by `dig` and `fill` (Q65) |
+| `water` | the parts of water standing on it, a whole number, a hundred to a level, zero on rock; changed only by the water step (Q65, `09`) |
+| `spring`, `sink` | each the rate of the spring or the sink on the tile, or `None`; from the map and fixed (Q65, `09`) |
 | `deposit` | a `dict` of resource kind to amount, or `None`; on any passable tile the map puts one on |
 | `paint` | the tile's one paint, a color from `deployment.colors` in data or `None`; influences nothing |
 | `overlay` | the tile's one overlay, a label from `mark.overlays` in data or `None`; influences bots through the programs that read it |
 | `wires` | the set of teams with a wire on the tile, empty on anything but `ground`; each team's wire is underground, occupies nothing, and joins that team's grid (Q62, `08`) |
-| `plans` | **per team**, four plans — paint, overlay, building, wire (Q62) — each `None` or a value (a color, a label, a model, `True` for a wire; or a plan to clear); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint, overlay and wire only on ground the team has seen (Q49, Q62) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
+| `plans` | **per team**, five plans — paint, overlay, building, wire (Q62), ground (Q65) — each `None` or a value (a color, a label, a model, `True` for a wire, a height for the ground; or a plan to clear, which the ground plan has none of); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint, overlay and wire only on ground the team has seen (Q49, Q62) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
 
 **Paint and overlay are the tile's, not a team's** (Q28): every team's bots
@@ -62,7 +77,7 @@ its own on a tile, so one team's wire never blocks another's; every team
 sees and remembers every wire, as it does paint. **Plans are a team's**,
 and private. All of it is world state, in the hash.
 
-A tile's `terrain` never changes. Its `paint`, `overlay`, `wires` and
+A tile's `terrain`, `height`, `paint`, `overlay`, `wires` and
 building change only by a bot's action — a team's wire only by its own
 bots' `wire` and `unwire` (`02`), never by another team's, or cleared with
 its team when the team is out (`06`, step 5) — and **a slot is emptied
@@ -72,7 +87,7 @@ building; `unpaint`, `unoverlay` and `deconstruct` (`02`) empty them, and a
 plan with a value does the emptying first. A tile is never destroyed, so
 the second cause of `death` that `02` reserves for this doc **does not
 occur**: a machine dies of damage or not at all. Deposits change amount and
-nothing else.
+nothing else. A tile's `water` changes only in the water step (`09`).
 
 ## Terrain
 
@@ -84,19 +99,72 @@ on it and whether it blocks sight.
 |---|---|---|
 | `ground` | yes | no |
 | `rock` | no | yes |
-| `water` | no | no |
 
-- **Passable** terrain is what a bot may move onto (`02`, `move`). A
+- **Passable** terrain is what a bot may move onto (`02`, `move`), where
+  the step itself is allowed (A step, below). A
   building occupies its tile and is not terrain; a bot cannot move onto a
   building's tile because the tile is occupied, not because of its terrain.
 - **Buildable** is not a terrain property: a tile is buildable if its terrain
-  is `ground`, it has no deposit, and it has no building. A deposit is
-  therefore never buried.
-- **Blocks sight** is what the ray-walk below tests. A machine blocks
-  nothing: bots and buildings are seen through.
+  is `ground`, it has no deposit, no spring and no sink, it is not wet
+  (`09`), and it has no building. A deposit is therefore never buried.
+- **Blocks sight** is what the ray-walk below tests, with height. A machine
+  blocks nothing: bots and buildings are seen through, and so is water.
 
-Adding a terrain kind is a new question number and a row here; the three
-above are what the first maps need.
+Adding a terrain kind is a new question number and a row here. `water` was
+a third kind until Q65 made it something that stands on ground.
+
+## Height
+
+Every tile, rock included, has a **height**: a whole number of levels from
+zero to `height.max` in data. The map gives it, and only `dig` and `fill`
+change it. Height does three things: it limits a step, it steers water
+(`09`), and it decides what is seen (Line of sight, below).
+
+**A step.** A bot may move from the tile it is on to an adjacent tile only
+if that tile is `ground`, the two tiles' heights differ by at most
+`height.step` in data, one level, and the water on that tile is at most
+`water.wade`, one level (`09`). Wherever a rule asks whether a tile
+is passable *for a bot on a given tile* — `move`, `move_to`, where a
+printed bot appears (`02`) — it asks this. A bot that the ground or the
+water has changed under keeps its tile: nothing moves a bot but its own
+move.
+
+## Changing the ground
+
+Three bot actions change a tile (`02` has their rows). Each acts on an
+adjacent tile, takes its ticks, and takes effect when it completes, if the
+tile then still meets what it met when the action began; otherwise
+nothing happens. Any team's bot may do any of them on any tile.
+
+A tile is **clear** if it holds no building, no site, no deposit, no
+spring and no sink, and no machine is on it or moving onto it.
+
+- **`dig(x, y)`** needs a clear `ground` tile whose height is above zero,
+  and room in the bot's load for `height.earth_per_level` of `earth`. On
+  completion the tile's height falls by one and the earth joins the load.
+- **`fill(x, y)`** needs a clear `ground` tile whose height is below
+  `height.max`, and `height.earth_per_level` of `earth` in the bot's load. On
+  completion the tile's height rises by one and the earth leaves the
+  load.
+- **`mine(x, y)`** needs a `rock` tile. On completion its terrain is
+  `ground`, at the height it had; nothing is gained.
+
+A tile under water is dug and filled like any other: its water stays on
+it, and flows by `09`'s rule from the surface it then has. Paint, an overlay and wires stay on a tile whose ground changes.
+
+**Earth** is a resource kind (`02`, Q22), the second: a row of the
+resource table with its capacities, carried, dropped into a depot and
+picked from one like `ore`. No deposit holds it; digging is its only
+source and filling its only use.
+
+**The ground plan** (Q10, Q27) is a height the player wants a tile brought
+to. A `Mark` of one applies only on a tile the sending team has seen that
+holds no deposit, no spring and no sink, and is dropped on its tick if the tile is
+already `ground` at that height. On rock it asks for the rock to be mined
+and the ground beneath brought to that height. The plan is consumed when
+a `dig`, `fill` or `mine` by one of the team's own bots completes and
+leaves the tile `ground` at the planned height. It has no plan to clear:
+`Unmark` withdraws it.
 
 ## Deposits
 
@@ -125,7 +193,7 @@ one algorithm on every peer, integer-only, over tile centres:
 
 **A line of sight from tile `a` to tile `b` is clear** if no tile the ray
 passes through, other than `a` and `b` themselves, has terrain that blocks
-sight. The ray is walked with **Bresenham's line algorithm** in its integer
+sight or stands above the line between the two (Q65, below). The ray is walked with **Bresenham's line algorithm** in its integer
 form, from `a` to `b`, with these fixings so that it is single-valued:
 
 1. Let `dx = |bx - ax|`, `dy = |by - ay|`, `sx = +1` if `bx > ax` else `-1`,
@@ -139,15 +207,36 @@ form, from `a` to `b`, with these fixings so that it is single-valued:
    always evaluated **from the seer to the seen**, never the reverse.
 
 A machine sees the tile it stands on and every adjacent tile regardless of
-terrain, since a ray of length one passes through nothing. `rock` on `b`
-itself does not block: a machine sees a rock tile it has a clear line to,
-which is how walls are seen at all.
+terrain and height, since a ray of length one passes through nothing.
+`rock` on `b` itself does not block: a machine sees a rock tile it has a
+clear line to, which is how walls are seen at all.
+
+**Height on the line (Q65).** Let the walk from `a` to `b` take `n` steps
+of rule 2, so that the tile reached at step `k`, for `k` from 1 to
+`n − 1`, is a tile the ray passes through. That tile stands above the
+line, and blocks it, if
+
+`height(tile) × n > height(a) × (n − k) + height(b) × k`
+
+— if its ground is above the straight line from the ground of `a` to the
+ground of `b`, in integers. A tile exactly on the line does not block, so
+level ground sees across level ground as before. Water adds nothing to a
+height here.
+
+**Height and range (Q65).** A machine on tile `a` with vision `v` sees
+tile `b` if the line is clear and the squared distance between them is at
+most `r × r`, where `r = v + height(a) − height(b)`, and nothing if `r` is
+below zero. Every rule that tests sight from a machine to a tile uses
+this `r` — the vision pass, a sighting, the range of what a team sees —
+and `attack` (`02`) keeps its own range and only gains the blocking rule.
+Hearing is not sight and height does not change it.
 
 ## The map
 
 A **map** is a data file, one per match, that fixes everything this doc
-calls "from the map": `width` and `height`, every tile's terrain, every
-deposit's cap and regrowth, and the starting positions. The format is
+calls "from the map": `width` and `height`, every tile's terrain and its
+height, the water it starts with and its springs (`09`), every deposit's
+cap and regrowth, and the starting positions. The format is
 [data/maps/](../data/maps/)'s, one TOML file per map, and the first map is
 `data/maps/first.toml`. A map is part of the replay's inputs: `(map,
 command log)` reproduces a match, and the map's bytes are hashed into the
@@ -167,9 +256,19 @@ A map fixes:
   the opening program set (Q9) holds; the bots run the `bot` bundle once it
   arrives.
 
+**Heights, water and springs (Q65).** A map gives every tile's height as
+a grid of digits beside its terrain; a map that gives none has every tile
+at `height.default` in data and every `~` tile `height.lake_depth` below
+that. `~` in the terrain is ground that starts under water, and `09` says
+how deep. A spring and a sink are each a tile and a rate, and the map
+gives the ground water it begins with.
+
 A map is **valid** only if every starting tile is buildable, no two are the
-same tile, every team has at least one, and every starting tile can reach
-at least one deposit by passable terrain. The sim refuses an invalid map at load, as it refuses
+same tile, every team has at least one, every starting tile can reach
+at least one deposit by steps a bot may take as the match begins, every
+spring and sink is on a clear `ground` tile of its own that is no
+starting tile, with a rate above zero and at most `water.max_rate`, and
+its `~` tiles are as `09` requires. The sim refuses an invalid map at load, as it refuses
 an invalid bundle.
 
 **Symmetry** is a map author's business and not a rule: a fair map places
@@ -179,10 +278,11 @@ another's, and the first map does.
 ## The tick
 
 `docs/06` owns the tick loop. This doc needs from it only the order of the
-two passes it defines: after every machine's slice, first **regrowth**, then
-the **vision pass** (Q21). That way a deposit's remembered amount is the
-amount after this tick's growth, which is what a machine that saw it this
-tick would have seen.
+passes at a tick's end: after every machine's slice, first **regrowth**,
+then the **water step** (`09`), then the **vision pass** (Q21). That way a
+deposit's remembered amount is the amount after this tick's growth, and a
+tile's remembered water is the water after this tick's flow, which is
+what a machine that saw it this tick would have seen.
 
 ## Costs
 

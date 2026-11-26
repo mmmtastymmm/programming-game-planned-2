@@ -27,7 +27,8 @@ cites this doc for the rule.
   is **dark**, and its rules, program and senses stop. A printer and the
   **charger** hold a battery any bot may `recharge` from; the **solar
   panel** only generates; a printer generates more than it uses, by a
-  check on data, so it is never dark. A **pylon** is a building rivals may
+  check on data, so it is never dark for want of power, though a flooded
+  one is (Q65; `09`). A **pylon** is a building rivals may
   destroy; underground **wire** costs more and only its own team touches
   it. Q59's flow, its printer at the root of every grid, its newest bots
   stopping and its spare power for a print are withdrawn and have no entry
@@ -216,6 +217,11 @@ In step 6 of the tick (`06`), for each team in order:
       the first pass goes into the pool, and the next building is tried.
    3. *What is left.* The pool fills the grid's batteries in ascending
       entity id, each to its `battery`, and whatever then remains is lost.
+
+   A **flooded** building (Q65; `09`) takes no part in the three: it is
+   dark without being tried, keeps and pools none of its generation, has
+   no shortfall, and its battery neither gives nor is filled. It is still
+   on its grid, with its label, and still joins what is beside it.
 3. **Every bot's solar** is added (Solar, above), in ascending entity id.
 4. **Flat bots wake** that have the charge to (Out of power, above).
 5. **Prints begin** (`02`, Printing).
@@ -256,9 +262,10 @@ A building the last power step left dark, until the next one:
   still counts for its team's cap (`02`, Q24) and for the team not being
   out (`04`).
 
-Data keeps a printer from ever being dark (Charge and batteries, above),
-so the printer's entries here bind only if that check is one day removed;
-they are stated so that the rule is whole.
+Data keeps a printer from ever being dark for want of power (Charge and
+batteries, above). A flooded printer is dark (Q65; `09`), and the
+printer's entries here bind then. A building the water step floods is
+dark from that step, before the next power step runs.
 
 ## Lines
 
