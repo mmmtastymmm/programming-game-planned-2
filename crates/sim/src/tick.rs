@@ -917,6 +917,15 @@ impl Sim {
                 *d = d.checked_add(dmg).unwrap_or(Num::MAX);
             }
         }
+        // Every machine the last water step left flooded loses
+        // `flood_damage`, a bot, a building or a site alike (`docs/09`).
+        let flood = w.data.world.water.flood_damage;
+        if flood > Num::ZERO {
+            for m in w.machines.values().filter(|m| m.flooded) {
+                let d = hits.entry(m.id).or_insert(Num::ZERO);
+                *d = d.checked_add(flood).unwrap_or(Num::MAX);
+            }
+        }
         let mut to_deliver: Vec<(EntityId, Interrupt)> = Vec::new();
         let mut killed = BTreeSet::new();
         for (id, dmg) in hits {
@@ -1325,6 +1334,8 @@ fn write_record(h: &mut Fnv1a, r: &MachineRecord) {
             h.write_u32(id.0);
         }
     }
+    // Flooding (Q65): set by the water step, read until the next.
+    h.write_u8(u8::from(r.flooded));
 }
 
 /// Load a bundle from the log's files (`docs/01`, The bundle).

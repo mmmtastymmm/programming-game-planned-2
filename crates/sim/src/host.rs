@@ -314,7 +314,8 @@ impl<'a> GameHost<'a> {
     }
 
     fn move_to_tile(&mut self, to: TilePos) -> R<HostCall> {
-        if !self.world.steps(self.pos(), to) || self.world.occupied(to) {
+        // A flooded bot cannot move (`docs/09`); every other call runs.
+        if self.me().flooded || !self.world.steps(self.pos(), to) || self.world.occupied(to) {
             return Err(value_error());
         }
         let ticks = self.model_data().move_ticks;
@@ -345,7 +346,7 @@ impl<'a> GameHost<'a> {
         };
         let target = TilePos::new(coord(x)?, coord(y)?);
         let here = self.pos();
-        if here == target {
+        if here == target || self.me().flooded {
             return Err(value_error());
         }
         let mut best: Option<(i64, TilePos)> = None;

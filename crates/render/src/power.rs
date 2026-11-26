@@ -132,6 +132,9 @@ pub fn machine_lines(r: &MachineRecord, battery: Option<lang::Num>) -> Vec<Strin
         let state = if powered { "powered" } else { "dark" };
         out.push(format!("{state} · {grid}"));
     }
+    if r.flooded {
+        out.push("flooded: losing health".to_string());
+    }
     out
 }
 
@@ -230,6 +233,7 @@ mod tests {
                 flat: None,
                 powered: Some(true),
                 grid: Some(None),
+                flooded: false,
             }),
         }
     }
@@ -330,6 +334,12 @@ mod tests {
         );
         bot.flat = Some(false);
         assert_eq!(machine_lines(&bot, Some(num("100"))).len(), 1);
+        // Flooded, a machine of either kind says so.
+        panel.flooded = true;
+        assert_eq!(
+            machine_lines(&panel, None),
+            ["dark · no grid", "flooded: losing health"]
+        );
     }
 
     #[test]

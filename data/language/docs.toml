@@ -48,9 +48,13 @@ Costs one unit per tile returned."""
 signature = "me() -> Machine"
 doc = """
 This machine's own record: `id`, `name`, `model`, `team`, `pos`, `health`,
-`busy`, `progress`, `charge` (what its battery holds) and `battery` (what
-it can hold); `load`, `color` and `flat` (out of power) for a bot;
-`store`, `powered` and `grid` for a building."""
+`busy`, `progress`, `charge` (what its battery holds), `battery` (what
+it can hold) and `flooded`; `load`, `color` and `flat` (out of power) for
+a bot; `store`, `powered` and `grid` for a building.
+
+A flooded machine loses health every tick: a bot in more water than it
+wades, a building on a wet tile. A flooded bot cannot move, and a flooded
+building is dark."""
 
 [game.plans]
 signature = "plans(kind: str) -> list[tuple[int, int, str | bool | int | None]]"
@@ -99,7 +103,7 @@ doc = """
 Step one tile: dir is "n", "e", "s" or "w". The tile must be ground and
 free. Takes `move_ticks`.
 
-Raises ValueError if the way is blocked."""
+Raises ValueError if the way is blocked, or the bot is flooded."""
 
 [game.move_to]
 signature = "move_to(x: int, y: int) -> None"
@@ -108,7 +112,8 @@ Take ONE step toward (x, y): to the free neighbouring tile closest to it.
 There is no pathfinding, so a bot can walk into a dead end; loop to
 arrive, or use go_to from lib/nav.py.
 
-Raises ValueError if no step is possible or the bot is already there."""
+Raises ValueError if no step is possible, the bot is already there, or
+it is flooded."""
 
 [game.pick]
 signature = "pick(kind: str) -> None"

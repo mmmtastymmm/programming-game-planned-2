@@ -75,34 +75,16 @@ gates seed one that forgets. Tests: a ridge between two machines, a
 machine on a hill and one in a pit, level ground as before, and the
 walk from each end, since the ray is not symmetric.
 
-**T45 — Water in `sim`: parts that flow, springs, sinks and the ground water, wading and flooding** `⚠HASH`
+**T45 — Water in `sim`: what is left** `⚠HASH`
 
-All of `09`, as Q66 amended it: a fifth to each lower tile, the flow in
-`water.passes` passes, a film that dries only on a tick when nothing
-reaches it, a spring's head and a sink's sill, a thousand parts to a
-level, and every amount in a map, the tables and a tile's record in
-levels. `water` leaves the terrain kinds; a tile holds its parts.
-The water step in step 7, in `09`'s order: springs, the flow worked out
-from one state and applied together, sinks, drying, and `flooded`. The
-ground water, in the hash where `06` puts it. A map's `~` tiles full to
-their rims, its springs and sinks, the ground water it begins with and
-the checks on all of them; `[water]` in data with the checks `09` gives.
-Still water is skipped, since it gives nothing, and the result is the
-one a walk of every tile gives: a test holds the two together over
-random ground, random digging and filling, and springs and sinks. Wading
-in a step; a flooded bot's moves refused, a flooded building dark from
-the water step and through the power step, and flood damage in step 4.
-A tile's record, memory and the snapshot carry `water`, `spring` and
-`sink`. Tests: a tile's offers for one, two and four lower neighbours,
-and when they outrun its water; a small rise on a flat pool that does
-not slosh; a channel dug from a lake filling a tile a tick; a rim cut
-open and a lake draining; a spill on a plain drying to nothing and one
-in a hollow staying; a spring and a sink making a river; a lake that a
-spring brings back; the total of the tiles and the ground water never
-changing; a tile filled in under water; and a flooded printer that
-prints nothing and dies. The golden replay gains a lake, a spring, a
-sink, a channel and a flooded building. `crates/replay/benches/scale.rs`
-gains a map with a lake and a river and says what the water step costs.
+`09`'s rules are built and tested: the flow, springs and sinks, the
+ground water, drying, wading, and flooding — `flooded` set by the water
+step, a flooded bot's moves refused, a flooded building dark through the
+power step, and flood damage in step 4. `crates/replay/benches/scale.rs`
+has a river and a lake under `--water` and says what the water step
+costs. What is left is the fixture: the golden replay gains a spring, a
+sink, a channel dug from a lake and a building the channel floods, and
+its alive test asserts each happened.
 
 **T46 — Height and water in `render`**
 

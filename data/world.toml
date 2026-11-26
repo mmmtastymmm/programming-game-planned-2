@@ -34,13 +34,15 @@ earth_per_level = 1
 # holding film parts or fewer, and given none, dries into the ground
 # water. The flow runs passes times in a tick, so water moves up to
 # passes tiles a tick and a slope carries passes times what one pass
-# would.
+# would. A flooded machine (a bot in more than wade, a building or a site
+# on a wet tile) loses flood_damage health a tick.
 parts = 1000
 wet = "0.1"
 film = 4
 wade = 1
 max_rate = 1
 passes = 4
+flood_damage = "0.2"
 
 [deposit.ore]
 # a map may set a deposit's cap and regrowth per tile up to these
