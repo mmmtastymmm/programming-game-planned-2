@@ -10,8 +10,8 @@ use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
 use crate::outlines::{TeamColors, TeamMats};
 use crate::palette::{
-    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, MARK_HALF, Palette,
-    ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off, body_half, tint,
+    BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, LEVEL_RISE, MARK_HALF,
+    Palette, ROCK_HEIGHT, SLAB_HALF, WATER_SINK, block_y_off, body_half, tint,
 };
 use crate::power::{self, WireLook};
 use bevy::prelude::*;
@@ -27,8 +27,11 @@ use std::f32::consts::{FRAC_PI_2, PI};
 pub struct TileLook {
     pub state: TileState,
     pub terrain: Terrain,
-    /// Whether it holds water that counts (`docs/09`): drawn as the water
-    /// tile was while water was terrain, until T46 draws water itself.
+    /// Its height in levels, and the parts of water on it (Q65).
+    pub height: u8,
+    pub water: u32,
+    /// Whether that water counts (`docs/09`): drawn as a sheet at its
+    /// surface.
     pub wet: bool,
     pub ore: bool,
     pub mask: u8,
@@ -114,6 +117,9 @@ pub struct Entities {
     pub machines: HashMap<EntityId, MachineView>,
     /// The render height of each tile's top as the player knows it.
     pub tops: HashMap<TilePos, f32>,
+    /// Where the ground of a tile never seen is taken to be
+    /// ([`Tuning::unknown_top`]).
+    pub unknown_top: f32,
     /// The stamp of what the map drew when the tiles last synced
     /// ([`crate::driver::Driver::drawn_stamp`]): a tick of the match, or
     /// a fork and where it stood.
@@ -134,7 +140,7 @@ pub struct Entities {
 
 impl Entities {
     pub fn top(&self, p: TilePos) -> f32 {
-        self.tops.get(&p).copied().unwrap_or(0.0)
+        self.tops.get(&p).copied().unwrap_or(self.unknown_top)
     }
 }
 
@@ -146,8 +152,13 @@ pub struct Tuning {
     pub battery: HashMap<&'static str, lang::Num>,
     /// How far a pylon joins, in tiles (`docs/08`).
     pub span: i64,
-    /// From how many parts of water a tile is wet (`docs/09`).
+    /// From how many parts of water a tile is wet, and how many parts
+    /// stand a level deep (`docs/09`).
     pub wet: u32,
+    pub parts: u32,
+    /// Where the ground of a tile the team has never seen is drawn: at
+    /// the height a map gives a tile it names none for.
+    pub unknown_top: f32,
 }
 
 impl Tuning {
@@ -156,8 +167,12 @@ impl Tuning {
         let mut battery = HashMap::new();
         let mut span = 0;
         let mut wet = u32::MAX;
+        let mut parts = 1;
+        let mut unknown_top = 0.0;
         if let Ok(d) = sim::Data::load() {
             wet = d.world.water.wet;
+            parts = d.world.water.parts.max(1);
+            unknown_top = f32::from(d.world.height.default) * LEVEL_RISE;
             for m in Model::ALL {
                 if let Some(md) = d.machines.models.get(m.name()) {
                     max_health.insert(m.name(), num_f32(md.health).max(1.0));
@@ -173,6 +188,8 @@ impl Tuning {
             battery,
             span,
             wet,
+            parts,
+            unknown_top,
         }
     }
 
@@ -263,6 +280,7 @@ pub fn setup(
     mut commands: Commands,
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
+    tuning: Res<Tuning>,
     mut ents: ResMut<Entities>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -270,6 +288,7 @@ pub fn setup(
     cameras: Query<Entity, With<Camera3d>>,
 ) {
     let palette = Palette::build(&mut meshes, &mut materials, &assets);
+    ents.unknown_top = tuning.unknown_top;
     let snap = driver.0.snapshot();
     let player = driver.0.player;
     if let Some(team) = snap.teams.iter().find(|t| t.id == player) {
@@ -280,7 +299,7 @@ pub fn setup(
                     DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.cover_quad.clone()),
                     MeshMaterial3d(palette.unknown_mat.clone()),
-                    Transform::from_translation(frame.tile_xyz(*p, 0.04)),
+                    Transform::from_translation(frame.tile_xyz(*p, tuning.unknown_top + 0.04)),
                 ))
                 .id();
             ents.covers.insert(*p, e);
@@ -360,7 +379,6 @@ fn look_of(
             None => true,
             Some(m) if m.state == TileState::Unknown => true,
             Some(m) => match mem.terrain {
-                Terrain::Ground if wet => m.terrain == Terrain::Ground && m.water >= wet_from,
                 Terrain::Ground => !ore || m.deposit.is_some(),
                 t => m.terrain == t,
             },
@@ -375,6 +393,8 @@ fn look_of(
     TileLook {
         state: mem.state,
         terrain: mem.terrain,
+        height: mem.height.level(),
+        water: mem.water,
         wet,
         ore,
         mask,
@@ -385,23 +405,30 @@ fn look_of(
     }
 }
 
+/// Where a tile's ground is drawn: its height, a level at a time (Q65).
+fn ground_of(look: &TileLook) -> f32 {
+    f32::from(look.height) * LEVEL_RISE
+}
+
+/// Where a machine on the tile stands, and what a body's lift is measured
+/// from.
 fn top_of(look: &TileLook) -> f32 {
-    match look.terrain {
-        Terrain::Rock => ROCK_HEIGHT,
-        Terrain::Ground if look.wet => WATER_SINK,
-        Terrain::Ground => 0.0,
-    }
+    ground_of(look)
+        + match look.terrain {
+            Terrain::Rock => ROCK_HEIGHT,
+            Terrain::Ground => 0.0,
+        }
 }
 
 /// The height of a tile's upper face, which a flat mark must clear to be
 /// seen: a rock block's summit, or a slab's top, half its thickness above
 /// where the slab is spawned.
 fn surface_of(look: &TileLook) -> f32 {
-    match look.terrain {
-        Terrain::Rock => ROCK_HEIGHT,
-        Terrain::Ground if look.wet => WATER_SINK + SLAB_HALF,
-        Terrain::Ground => SLAB_HALF,
-    }
+    ground_of(look)
+        + match look.terrain {
+            Terrain::Rock => ROCK_HEIGHT,
+            Terrain::Ground => SLAB_HALF,
+        }
 }
 
 /// The face a flat marker on `p` must clear, as drawn now: the tile's own
@@ -410,7 +437,7 @@ fn surface_at(ents: &Entities, p: TilePos) -> f32 {
     ents.tiles
         .get(&p)
         .filter(|t| t.look.state != TileState::Unknown)
-        .map_or(SLAB_HALF, |t| surface_of(&t.look))
+        .map_or(ents.unknown_top + SLAB_HALF, |t| surface_of(&t.look))
 }
 
 /// Rebuild every tile whose look changed since the last snapshot (Q21):
@@ -486,9 +513,9 @@ pub fn sync_tiles(
         ents.tops.insert(
             *p,
             if look.state == TileState::Unknown {
-                0.0
+                tuning.unknown_top
             } else {
-                top_of(&look).max(0.0)
+                top_of(&look)
             },
         );
         if ents.tiles.get(p).is_some_and(|t| t.look == look) {
@@ -508,6 +535,7 @@ pub fn sync_tiles(
             &look,
             &wire_mats,
             &own_wire,
+            tuning.parts,
         );
         ents.tiles.insert(*p, TileView { look, entities });
     }
@@ -746,6 +774,7 @@ fn spawn_tile(
     look: &TileLook,
     wire_mats: &WireMats,
     own_wire: &Handle<StandardMaterial>,
+    water_parts: u32,
 ) -> Vec<Entity> {
     let mut out = Vec::new();
     if look.state == TileState::Unknown {
@@ -761,16 +790,14 @@ fn spawn_tile(
         }
     };
     let mask = look.mask as usize;
+    // The tile stands at its height (Q65), on a column of earth down to
+    // the lowest level, so that a cliff shows a face and not a gap.
+    let ground = ground_of(look);
     let (mesh, live, y) = match look.terrain {
         Terrain::Rock => (
             palette.rock_block.clone(),
             palette.rock_mats[mask].clone(),
             block_y_off(ROCK_HEIGHT) + WATER_SINK,
-        ),
-        Terrain::Ground if look.wet => (
-            palette.tile_slab.clone(),
-            palette.water_mats[mask].clone(),
-            WATER_SINK,
         ),
         Terrain::Ground if look.ore => (
             palette.tile_slab.clone(),
@@ -786,10 +813,41 @@ fn spawn_tile(
                 DespawnOnEnter(Screen::Start),
                 Mesh3d(mesh),
                 MeshMaterial3d(material),
-                Transform::from_translation(frame.tile_xyz(p, y)),
+                Transform::from_translation(frame.tile_xyz(p, ground + y)),
             ))
             .id(),
     );
+    if look.height > 0 {
+        let earth = mat(palette, palette.earth_mat.clone());
+        out.push(
+            commands
+                .spawn((
+                    DespawnOnEnter(Screen::Start),
+                    Mesh3d(palette.segment.clone()),
+                    MeshMaterial3d(earth),
+                    Transform::from_translation(frame.tile_xyz(p, ground / 2.0 - SLAB_HALF))
+                        .with_scale(Vec3::new(0.96, ground, 0.96)),
+                ))
+                .id(),
+        );
+    }
+    // Water (Q65): a see-through sheet at its surface, over everything
+    // that lies on the ground; a mesh of its own, since it covers paint,
+    // plans and markers that are see-through too.
+    if look.wet && look.terrain == Terrain::Ground {
+        let depth = look.water as f32 / water_parts.max(1) as f32 * LEVEL_RISE;
+        let sheet = mat(palette, palette.water_mat.clone());
+        out.push(
+            commands
+                .spawn((
+                    DespawnOnEnter(Screen::Start),
+                    Mesh3d(palette.water_sheet.clone()),
+                    MeshMaterial3d(sheet),
+                    Transform::from_translation(frame.tile_xyz(p, ground + SLAB_HALF + depth)),
+                ))
+                .id(),
+        );
+    }
     let top = top_of(look);
     let surface = surface_of(look);
     if let Some(paint) = &look.paint {

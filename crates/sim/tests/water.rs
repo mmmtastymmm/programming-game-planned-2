@@ -621,3 +621,41 @@ fn water_and_the_ground_water_are_in_the_hash() {
     assert_ne!(hash(50, 1000), hash(51, 1000), "a part on a tile");
     assert_ne!(hash(50, 1000), hash(50, 1001), "a part in the ground");
 }
+
+#[test]
+fn every_shipped_map_loads_and_the_falls_run() {
+    let data = Data::load().unwrap();
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/maps");
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "toml") {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let map = Map::parse(&text, &data)
+                .unwrap_or_else(|e| panic!("{}: {}", path.display(), e.message));
+            names.push(map.name);
+        }
+    }
+    names.sort();
+    assert_eq!(names, ["falls", "first"]);
+
+    // `falls` is a spring at the head of a bed that steps down into a
+    // basin with a sink: after a while the bed is wet from the spring to
+    // the basin's edge, the sink is handing water back to the ground, and
+    // not a part was made or lost.
+    let text = std::fs::read_to_string(dir.join("falls.toml")).unwrap();
+    let mut sim = Sim::new(Map::parse(&text, &data).unwrap());
+    let total = sim.world.water_total();
+    for _ in 0..300 {
+        sim.step(&[], &[]);
+    }
+    assert_eq!(sim.world.water_total(), total);
+    for x in -9..=5 {
+        let idx = sim.world.tile_index(at(x, 0)).unwrap();
+        assert!(sim.world.is_wet(idx), "the bed at ({x}, 0)");
+    }
+    assert!(sim.world.ground_water > 0, "the sink feeds the spring");
+    // The lake in the south-west stands as it began.
+    let lake = sim.world.tile_index(at(-8, -5)).unwrap();
+    assert_eq!(sim.world.tiles[lake].water, 2 * data.world.water.parts);
+}

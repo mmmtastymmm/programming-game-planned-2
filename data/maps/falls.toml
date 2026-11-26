@@ -1,0 +1,72 @@
+# A map to watch water on (Q65): ground at height 5 with a river bed cut
+# across it from west to east, stepping down a level every four tiles into
+# a basin. A spring at the head of the bed brings ground water up and a
+# sink in the basin takes it down, so the river runs for as long as the
+# match does. A small lake stands in the south-west, at rest, and a hill
+# in the north-east. Terrain as in first.toml; heights are one digit per
+# tile, shaped the same.
+
+name = "falls"
+speed = 10
+width = 24
+height = 16
+
+terrain = """
+........................
+........................
+..o.....................
+..o.....................
+........................
+........................
+........................
+........................
+........................
+........................
+...........##...........
+...........##...........
+....~~...............o..
+....~~...............o..
+........................
+........................
+"""
+
+heights = """
+555555555555555555555555
+555555555555555555655555
+555555555555555556765555
+555555555555555556865555
+555555555555555555655555
+555555555555555555555555
+555555555555555555111555
+555444433332222111111555
+555555555555555555111555
+555555555555555555555555
+555555555555555555555555
+555555555555555555555555
+555533555555555555555555
+555533555555555555555555
+555555555555555555555555
+555555555555555555555555
+"""
+
+# parts of water under the map as the match begins (docs/09)
+ground_water = 6000
+
+[[spring]]
+at = [-9, 0]
+rate = 40
+
+[[sink]]
+at = [7, 0]
+rate = 60
+
+[deposit_default]
+cap = 500
+regrowth = 1
+amount = 500
+
+[[team]]
+start = [-8, 4]
+
+[[team]]
+start = [7, -5]

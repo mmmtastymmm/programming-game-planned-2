@@ -13,8 +13,11 @@ use std::collections::HashMap;
 pub const CLEAR: Color = Color::srgb(0.05, 0.06, 0.09);
 /// Half-extent of a bot's cube.
 pub const BOT_HALF: f32 = 0.35;
-/// Render height of a rock tile's summit (view-only; the sim has no height).
+/// How far a rock tile's summit stands above its ground.
 pub const ROCK_HEIGHT: f32 = 0.55;
+/// How far one level of a tile's height (`docs/03`, Q65) lifts it, and how
+/// deep one level of water stands.
+pub const LEVEL_RISE: f32 = 0.3;
 /// Water sits a little below the plane so it reads as a depression.
 pub const WATER_SINK: f32 = -0.05;
 /// Half the thickness of a ground or water slab: its upper face sits this
@@ -428,6 +431,10 @@ pub struct Palette {
     pub pylon_mast: Handle<Mesh>,
     /// The quad the power mark is drawn on.
     pub power_quad: Handle<Mesh>,
+    /// The sheet water is drawn as, at its surface (Q65). See-through, and
+    /// over paint, plans and markers, so a mesh of its own
+    /// (`crates/render/CLAUDE.md`).
+    pub water_sheet: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
@@ -485,6 +492,9 @@ pub struct Palette {
     pub charge_fill_mat: Handle<StandardMaterial>,
     /// The struck-through bolt over a flat bot and a dark building.
     pub bolt_mat: Handle<StandardMaterial>,
+    /// The earth under a raised tile, and water (Q65).
+    pub earth_mat: Handle<StandardMaterial>,
+    pub water_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -633,6 +643,7 @@ impl Palette {
             charger_block: meshes.add(Cuboid::from_size(2.0 * body_half(Model::Charger))),
             pylon_mast: meshes.add(Cylinder::new(0.05, 0.9)),
             power_quad: meshes.add(Rectangle::new(0.42, 0.42)),
+            water_sheet: meshes.add(Cuboid::new(1.0, 0.012, 1.0)),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
             ground_frames,
             water_mats,
@@ -711,6 +722,17 @@ impl Palette {
             gauge_bg_mat: plain(materials, Color::srgb(0.05, 0.05, 0.06), true),
             gauge_fill_mat: plain(materials, Color::srgb(0.95, 0.85, 0.25), true),
             charge_fill_mat: plain(materials, Color::srgb(0.95, 0.8, 0.2), true),
+            earth_mat: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.36, 0.28, 0.2),
+                perceptual_roughness: 0.95,
+                ..default()
+            }),
+            water_mat: materials.add(StandardMaterial {
+                base_color: Color::srgba(0.2, 0.5, 0.85, 0.6),
+                alpha_mode: AlphaMode::Blend,
+                perceptual_roughness: 0.15,
+                ..default()
+            }),
             bolt_mat: materials.add(StandardMaterial {
                 base_color_texture: Some(assets.add(bolt_image())),
                 alpha_mode: AlphaMode::Mask(0.5),
