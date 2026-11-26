@@ -76,6 +76,11 @@ pub struct Tile {
     pub terrain: Terrain,
     /// Its height (Q65), from the map.
     pub height: Height,
+    /// The parts of water standing on it (`docs/09`), which only the
+    /// water step changes; and a spring's and a sink's rate, from the map.
+    pub water: u32,
+    pub spring: Option<u32>,
+    pub sink: Option<u32>,
     pub deposit: Option<Deposit>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
@@ -404,6 +409,11 @@ pub struct TileMemory {
     pub terrain: Terrain,
     /// The tile's height as last seen (Q65).
     pub height: Height,
+    /// Its water as last seen, and the spring and the sink on it, which
+    /// never change once seen (`docs/09`).
+    pub water: u32,
+    pub spring: Option<u32>,
+    pub sink: Option<u32>,
     pub deposit: Option<BTreeMap<String, Num>>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
@@ -523,6 +533,16 @@ pub struct World {
     /// `place`, `remove`, `move_machine` and `remove_team`, which are
     /// the only code that may do those things; derived, never hashed.
     pub(crate) generation: u64,
+    /// The water under the whole map, in parts (`docs/09`): what springs
+    /// draw on and sinks and drying fill. World state, in the hash.
+    pub ground_water: u64,
+    /// The tiles holding a spring, and those holding a sink, in
+    /// row-then-column order; from the map, and fixed.
+    pub(crate) springs: Vec<usize>,
+    pub(crate) sinks: Vec<usize>,
+    /// The tiles whose water the next water step must look at
+    /// (`World::stir`); derived, never hashed.
+    pub(crate) stirred: BTreeSet<usize>,
 }
 
 impl World {
@@ -533,6 +553,9 @@ impl World {
             .map(|t| Tile {
                 terrain: t.terrain,
                 height: t.height,
+                water: t.water,
+                spring: t.spring,
+                sink: t.sink,
                 deposit: t.deposit.as_ref().map(|d| Deposit {
                     amount: d.amount.clone(),
                     cap: d.cap.clone(),
@@ -546,6 +569,18 @@ impl World {
             .collect();
         let empty_program =
             Program::load(&[("main.py", "")], &limits).expect("the empty program loads");
+        let in_order = |has: fn(&Tile) -> bool| -> Vec<usize> {
+            map.walk()
+                .map(|(_, idx)| idx)
+                .filter(|idx| has(&tiles[*idx]))
+                .collect()
+        };
+        let springs = in_order(|t| t.spring.is_some());
+        let sinks = in_order(|t| t.sink.is_some());
+        // Every tile that starts with water is looked at in the first
+        // water step, with the tiles beside it.
+        let wet_at_start: Vec<usize> = (0..tiles.len()).filter(|i| tiles[*i].water > 0).collect();
+        let ground_water = map.ground_water;
         let speed = map.speed;
         let mut world = World {
             tick: 0,
@@ -566,7 +601,14 @@ impl World {
             empty_program,
             sight: crate::sense::SightCache::default(),
             generation: 0,
+            ground_water,
+            springs,
+            sinks,
+            stirred: BTreeSet::new(),
         };
+        for idx in wet_at_start {
+            world.stir(idx);
+        }
         let team_starts: Vec<Vec<TilePos>> = world.map.teams.clone();
         for (i, starts) in team_starts.iter().enumerate() {
             let id = TeamId(i as u32);
@@ -583,6 +625,9 @@ impl World {
                     seen_at: 0,
                     terrain: t.terrain,
                     height: Height::default(),
+                    water: 0,
+                    spring: None,
+                    sink: None,
                     deposit: None,
                     paint: None,
                     overlay: None,
@@ -705,6 +750,10 @@ impl World {
             empty_program: self.empty_program.clone(),
             sight: self.sight.clone(),
             generation: self.generation,
+            ground_water: self.ground_water,
+            springs: self.springs.clone(),
+            sinks: self.sinks.clone(),
+            stirred: self.stirred.clone(),
         }
     }
 
@@ -747,9 +796,14 @@ impl World {
     }
 
     /// Whether a bot on `from` may step onto the adjacent `to` (`docs/03`,
-    /// A step): passable terrain, and ground it can step across.
+    /// A step): passable terrain, ground it can step across, and water
+    /// no deeper than it wades.
     pub fn steps(&self, from: TilePos, to: TilePos) -> bool {
-        self.passable(to) && self.slope(from, to).is_some_and(Slope::is_step)
+        self.passable(to)
+            && self.slope(from, to).is_some_and(Slope::is_step)
+            && self
+                .tile(to)
+                .is_some_and(|t| t.water <= self.data.world.water.wade)
     }
 
     pub fn passable(&self, p: TilePos) -> bool {
@@ -778,6 +832,9 @@ impl World {
             Some(t) => {
                 t.terrain == Terrain::Ground
                     && t.deposit.is_none()
+                    && t.spring.is_none()
+                    && t.sink.is_none()
+                    && t.water < self.data.world.water.wet
                     && !self
                         .machines
                         .values()

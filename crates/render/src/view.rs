@@ -27,6 +27,9 @@ use std::f32::consts::{FRAC_PI_2, PI};
 pub struct TileLook {
     pub state: TileState,
     pub terrain: Terrain,
+    /// Whether it holds water that counts (`docs/09`): drawn as the water
+    /// tile was while water was terrain, until T46 draws water itself.
+    pub wet: bool,
     pub ore: bool,
     pub mask: u8,
     pub paint: Option<String>,
@@ -143,6 +146,8 @@ pub struct Tuning {
     pub battery: HashMap<&'static str, lang::Num>,
     /// How far a pylon joins, in tiles (`docs/08`).
     pub span: i64,
+    /// From how many parts of water a tile is wet (`docs/09`).
+    pub wet: u32,
 }
 
 impl Tuning {
@@ -150,7 +155,9 @@ impl Tuning {
         let mut max_health = HashMap::new();
         let mut battery = HashMap::new();
         let mut span = 0;
+        let mut wet = u32::MAX;
         if let Ok(d) = sim::Data::load() {
+            wet = d.world.water.wet;
             for m in Model::ALL {
                 if let Some(md) = d.machines.models.get(m.name()) {
                     max_health.insert(m.name(), num_f32(md.health).max(1.0));
@@ -165,6 +172,7 @@ impl Tuning {
             max_health,
             battery,
             span,
+            wet,
         }
     }
 
@@ -340,8 +348,10 @@ fn look_of(
     plans: Option<Plans>,
     player: sim::TeamId,
     live: &HashMap<TilePos, bool>,
+    wet_from: u32,
 ) -> TileLook {
     let ore = mem.deposit.is_some();
+    let wet = mem.terrain == Terrain::Ground && mem.water >= wet_from;
     // A NESW same-neighbour mask (bit 0 = N … bit 3 = W); off the map or
     // unknown counts as same, so the art runs off clean and gives nothing
     // away.
@@ -350,6 +360,7 @@ fn look_of(
             None => true,
             Some(m) if m.state == TileState::Unknown => true,
             Some(m) => match mem.terrain {
+                Terrain::Ground if wet => m.terrain == Terrain::Ground && m.water >= wet_from,
                 Terrain::Ground => !ore || m.deposit.is_some(),
                 t => m.terrain == t,
             },
@@ -364,6 +375,7 @@ fn look_of(
     TileLook {
         state: mem.state,
         terrain: mem.terrain,
+        wet,
         ore,
         mask,
         paint: mem.paint.clone(),
@@ -376,7 +388,7 @@ fn look_of(
 fn top_of(look: &TileLook) -> f32 {
     match look.terrain {
         Terrain::Rock => ROCK_HEIGHT,
-        Terrain::Water => WATER_SINK,
+        Terrain::Ground if look.wet => WATER_SINK,
         Terrain::Ground => 0.0,
     }
 }
@@ -387,7 +399,7 @@ fn top_of(look: &TileLook) -> f32 {
 fn surface_of(look: &TileLook) -> f32 {
     match look.terrain {
         Terrain::Rock => ROCK_HEIGHT,
-        Terrain::Water => WATER_SINK + SLAB_HALF,
+        Terrain::Ground if look.wet => WATER_SINK + SLAB_HALF,
         Terrain::Ground => SLAB_HALF,
     }
 }
@@ -408,6 +420,7 @@ pub fn sync_tiles(
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
     interface: Res<Interface>,
+    tuning: Res<Tuning>,
     mut colors: ResMut<TeamColors>,
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -446,6 +459,7 @@ pub fn sync_tiles(
             plans.get(p).map(|x| (*x).clone()),
             player,
             &live,
+            tuning.wet,
         );
         for w in &look.wires {
             wire_mats.entry(w.team).or_insert_with(|| {
@@ -753,7 +767,7 @@ fn spawn_tile(
             palette.rock_mats[mask].clone(),
             block_y_off(ROCK_HEIGHT) + WATER_SINK,
         ),
-        Terrain::Water => (
+        Terrain::Ground if look.wet => (
             palette.tile_slab.clone(),
             palette.water_mats[mask].clone(),
             WATER_SINK,

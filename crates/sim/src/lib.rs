@@ -28,6 +28,7 @@ pub mod script;
 pub mod sense;
 pub mod snapshot;
 pub mod tick;
+pub mod water;
 pub mod world;
 
 pub use command::{Bundle, Command, CommandKind, PlanKind, TeamId};

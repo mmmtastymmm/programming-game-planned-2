@@ -11,10 +11,6 @@ blocks_sight = false
 passable = false
 blocks_sight = true
 
-[terrain.water]
-passable = false
-blocks_sight = false
-
 [height]
 # every tile's height is a whole number of levels from 0 to max (Q65,
 # docs/03); a map that gives no heights has every tile at default and its
@@ -24,6 +20,17 @@ max = 9
 default = 4
 lake_depth = 2
 step = 1
+
+[water]
+# water is counted in parts, parts of them to a level of height (Q65,
+# docs/09); a tile is wet from wet parts up and damp below; a tile holding
+# film parts or fewer dries into the ground water; a bot wades up to wade
+# parts; a map's spring or sink moves at most max_rate parts a tick
+parts = 100
+wet = 10
+film = 4
+wade = 100
+max_rate = 100
 
 [deposit.ore]
 # a map may set a deposit's cap and regrowth per tile up to these

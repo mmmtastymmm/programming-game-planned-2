@@ -53,7 +53,6 @@ pub fn row_then_column(a: &TilePos, b: &TilePos) -> std::cmp::Ordering {
 pub enum Terrain {
     Ground,
     Rock,
-    Water,
 }
 
 impl Terrain {
@@ -61,7 +60,6 @@ impl Terrain {
         match self {
             Terrain::Ground => "ground",
             Terrain::Rock => "rock",
-            Terrain::Water => "water",
         }
     }
 }
@@ -141,6 +139,11 @@ pub struct DepositSpec {
 pub struct TileSpec {
     pub terrain: Terrain,
     pub height: Height,
+    /// The parts of water it starts with (`docs/09`, The map's water).
+    pub water: u32,
+    /// A spring's rate, parts a tick, if one is here; and a sink's.
+    pub spring: Option<u32>,
+    pub sink: Option<u32>,
     pub deposit: Option<DepositSpec>,
 }
 
@@ -154,6 +157,8 @@ pub struct Map {
     pub tiles: Vec<TileSpec>,
     /// Each team's starting tiles, in team order; a printer stands on each.
     pub teams: Vec<Vec<TilePos>>,
+    /// The ground water the match begins with, in parts (`docs/09`).
+    pub ground_water: u64,
     /// The file's bytes, for the replay's identity.
     pub source: String,
 }
@@ -254,10 +259,15 @@ impl Map {
             TileSpec {
                 terrain: Terrain::Ground,
                 height: Height::default(),
+                water: 0,
+                spring: None,
+                sink: None,
                 deposit: None
             };
             (width as usize).saturating_mul(height as usize)
         ];
+        // The tiles the map marks `~`: ground that starts under water.
+        let mut lake = vec![false; (width as usize).saturating_mul(height as usize)];
         // The first row is the north edge.
         for (row_from_north, row) in rows.iter().enumerate() {
             let chars: Vec<char> = row.chars().collect();
@@ -284,11 +294,11 @@ impl Map {
             for (col, ch) in chars.iter().enumerate() {
                 let x = (col as i64).saturating_sub(i64::from(half_w));
                 let pos = TilePos::new(x as i32, y as i32);
+                let under_water = *ch == '~';
                 let (terrain, has_deposit) = match ch {
-                    '.' => (Terrain::Ground, false),
+                    '.' | '~' => (Terrain::Ground, false),
                     'o' => (Terrain::Ground, true),
                     '#' => (Terrain::Rock, false),
-                    '~' => (Terrain::Water, false),
                     other => {
                         return Err(err(format!(
                             "`terrain` holds `{other}`, not one of . o # ~"
@@ -319,7 +329,7 @@ impl Map {
                             .map(|d| d as u8)
                             .ok_or_else(|| err(format!("`heights` holds `{digit}`, not a digit")))?
                     }
-                    None if terrain == Terrain::Water => hd.default.saturating_sub(hd.lake_depth),
+                    None if under_water => hd.default.saturating_sub(hd.lake_depth),
                     None => hd.default,
                 };
                 let tile_height = Height::new(level, hd.max).ok_or_else(|| {
@@ -332,10 +342,66 @@ impl Map {
                 tiles[idx] = TileSpec {
                     terrain,
                     height: tile_height,
+                    water: 0,
+                    spring: None,
+                    sink: None,
                     deposit,
                 };
+                lake[idx] = under_water;
             }
         }
+        fill_lakes(&mut tiles, &lake, width, height, data).map_err(err)?;
+        // Springs and sinks (`docs/09`): each a tile and a rate.
+        for (key, is_spring) in [("spring", true), ("sink", false)] {
+            let Some(list) = t.get(key) else { continue };
+            let arr = list
+                .as_array()
+                .ok_or_else(|| err(format!("`{key}` is not a list of tables")))?;
+            for entry in arr {
+                let at = pos_of(
+                    entry
+                        .get("at")
+                        .ok_or_else(|| err(format!("a `[[{key}]]` lacks `at`")))?,
+                )?;
+                let rate = entry
+                    .get("rate")
+                    .and_then(toml::Value::as_integer)
+                    .and_then(|r| u32::try_from(r).ok())
+                    .filter(|r| *r >= 1 && *r <= data.world.water.max_rate)
+                    .ok_or_else(|| {
+                        err(format!(
+                            "the {key} at ({}, {}) needs a whole `rate` from 1 to `water.max_rate`, {}",
+                            at.x, at.y, data.world.water.max_rate
+                        ))
+                    })?;
+                let idx = index(at, width, height).ok_or_else(|| {
+                    err(format!("the {key} at ({}, {}) is off the map", at.x, at.y))
+                })?;
+                let tile = &mut tiles[idx];
+                if tile.terrain != Terrain::Ground
+                    || tile.deposit.is_some()
+                    || tile.spring.is_some()
+                    || tile.sink.is_some()
+                {
+                    return Err(err(format!(
+                        "the {key} at ({}, {}) needs a ground tile of its own, with no deposit",
+                        at.x, at.y
+                    )));
+                }
+                if is_spring {
+                    tile.spring = Some(rate);
+                } else {
+                    tile.sink = Some(rate);
+                }
+            }
+        }
+        let ground_water = match t.get("ground_water") {
+            None => 0,
+            Some(v) => v
+                .as_integer()
+                .and_then(|n| u64::try_from(n).ok())
+                .ok_or_else(|| err("`ground_water` is not a whole number of parts".into()))?,
+        };
         let teams_v = get("team")?
             .as_array()
             .ok_or_else(|| err("`team` is not a list of tables".into()))?;
@@ -365,6 +431,7 @@ impl Map {
             height,
             tiles,
             teams,
+            ground_water,
             source: text.to_string(),
         };
         map.validate(data)?;
@@ -388,7 +455,12 @@ impl Map {
                         s.x, s.y
                     )));
                 };
-                if tile.terrain != Terrain::Ground || tile.deposit.is_some() {
+                if tile.terrain != Terrain::Ground
+                    || tile.deposit.is_some()
+                    || tile.water >= data.world.water.wet
+                    || tile.spring.is_some()
+                    || tile.sink.is_some()
+                {
                     return Err(err(format!(
                         "team {team}'s start ({}, {}) is not buildable",
                         s.x, s.y
@@ -425,6 +497,7 @@ impl Map {
                         .height
                         .slope_to(nt.height, data.world.height.step)
                         .is_step()
+                    && nt.water <= data.world.water.wade
                     && seen.insert(n)
                 {
                     queue.push_back(n);
@@ -479,6 +552,72 @@ impl Map {
             ),
         )
     }
+}
+
+/// `docs/09`, The map's water: each set of `~` tiles joined by adjacency
+/// starts full to its rim. Its surface is the height of the lowest open
+/// tile beside it that is not `~`, or one level above its own highest
+/// tile where nothing open is beside it, and every tile in it must stand
+/// below that.
+fn fill_lakes(
+    tiles: &mut [TileSpec],
+    lake: &[bool],
+    width: i32,
+    height: i32,
+    data: &Data,
+) -> Result<(), String> {
+    let parts = data.world.water.parts;
+    let half_w = width.wrapping_div(2);
+    let half_h = height.wrapping_div(2);
+    let pos_of_index = |i: usize| {
+        TilePos::new(
+            (i.checked_rem(width as usize).unwrap_or(0) as i32).wrapping_sub(half_w),
+            (i.checked_div(width as usize).unwrap_or(0) as i32).wrapping_sub(half_h),
+        )
+    };
+    let mut done = vec![false; tiles.len()];
+    for start in 0..tiles.len() {
+        if !lake[start] || done[start] {
+            continue;
+        }
+        // One set of `~` tiles, and the open tiles beside it.
+        let mut set = vec![start];
+        let mut rim: Option<u8> = None;
+        done[start] = true;
+        let mut next = 0;
+        while next < set.len() {
+            let here = set[next];
+            next = next.saturating_add(1);
+            for n in pos_of_index(here).neighbours() {
+                let Some(ni) = index(n, width, height) else {
+                    continue;
+                };
+                if lake[ni] {
+                    if !done[ni] {
+                        done[ni] = true;
+                        set.push(ni);
+                    }
+                } else if tiles[ni].terrain == Terrain::Ground {
+                    let level = tiles[ni].height.level();
+                    rim = Some(rim.map_or(level, |r| r.min(level)));
+                }
+            }
+        }
+        let highest = set.iter().map(|i| tiles[*i].height.level()).max();
+        let surface = rim.unwrap_or_else(|| highest.unwrap_or(0).saturating_add(1));
+        for &i in &set {
+            let own = tiles[i].height.level();
+            if own >= surface {
+                let p = pos_of_index(i);
+                return Err(format!(
+                    "the `~` tile at ({}, {}) stands at {own}, not below its water's surface, {surface}",
+                    p.x, p.y
+                ));
+            }
+            tiles[i].water = u32::from(surface.saturating_sub(own)).saturating_mul(parts);
+        }
+    }
+    Ok(())
 }
 
 /// The index of `p` in a row-major-from-the-south-west tile vector, or
@@ -604,7 +743,11 @@ mod tests {
         );
         assert!(m.tile(TilePos::new(-10, 6)).unwrap().deposit.is_some());
         assert_eq!(m.tile(TilePos::new(0, 6)).unwrap().terrain, Terrain::Rock);
-        assert_eq!(m.tile(TilePos::new(8, 5)).unwrap().terrain, Terrain::Water);
+        // `~` is ground under water (Q65): two levels of it, full to the
+        // ground beside it.
+        let lake = m.tile(TilePos::new(8, 5)).unwrap();
+        assert_eq!(lake.terrain, Terrain::Ground);
+        assert_eq!(lake.water, 2 * data.world.water.parts);
         assert_eq!(
             m.teams,
             vec![vec![TilePos::new(-9, 4)], vec![TilePos::new(8, -5)]]
