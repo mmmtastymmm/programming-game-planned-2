@@ -15,6 +15,16 @@ blocks_sight = true
 passable = false
 blocks_sight = false
 
+[height]
+# every tile's height is a whole number of levels from 0 to max (Q65,
+# docs/03); a map that gives no heights has every tile at default and its
+# ~ tiles lake_depth below that; a bot steps between tiles whose heights
+# differ by at most step
+max = 9
+default = 4
+lake_depth = 2
+step = 1
+
 [deposit.ore]
 # a map may set a deposit's cap and regrowth per tile up to these
 max_cap = 1000

@@ -756,7 +756,7 @@ impl Sim {
         let free = pos
             .neighbours()
             .into_iter()
-            .find(|p| w.passable(*p) && !w.occupied(*p));
+            .find(|p| w.steps(pos, *p) && !w.occupied(*p));
         if let Some(p) = free {
             w.place(Model::Bot, team, p, Some("bot".to_string()));
         }
@@ -967,6 +967,7 @@ impl Sim {
                 mem.state = TileState::Visible;
                 mem.seen_at = tick;
                 mem.terrain = tile.terrain;
+                mem.height = tile.height;
                 let amount = tile.deposit.as_ref().map(|d| &d.amount);
                 if mem.deposit.as_ref() != amount {
                     mem.deposit = amount.cloned();
@@ -1066,6 +1067,7 @@ impl Sim {
                 if m.state != TileState::Unknown {
                     h.write_u64(m.seen_at);
                     h.write_str(m.terrain.name());
+                    h.write_u8(m.height.level());
                     write_amounts(&mut h, m.deposit.as_ref());
                     write_opt_str(&mut h, m.paint.as_deref());
                     write_opt_str(&mut h, m.overlay.as_deref());
@@ -1085,6 +1087,7 @@ impl Sim {
         for (_, idx) in w.map.walk() {
             let t = &w.tiles[idx];
             h.write_str(t.terrain.name());
+            h.write_u8(t.height.level());
             write_amounts(&mut h, t.deposit.as_ref().map(|d| &d.amount));
             write_opt_str(&mut h, t.paint.as_deref());
             write_opt_str(&mut h, t.overlay.as_deref());

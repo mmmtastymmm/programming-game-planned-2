@@ -4,7 +4,7 @@
 
 use crate::command::{Bundle, PlanKind, TeamId};
 use crate::data::Data;
-use crate::map::{Map, Terrain, TilePos, index};
+use crate::map::{Height, Map, Slope, Terrain, TilePos, index};
 use lang::{Costs, Limits, Num, Program};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -74,6 +74,8 @@ impl Plans {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tile {
     pub terrain: Terrain,
+    /// Its height (Q65), from the map.
+    pub height: Height,
     pub deposit: Option<Deposit>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
@@ -400,6 +402,8 @@ pub struct TileMemory {
     pub state: TileState,
     pub seen_at: u64,
     pub terrain: Terrain,
+    /// The tile's height as last seen (Q65).
+    pub height: Height,
     pub deposit: Option<BTreeMap<String, Num>>,
     pub paint: Option<String>,
     pub overlay: Option<String>,
@@ -528,6 +532,7 @@ impl World {
             .iter()
             .map(|t| Tile {
                 terrain: t.terrain,
+                height: t.height,
                 deposit: t.deposit.as_ref().map(|d| Deposit {
                     amount: d.amount.clone(),
                     cap: d.cap.clone(),
@@ -577,6 +582,7 @@ impl World {
                     state: TileState::Unknown,
                     seen_at: 0,
                     terrain: t.terrain,
+                    height: Height::default(),
                     deposit: None,
                     paint: None,
                     overlay: None,
@@ -731,6 +737,19 @@ impl World {
 
     pub fn tile_mut(&mut self, p: TilePos) -> Option<&mut Tile> {
         self.tile_index(p).map(move |i| &mut self.tiles[i])
+    }
+
+    /// How the ground lies from `from` to `to` (`docs/03`), or `None` if
+    /// either is off the map.
+    pub fn slope(&self, from: TilePos, to: TilePos) -> Option<Slope> {
+        let (a, b) = (self.tile(from)?, self.tile(to)?);
+        Some(a.height.slope_to(b.height, self.data.world.height.step))
+    }
+
+    /// Whether a bot on `from` may step onto the adjacent `to` (`docs/03`,
+    /// A step): passable terrain, and ground it can step across.
+    pub fn steps(&self, from: TilePos, to: TilePos) -> bool {
+        self.passable(to) && self.slope(from, to).is_some_and(Slope::is_step)
     }
 
     pub fn passable(&self, p: TilePos) -> bool {

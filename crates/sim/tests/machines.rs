@@ -1087,6 +1087,7 @@ fn memory_by_a_walk_of_the_whole_map(
                 state: TileState::Visible,
                 seen_at: w.tick,
                 terrain: tile.terrain,
+                height: tile.height,
                 deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
                 paint: tile.paint.clone(),
                 overlay: tile.overlay.clone(),

@@ -123,10 +123,21 @@ pub struct TerrainData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldData {
     pub terrain: BTreeMap<String, TerrainData>,
+    pub height: HeightData,
     /// Per resource kind: the largest cap and regrowth a map may set.
     pub deposit_max: BTreeMap<String, (Num, Num)>,
     pub overlays: Vec<String>,
     pub speed_steps: Vec<u64>,
+}
+
+/// `[height]` (`docs/03`, Height; Q65): the levels a tile may stand at,
+/// what a map that names none gives, and how far apart a step may be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeightData {
+    pub max: u8,
+    pub default: u8,
+    pub lake_depth: u8,
+    pub step: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -501,6 +512,38 @@ impl WorldData {
                 return Err(err(FILE, format!("no `terrain.{required}`")));
             }
         }
+        let height_t = get(FILE, &t, "height")?
+            .as_table()
+            .ok_or_else(|| err(FILE, "`height` is not a table"))?;
+        let level = |key: &str| -> D<u8> {
+            let name = format!("height.{key}");
+            let v = uint(FILE, &name, get(FILE, height_t, key)?)?;
+            u8::try_from(v).map_err(|_| err(FILE, format!("`{name}` is above 255")))
+        };
+        let height = HeightData {
+            max: level("max")?,
+            default: level("default")?,
+            lake_depth: level("lake_depth")?,
+            step: level("step")?,
+        };
+        // A map writes a height as one digit; a default no tile could
+        // stand at, a lake below the lowest level, and a step of nothing
+        // are each a table no map could be read against.
+        if height.max > 9 {
+            return Err(err(
+                FILE,
+                "`height.max` is above 9, the most a map's digit holds",
+            ));
+        }
+        if height.default > height.max {
+            return Err(err(FILE, "`height.default` is above `height.max`"));
+        }
+        if height.lake_depth > height.default {
+            return Err(err(FILE, "`height.lake_depth` is above `height.default`"));
+        }
+        if height.step == 0 {
+            return Err(err(FILE, "`height.step` is zero"));
+        }
         let dep_t = get(FILE, &t, "deposit")?
             .as_table()
             .ok_or_else(|| err(FILE, "`deposit` is not a table"))?;
@@ -529,6 +572,7 @@ impl WorldData {
         }
         Ok(WorldData {
             terrain,
+            height,
             deposit_max,
             overlays,
             speed_steps,
