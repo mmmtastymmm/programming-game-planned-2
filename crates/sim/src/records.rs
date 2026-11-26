@@ -147,7 +147,19 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
     } else {
         (mem.height, mem.water, mem.spring, mem.sink)
     };
-    let rate = |r: Option<u32>| r.map_or(Value::None, |r| int(i128::from(r)));
+    // Water is read in levels, a `num`, however finely the sim counts it.
+    let per_level = world.data.world.water.parts;
+    let in_levels = move |parts: u32| -> Value {
+        let (amount, per) = (
+            lang::Num::from_int(i128::from(parts)),
+            lang::Num::from_int(i128::from(per_level)),
+        );
+        match (amount, per) {
+            (Ok(a), Ok(p)) => a.checked_div(p).map_or(Value::None, Value::Num),
+            _ => Value::None,
+        }
+    };
+    let rate = |r: Option<u32>| r.map_or(Value::None, in_levels);
     let (terrain, deposit, paint, overlay, wires, building, seen_at) =
         if mem.state == TileState::Visible {
             // The world now.
@@ -227,7 +239,7 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
             ("state", Value::str(state)),
             ("terrain", Value::str(terrain.name())),
             ("height", int(i128::from(height.level()))),
-            ("water", int(i128::from(water))),
+            ("water", in_levels(water)),
             ("spring", rate(spring)),
             ("sink", rate(sink)),
             ("deposit", deposit_v),

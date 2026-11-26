@@ -594,6 +594,11 @@ fn inspector(
                                 _ => format!("remembered from tick {}", mem.seen_at),
                             };
                             ui.small(format!("{} — {seen}", mem.terrain.name()));
+                            // Height and water (Q65), and what brings
+                            // water up or takes it down here.
+                            for line in power::ground_lines(mem, tuning.parts) {
+                                ui.small(line);
+                            }
                             if let Some(dep) = &mem.deposit {
                                 ui.small(format!("deposit: {}", amounts(dep)));
                             }

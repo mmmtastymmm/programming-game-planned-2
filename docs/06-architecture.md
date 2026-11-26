@@ -232,9 +232,9 @@ loop:
    An out team has no grids. The match is built with its grids traced and
    every building powered at tick 0.
 7. **Regrowth and water**: every deposit grows (`03`); then the water
-   step: springs run, water flows a tile, sinks run and thin water
-   dries, which sets each machine's `flooded` and darkens a flooded
-   building until the next (Q65; `09`). The match is built with its water as the
+   step: springs run, water flows in its passes, sinks run and thin
+   water dries, which sets each machine's `flooded` and darkens a
+   flooded building until the next (Q65, Q66; `09`). The match is built with its water as the
    map gives it and nothing flooded.
 8. **The vision pass**: each team's visible tiles are computed, from every
    machine of the team but a dark building (`08`), by line of sight over

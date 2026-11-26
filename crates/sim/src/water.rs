@@ -6,6 +6,10 @@ use crate::map::Terrain;
 use crate::world::World;
 use std::collections::BTreeSet;
 
+/// How many share a difference between a tile and a lower one beside it
+/// (`docs/09`): the tile and its four sides.
+const SHARING: u32 = 5;
+
 impl World {
     /// An open tile's surface in parts (`docs/09`): its height in parts,
     /// plus its water.
@@ -46,103 +50,136 @@ impl World {
         }
     }
 
-    /// The water step (`docs/09`): springs, the flow, sinks, drying. Only
-    /// tiles that may have been disturbed are looked at for the flow —
-    /// one whose own surface and whose neighbours' surfaces are what they
-    /// were when it last gave nothing gives nothing again — so still
-    /// water costs nothing, and the result is the one a walk of every
-    /// tile gives.
+    /// The water step (`docs/09`): springs, the flow in its passes, sinks,
+    /// drying. Only tiles that may have been disturbed are looked at for
+    /// the flow — one whose own surface and whose neighbours' surfaces are
+    /// what they were when it last gave nothing gives nothing again — so
+    /// still water costs nothing, and the result is the one a walk of
+    /// every tile gives.
     pub(crate) fn water_step(&mut self) {
         let wd = self.data.world.water;
-        // The tiles whose water this step changes.
-        let mut changed: BTreeSet<usize> = BTreeSet::new();
+        // Every tile this step looks at or changes, for the drying at
+        // its end; and the tiles given water in it, by a spring or by a
+        // neighbour, since a film that is still being fed does not dry.
+        let mut touched: BTreeSet<usize> = BTreeSet::new();
+        let mut fed: BTreeSet<usize> = BTreeSet::new();
 
         // 1. Springs, in the order of their tiles.
         for i in 0..self.springs.len() {
             let idx = self.springs[i];
             let rate = u64::from(self.tiles[idx].spring.unwrap_or(0));
-            let up = rate.min(self.ground_water);
+            // A spring with a head brings up only what leaves its tile's
+            // surface at or below it.
+            let room = match self.tiles[idx].head {
+                Some(head) => u64::from(head.saturating_sub(self.surface(idx))),
+                None => u64::MAX,
+            };
+            let up = rate.min(self.ground_water).min(room);
             if up > 0 {
                 self.ground_water = self.ground_water.saturating_sub(up);
                 let t = &mut self.tiles[idx];
                 t.water = t.water.saturating_add(up as u32);
-                changed.insert(idx);
+                fed.insert(idx);
                 self.stir(idx);
             }
         }
 
-        // 2. The flow: every gift is worked out from the water as the
-        // springs left it, and all are applied together.
-        let mut gifts: Vec<(usize, usize, u32)> = Vec::new();
-        for &idx in &self.stirred {
-            let tile = &self.tiles[idx];
-            if tile.terrain != Terrain::Ground || tile.water == 0 {
-                continue;
+        // 2. The flow, `passes` times over. In each pass every gift is
+        // worked out from the water as the pass began, and all are
+        // applied together; the next pass looks at what this one changed.
+        for _ in 0..wd.passes {
+            let looking = std::mem::take(&mut self.stirred);
+            if looking.is_empty() {
+                break;
             }
-            let own = self.surface(idx);
-            // Its lower neighbours: open, and at least two parts below.
-            let mut lower: Vec<(u32, usize, usize)> = Vec::new();
-            for (dir, n) in self.beside(idx).into_iter().enumerate() {
-                let Some(n) = n else { continue };
-                if self.tiles[n].terrain != Terrain::Ground {
+            let mut gifts: Vec<(usize, usize, u32)> = Vec::new();
+            for &idx in &looking {
+                let tile = &self.tiles[idx];
+                if tile.terrain != Terrain::Ground || tile.water == 0 {
                     continue;
                 }
-                let theirs = self.surface(n);
-                if theirs.saturating_add(2) <= own {
-                    lower.push((theirs, dir, n));
+                let own = self.surface(idx);
+                // Its lower neighbours: open, and below it.
+                let mut lower: Vec<(u32, usize, usize)> = Vec::new();
+                for (dir, n) in self.beside(idx).into_iter().enumerate() {
+                    let Some(n) = n else { continue };
+                    if self.tiles[n].terrain != Terrain::Ground {
+                        continue;
+                    }
+                    let theirs = self.surface(n);
+                    if theirs < own {
+                        lower.push((theirs, dir, n));
+                    }
+                }
+                // Met lowest surface first, then in the order n, e, s,
+                // w, while its water lasts.
+                lower.sort();
+                let mut left = tile.water;
+                for (theirs, _, n) in lower {
+                    // A fifth of the difference: the tile and its four
+                    // sides share, however many of the sides are lower.
+                    // A larger share makes water in a channel swing back
+                    // and forth for ever.
+                    let offer = own.saturating_sub(theirs).checked_div(SHARING).unwrap_or(0);
+                    let given = offer.min(left);
+                    if given > 0 {
+                        gifts.push((idx, n, given));
+                        left = left.saturating_sub(given);
+                    }
                 }
             }
-            if lower.is_empty() {
-                continue;
-            }
-            // Its share of each difference, itself among those sharing.
-            let sharing = (lower.len() as u32).saturating_add(1);
-            // Met lowest surface first, then in the order n, e, s, w,
-            // while its water lasts.
-            lower.sort();
-            let mut left = tile.water;
-            for (theirs, _, n) in lower {
-                let offer = own.saturating_sub(theirs).checked_div(sharing).unwrap_or(0);
-                let given = offer.min(left);
-                if given > 0 {
-                    gifts.push((idx, n, given));
-                    left = left.saturating_sub(given);
-                }
+            touched.extend(looking);
+            for (from, to, parts) in gifts {
+                self.tiles[from].water = self.tiles[from].water.saturating_sub(parts);
+                self.tiles[to].water = self.tiles[to].water.saturating_add(parts);
+                fed.insert(to);
+                touched.insert(from);
+                touched.insert(to);
+                self.stir(from);
+                self.stir(to);
             }
         }
-        self.stirred.clear();
-        for (from, to, parts) in gifts {
-            self.tiles[from].water = self.tiles[from].water.saturating_sub(parts);
-            self.tiles[to].water = self.tiles[to].water.saturating_add(parts);
-            changed.insert(from);
-            changed.insert(to);
-        }
+        // What the last pass left stirred is the next step's to look at,
+        // and may hold a film for this one to dry.
+        touched.extend(self.stirred.iter().copied());
 
         // 3. Sinks, in the order of their tiles.
         for i in 0..self.sinks.len() {
             let idx = self.sinks[i];
             let rate = self.tiles[idx].sink.unwrap_or(0);
-            let down = rate.min(self.tiles[idx].water);
+            // A sink with a sill takes only what stands above it.
+            let above = match self.tiles[idx].sill {
+                Some(sill) => self.surface(idx).saturating_sub(sill),
+                None => u32::MAX,
+            };
+            let down = rate.min(self.tiles[idx].water).min(above);
             if down > 0 {
                 self.tiles[idx].water = self.tiles[idx].water.saturating_sub(down);
                 self.ground_water = self.ground_water.saturating_add(u64::from(down));
-                changed.insert(idx);
+                touched.insert(idx);
+                self.stir(idx);
             }
         }
 
-        // 4. Thin water dries, a spring's own tile aside. A tile this
-        // step did not touch held more than a film before it, or nothing.
-        for &idx in &changed {
+        // 4. Thin water dries on a step in which it was given none, a
+        // spring's own tile aside. A thin tile is one this step touched
+        // or one something stirred — the last step's gift to it, or
+        // whatever else changed its water — so those are all that need
+        // looking at.
+        for idx in touched {
             let t = &mut self.tiles[idx];
-            if t.water > 0 && t.water <= wd.film && t.spring.is_none() {
+            if t.water == 0 || t.water > wd.film {
+                continue;
+            }
+            if t.spring.is_none() && !fed.contains(&idx) {
                 self.ground_water = self.ground_water.saturating_add(u64::from(t.water));
                 t.water = 0;
+                self.stir(idx);
+            } else {
+                // A film that stood this step is looked at in the next,
+                // which dries it if nothing more arrives.
+                self.stirred.insert(idx);
             }
-        }
-
-        // What changed, and what is beside it, is looked at next step.
-        for idx in changed {
-            self.stir(idx);
         }
     }
 

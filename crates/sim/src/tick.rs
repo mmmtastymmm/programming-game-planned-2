@@ -972,6 +972,8 @@ impl Sim {
                 mem.water = tile.water;
                 mem.spring = tile.spring;
                 mem.sink = tile.sink;
+                mem.head = tile.head;
+                mem.sill = tile.sill;
                 let amount = tile.deposit.as_ref().map(|d| &d.amount);
                 if mem.deposit.as_ref() != amount {
                     mem.deposit = amount.cloned();

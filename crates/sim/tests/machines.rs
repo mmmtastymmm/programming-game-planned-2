@@ -1091,6 +1091,8 @@ fn memory_by_a_walk_of_the_whole_map(
                 water: tile.water,
                 spring: tile.spring,
                 sink: tile.sink,
+                head: tile.head,
+                sill: tile.sill,
                 deposit: tile.deposit.as_ref().map(|d| d.amount.clone()),
                 paint: tile.paint.clone(),
                 overlay: tile.overlay.clone(),

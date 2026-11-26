@@ -11,13 +11,13 @@ and the digging, filling and mining that change it — is
 
 ## Decided
 
-- **Water is small parts that flow, a tile a tick, over ground that has a
-  height (Q65, amending Q21, Q28 and Q62).** `water` is no longer a kind
+- **Water is small parts that flow over ground that has a height (Q65,
+  amending Q21, Q28 and Q62, as Q66 amended).** `water` is no longer a kind
   of terrain: a tile is `ground` or `rock` at a height (`03`), and water
-  is what stands on it, a whole number of **parts**, a hundred to a
-  level. Every tick each tile gives water to the lower tiles beside it,
-  sharing out the difference, so a flood has a front and a lake takes time
-  to drain. Nothing else moves it: a channel dug from a lake fills because
+  is what stands on it, a whole number of **parts**, a thousand to a
+  level as Q66 has it. Every tick each tile gives water to the lower
+  tiles beside it, a fifth of the difference each as Q66 has it, so a
+  flood has a front and a lake takes time to drain. Nothing else moves it: a channel dug from a lake fills because
   the lake runs into it. **Springs** put water on the map and **sinks**
   take it off, and both draw on one store of **ground water**, as does the
   thin water that dries, so that the water of a match is a fixed amount
@@ -25,13 +25,36 @@ and the digging, filling and mining that change it — is
   **flooded** by more; a building is flooded by any water deep enough to
   count; a flooded machine is stopped and loses health every tick. Pumps,
   pipes, storage and what uses water are not ruled here.
+- **A tile gives a fifth, the flow runs in passes, a film dries only
+  when nothing reaches it, a spring has a head and a sink a sill, and
+  water is written in levels (Q66, amending Q65).** Q65 had a tile give
+  each lower neighbour the difference over one more than the number of
+  them, which in a channel is half, and half makes a row of tiles swing
+  back and forth for ever; a tile now gives **a fifth**, however many
+  are lower. The flow runs `water.passes` times a tick, so that a gentle
+  slope carries a real stream. Thin water dries only on a tick in which
+  it was given none, so that a stream can wet a floor and a channel
+  fill. A spring may have a **head** it will not raise its own tile's
+  water above, and a sink a **sill** it will not take its own tile's
+  water below, so that a spring and a sink make a river that fills to
+  its banks and runs over none of them. Water is counted a thousand
+  parts to a level, and every amount a map, the tables or a program
+  holds is written in levels, so that how finely water is counted is a
+  number that changes nothing else.
 
 ## Water on a tile
 
 Water is counted in **parts**, and `water.parts` of them in data, a
-hundred, stand as deep as one level of height (`03`). Every amount of
+thousand, stand as deep as one level of height (`03`). Every amount of
 water in the sim is a whole number of parts, and so is every tile's
 `water`: the parts standing on it, zero or more.
+
+Parts are how the sim counts and nothing more. A map, the tables and a
+program each give an amount of water **in levels** — a whole number, or a
+decimal — which must come to a whole number of parts; `film` alone
+(below) is in parts, since it is the rounding it clears up. So
+`water.parts` may be changed and no map, and no program, means anything
+different.
 
 - Only `ground` holds water. `rock` holds none at any height and is a
   wall to it, as the edge of the map is: water never leaves the map and
@@ -56,50 +79,59 @@ the sim moves water.
 
 **1. Springs run.** Each spring, in the order of its tile, moves onto its
 tile as many parts as its rate, or all the ground water holds if that is
-less (Springs and sinks, below).
+less, or, if it has a head, only what brings its tile's surface up to
+the head, if that is less still (Springs and sinks, below).
 
-**2. Water flows.** Every flow of the step is worked out from the water
-as step 1 left it, and all of them are then applied together, so the
-order tiles are looked at in changes nothing.
+**2. Water flows**, `water.passes` times over. In each pass every flow is
+worked out from the water as the pass began, and all of them are then
+applied together, so the order tiles are looked at in changes nothing;
+the next pass begins from what that left.
 
 For each open tile that holds water, its **lower neighbours** are the
-adjacent open tiles (`02`) whose surface is at least two parts below its
-own. A tile with none gives nothing. Otherwise it **offers** each lower
-neighbour the difference between their two surfaces divided by one more
-than the number of its lower neighbours, rounded down: its share of the
-difference, with the tile itself counted among those sharing. If its
-offers together are more than the water it holds, they are met lowest
-surface first — among equals in the order `n`, `e`, `s`, `w` — each in
-full while its water lasts, and the one it runs out on in part.
+adjacent open tiles (`02`) whose surface is below its own. It **offers**
+each of them a fifth of the difference between their two surfaces,
+rounded down: the tile and its four sides share, however many of the
+sides are lower. If its offers together are more than the water it
+holds, they are met lowest surface first — among equals in the order
+`n`, `e`, `s`, `w` — each in full while its water lasts, and the one it
+runs out on in part.
 
 Then every tile's `water` becomes what it held, less what it gave, plus
 what it was given.
 
 **3. Sinks run.** Each sink, in the order of its tile, moves from its
 tile into the ground water as many parts as its rate, or all the tile
-holds if that is less.
+holds if that is less, or, if it has a sill, only what stands above the
+sill, if that is less still.
 
 **4. Thin water dries.** Every tile that holds water, and no more than
-`water.film` parts of it, four, loses it all to the ground water. A
-spring's own tile is not dried.
+`water.film` parts of it, four, and that was given none in this step —
+by a spring or by a neighbour, in any pass — loses it all to the ground
+water. A film that is still being fed stays, and builds. A spring's own
+tile is not dried.
 
 **5. `flooded` is set** on every machine (Wading and flooding, below).
 
 **What the rules add up to.**
 
-- **Water runs downhill, a tile a tick.** A tile only ever gives to the
-  tiles beside it, so the front of a flood moves one tile a tick, and a
-  lake cut open drains over many ticks.
-- **Level water stays put.** Two tiles whose surfaces are within a part of
-  each other exchange nothing, and a tile whose share of every difference
-  rounds to nothing gives nothing. A lake's surface can therefore hold a
-  slope of about a part a tile — a hundredth of a level — and no more.
-- **Nothing sloshes.** Because a tile counts itself among those sharing,
-  a small rise on a flat pool gives away no more than brings it level,
-  and does not swing back and forth for ever.
+- **Water runs downhill, a tile a pass.** A tile only ever gives to the
+  tiles beside it, so the front of a flood moves `water.passes` tiles a
+  tick, and a lake cut open drains over many ticks.
+- **Flow needs a slope.** What crosses between two tiles in a pass is a
+  fifth of how far one stands above the other, so a stream of a given
+  size needs a given slope, whatever the water's depth, and a long level
+  channel carries little. More passes carry more on the same slope.
+- **Level water stays put.** A tile gives a neighbour nothing until it
+  stands five parts above it. A lake's surface can therefore hold a
+  slope of up to four parts a tile — four thousandths of a level — and
+  no more.
+- **Nothing sloshes.** A fifth is small enough that no arrangement of
+  tiles swings back and forth: a rise on a pool, or a row of tiles in a
+  channel, only settles.
 - **Water stays only where the ground holds it.** On open flat ground a
-  spill spreads until its edge is a film, the film dries, and the edge
-  moves in: a puddle on a plain is gone in time. In a hollow it stays.
+  spill spreads until its edge is a film and nothing more reaches it,
+  the film dries, and the edge moves in: a puddle on a plain is gone in
+  time. In a hollow it stays.
 - **The total is fixed.** The parts on every tile and the ground water
   together never change in these five steps: springs, sinks and drying
   only move parts between the two.
@@ -114,11 +146,23 @@ under every tile and belonging to none. It starts at the amount the map
 gives, which may be zero, and it is world state, in the hash.
 
 A **spring** is a feature of a tile the map places (`03`, The map), fixed
-for the match, with a **rate**: whole parts a tick. A **sink** is the
-same, with a rate of its own. A spring brings ground water up onto its
-tile and a sink takes water on its tile down, each at its rate and each
-only as far as there is water to move (The water step, 1 and 3).
+for the match, with a **rate**, in levels a tick. A **sink** is the same,
+with a rate of its own. A spring brings ground water up onto its tile
+and a sink takes water on its tile down, each at its rate and each only
+as far as there is water to move (The water step, 1 and 3).
 
+A spring may have a **head**: a height, in levels, above its own tile's.
+It brings up nothing that would raise the surface of its tile past its
+head. Water it feeds never stands higher than it does at the spring, so
+where the ground beside that water is everywhere at or above the head,
+none of it runs over. A sink may have a **sill**: a height at or above
+its own tile's. It takes nothing that stands at or below its sill, so
+the water beside it fills to the sill before the sink takes any.
+
+- **A spring with a head and a sink with a sill under it make a river.**
+  It fills until its surface stands between the two and then holds, the
+  same tick after tick, with what the slope between them carries running
+  from the one to the other: a loop that makes and loses nothing.
 - A map with no sink loses no water but what dries, which its springs
   return. Its lakes come back to what they were.
 - A map with a spring above a sink has a river between them for as long
@@ -170,25 +214,29 @@ by adjacency starts full to its rim: the surface of every tile in it is
 the height of the lowest open tile beside the set that is not `~`, or,
 where rock and the map's edge are all that is beside it, one level above
 the set's own highest tile. A map in which a `~` tile's height is not
-below that is refused. A map also gives its springs and sinks, each a
-tile and a rate, and the ground water it begins with. The match's first
-water step is tick 1's.
+below that is refused. A map also gives its springs and sinks — each a
+tile and a rate, a spring's head and a sink's sill if they have one —
+and the ground water it begins with, every amount in levels. The
+match's first water step is tick 1's.
 
 ## What a program reads
 
-A tile's record (`02`, `tile`) carries its `height`; its `water`, in
-parts; and its `spring` and its `sink`, each the rate or `None` — as the
+A tile's record (`02`, `tile`) carries its `height`; its `water`, how
+deep it stands, a `num` in levels; and its `spring` and its `sink`, each
+the rate in levels a tick or `None` — as the
 team sees them, or as it last saw them on a remembered tile (Q21). A
 machine's record carries `flooded`. The ground water is read by no
 program.
 
 ## Data
 
-`[water]` in [data/world.toml](../data/world.toml) holds `parts`, `wet`,
-`film`, `wade`, `flood_damage`, `cushion` — the water that breaks a fall
-(`03`, Moving) — and `max_rate`, the most a map may
-give a spring or a sink. Every key is hash-affecting. The sim refuses
-data in which `film` is not below `wet`, or `wet` is above `wade`.
+`[water]` in [data/world.toml](../data/world.toml) holds `parts`, how
+finely water is counted; `wet`, `wade` and `max_rate`, the most a map
+may give a spring or a sink, each in levels; `film`, in parts; `passes`;
+and `flood_damage` and `cushion`, the water that breaks a fall (`03`,
+Moving). Every key is hash-affecting. The sim refuses data in which
+`parts` or `passes` is nothing, an amount in levels does not come to
+whole parts, `film` is not below `wet`, or `wet` is above `wade`.
 
 ## What this doc leaves open
 
@@ -197,6 +245,9 @@ data in which `film` is not below `wet`, or `wet` is above `wade`.
   uses up is the first thing that could change the total, and that
   question says whether it does or goes back to the ground water.
 - **Rain.** Springs are the only way water reaches the ground.
-- **A limit on how fast water moves.** A tile shares out the whole
+- **Water with momentum.** Flow here is in proportion to slope, so a
+  level river carries next to nothing; a flow that builds up along a
+  channel, and carries a river on a gentle slope, is a new question
+  number.
   difference each tick; a cap on what crosses between two tiles in a
   tick is a number that could be added.

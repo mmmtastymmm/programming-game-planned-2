@@ -64,8 +64,8 @@ Every tile holds exactly:
 |---|---|
 | `terrain` | one of the two terrain kinds below; `rock` becomes `ground` when mined, and nothing else changes it (Q65) |
 | `height` | a whole number of levels from zero to `height.max` in data, from the map; changed a level at a time by `dig` and `fill` (Q65) |
-| `water` | the parts of water standing on it, a whole number, a hundred to a level, zero on rock; changed only by the water step (Q65, `09`) |
-| `spring`, `sink` | each the rate of the spring or the sink on the tile, or `None`; from the map and fixed (Q65, `09`) |
+| `water` | the parts of water standing on it, a whole number, a thousand to a level, zero on rock; changed only by the water step (Q65, Q66; `09`) |
+| `spring`, `sink` | each the rate of the spring or the sink on the tile, or `None`, with a spring's head and a sink's sill where they have one; from the map and fixed (Q65, Q66; `09`) |
 | `deposit` | a `dict` of resource kind to amount, or `None`; on any passable tile the map puts one on |
 | `paint` | the tile's one paint, a color from `deployment.colors` in data or `None`; influences nothing |
 | `overlay` | the tile's one overlay, a label from `mark.overlays` in data or `None`; influences bots through the programs that read it |
@@ -312,15 +312,18 @@ A map fixes:
 a grid of digits beside its terrain; a map that gives none has every tile
 at `height.default` in data and every `~` tile `height.lake_depth` below
 that. `~` in the terrain is ground that starts under water, and `09` says
-how deep. A spring and a sink are each a tile and a rate, and the map
-gives the ground water it begins with.
+how deep. A spring and a sink are each a tile and a rate, a spring with
+a head and a sink with a sill if the map gives one, and the map gives
+the ground water it begins with; every amount of water a map gives is in
+levels (Q66; `09`).
 
 A map is **valid** only if every starting tile is buildable, no two are the
 same tile, every team has at least one, every starting tile can reach
 at least one deposit by steps a bot may take as the match begins, every
 spring and sink is on a clear `ground` tile of its own that is no
-starting tile, with a rate above zero and at most `water.max_rate`, and
-its `~` tiles are as `09` requires. The sim refuses an invalid map at load, as it refuses
+starting tile, with a rate of at least a part and at most
+`water.max_rate`, a head above its tile's height and a sill at or above
+it, and its `~` tiles are as `09` requires. The sim refuses an invalid map at load, as it refuses
 an invalid bundle.
 
 **Symmetry** is a map author's business and not a rule: a fair map places
