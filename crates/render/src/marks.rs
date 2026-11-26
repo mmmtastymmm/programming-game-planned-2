@@ -10,14 +10,15 @@ use sim::world::{Plan, Plans};
 use sim::{CommandKind, PlanKind, Sim, TilePos};
 
 /// The strip: a row per plan kind, in the order the screen shows them.
-pub const ROWS: [PlanKind; 4] = [
+pub const ROWS: [PlanKind; 5] = [
     PlanKind::Building,
     PlanKind::Paint,
     PlanKind::Overlay,
     PlanKind::Wire,
+    PlanKind::Ground,
 ];
 
-/// The key that picks a row: `B`, `P`, `O` or `C`.
+/// The key that picks a row: `B`, `P`, `O`, `C` or `G`.
 pub fn row_key(plan: PlanKind) -> char {
     match plan {
         PlanKind::Building => 'B',
@@ -25,6 +26,7 @@ pub fn row_key(plan: PlanKind) -> char {
         PlanKind::Overlay => 'O',
         // For cable, since `W` pans the camera (Q62).
         PlanKind::Wire => 'C',
+        PlanKind::Ground => 'G',
     }
 }
 
@@ -36,6 +38,8 @@ pub struct MarkRows {
     pub paint: Vec<String>,
     pub overlay: Vec<String>,
     pub wire: Vec<String>,
+    /// The heights a ground plan may ask for (Q65).
+    pub ground: Vec<String>,
 }
 
 impl MarkRows {
@@ -46,6 +50,7 @@ impl MarkRows {
             paint: Sim::markable(&data, PlanKind::Paint),
             overlay: Sim::markable(&data, PlanKind::Overlay),
             wire: Sim::markable(&data, PlanKind::Wire),
+            ground: Sim::markable(&data, PlanKind::Ground),
         })
     }
 
@@ -57,6 +62,7 @@ impl MarkRows {
             PlanKind::Paint => &self.paint,
             PlanKind::Overlay => &self.overlay,
             PlanKind::Wire => &self.wire,
+            PlanKind::Ground => &self.ground,
         };
         values.iter().cloned().map(Some).chain([None]).collect()
     }
@@ -89,6 +95,11 @@ pub fn command(tool: &Tool, at: TilePos, held: Option<&Plans>) -> Option<Command
         return None;
     };
     let holds = held.is_some_and(|p| slot(p, *plan).is_some());
+    // A ground plan has no plan to clear (`docs/03`): its *clear* only
+    // withdraws one, and does nothing where there is none.
+    if *plan == PlanKind::Ground && value.is_none() && !holds {
+        return None;
+    }
     Some(if value.is_none() && holds {
         CommandKind::Unmark { at, plan: *plan }
     } else {
@@ -202,7 +213,32 @@ mod tests {
         assert_eq!(r.entries(PlanKind::Overlay).last(), Some(&None));
         // The wire row (Q62): the wire, and its clear.
         assert_eq!(r.entries(PlanKind::Wire), vec![Some("wire".into()), None]);
-        assert_eq!(ROWS.map(row_key), ['B', 'P', 'O', 'C']);
+        // The ground row (Q65): every height the tables allow, and its
+        // clear, which only withdraws a plan.
+        let ground = r.entries(PlanKind::Ground);
+        assert_eq!(ground.first(), Some(&Some("0".into())));
+        assert_eq!(ground.last(), Some(&None));
+        assert_eq!(ground.len(), 11, "heights 0 to 9 and clear");
+        assert_eq!(ROWS.map(row_key), ['B', 'P', 'O', 'C', 'G']);
+        // A height on any tile is a mark; clear is an unmark where the
+        // team holds a ground plan and nothing at all where it does not.
+        let at = TilePos::new(0, 0);
+        let held = Plans {
+            ground: Some(Plan::Set("3".into())),
+            ..Plans::default()
+        };
+        let set = Tool::Mark(PlanKind::Ground, Some("2".into()));
+        assert!(matches!(
+            command(&set, at, None),
+            Some(CommandKind::Mark { .. })
+        ));
+        let clear = Tool::Mark(PlanKind::Ground, None);
+        assert!(matches!(
+            command(&clear, at, Some(&held)),
+            Some(CommandKind::Unmark { .. })
+        ));
+        assert_eq!(command(&clear, at, None), None);
+        assert_eq!(describe(&held), "ground 3");
     }
 
     #[test]
@@ -339,6 +375,7 @@ mod tests {
             overlay: Some(Plan::Clear),
             building: None,
             wire: None,
+            ground: None,
         };
         assert_eq!(describe(&plans), "paint red · overlay clear");
         assert_eq!(ghost_of(&Tool::Select), None);

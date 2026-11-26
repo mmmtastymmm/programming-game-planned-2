@@ -15,7 +15,7 @@ use lang::{Host, HostCall, Interrupt, Num, Program};
 
 /// Every game builtin (`docs/02`), each with a row in the `[game]` cost
 /// table and a charge cost in `[power.cost]` (`docs/08`).
-pub const BUILTINS: [&str; 29] = [
+pub const BUILTINS: [&str; 32] = [
     "see",
     "hear",
     "tile",
@@ -39,6 +39,9 @@ pub const BUILTINS: [&str; 29] = [
     "unoverlay",
     "wire",
     "unwire",
+    "dig",
+    "fill",
+    "mine",
     "deconstruct",
     "attack",
     "wait",
@@ -51,6 +54,14 @@ pub const BUILTINS: [&str; 29] = [
 pub struct GameHost<'a> {
     pub world: &'a mut World,
     pub id: EntityId,
+}
+
+/// Which of the three the ground's builtins is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ground {
+    Dig,
+    Fill,
+    Mine,
 }
 
 fn value_error() -> Exception {
@@ -206,6 +217,10 @@ impl<'a> GameHost<'a> {
                 let v = match pl {
                     // A wire plan to lay one reads `True` (`docs/02`).
                     Plan::Set(_) if kind == crate::command::PlanKind::Wire => Value::Bool(true),
+                    // A ground plan reads the height it asks for (Q65).
+                    Plan::Set(s) if kind == crate::command::PlanKind::Ground => {
+                        s.parse::<i128>().map_or(Value::None, crate::records::int)
+                    }
                     Plan::Set(s) => Value::str(s),
                     Plan::Clear => Value::None,
                 };
@@ -358,11 +373,18 @@ impl<'a> GameHost<'a> {
             return Err(value_error());
         }
         let here = self.pos();
-        // Adjacent deposits, ties by lower x then y; then depots by id.
+        // Adjacent deposits that hold the kind — earth has none (Q65) —
+        // ties by lower x then y; then depots by id.
         let mut deposits: Vec<TilePos> = here
             .neighbours()
             .into_iter()
-            .filter(|p| self.world.tile(*p).is_some_and(|t| t.deposit.is_some()))
+            .filter(|p| {
+                self.world.tile(*p).is_some_and(|t| {
+                    t.deposit
+                        .as_ref()
+                        .is_some_and(|d| d.amount.contains_key(&kind))
+                })
+            })
             .collect();
         deposits.sort_by(|a, b| a.x.cmp(&b.x).then(a.y.cmp(&b.y)));
         let mut depots: Vec<EntityId> = self
@@ -832,6 +854,60 @@ impl<'a> GameHost<'a> {
         self.begin("wire", md.wire_ticks, Effect::Wire { at }, false)
     }
 
+    /// `dig(x, y)`, `fill(x, y)` and `mine(x, y)` (Q65; `docs/03`,
+    /// Changing the ground): a bot lowers an adjacent tile a level and
+    /// takes its earth, raises one a level with earth from its load, or
+    /// turns an adjacent rock to ground. Any team's bot, on any tile.
+    fn action_ground(&mut self, args: &[Value], what: Ground) -> R<HostCall> {
+        self.require_bot()?;
+        let [x, y] = args else {
+            return Err(type_error());
+        };
+        let at = TilePos::new(coord(x)?, coord(y)?);
+        if !self.pos().is_adjacent(at) {
+            return Err(value_error());
+        }
+        let Some(tile) = self.world.tile(at) else {
+            return Err(value_error());
+        };
+        let (terrain, level) = (tile.terrain, tile.height.level());
+        let md = self.model_data();
+        if what == Ground::Mine {
+            if terrain != crate::map::Terrain::Rock {
+                return Err(value_error());
+            }
+            return self.begin("mine", md.mine_ticks, Effect::Mine { at }, true);
+        }
+        if terrain != crate::map::Terrain::Ground || !self.world.clear(at) {
+            return Err(value_error());
+        }
+        let hd = self.world.data.world.height;
+        let earth = Num::from_int(i128::from(hd.earth_per_level)).unwrap_or(Num::ZERO);
+        let held = self
+            .me()
+            .load
+            .get(crate::world::EARTH)
+            .copied()
+            .unwrap_or(Num::ZERO);
+        if what == Ground::Dig {
+            // Above the lowest level, and room in the load for its earth.
+            let room = md
+                .capacity
+                .get(crate::world::EARTH)
+                .is_some_and(|cap| held.checked_add(earth).is_ok_and(|n| n <= *cap));
+            if level == 0 || !room {
+                return Err(value_error());
+            }
+            self.begin("dig", md.dig_ticks, Effect::Dig { at }, true)
+        } else {
+            // Below the highest level, and the earth in the load.
+            if level >= hd.max || held < earth {
+                return Err(value_error());
+            }
+            self.begin("fill", md.fill_ticks, Effect::Fill { at }, true)
+        }
+    }
+
     /// What a bot's call of `name` takes from its battery (`docs/08`,
     /// Charge costs); nothing for a building, whose calls take none.
     fn charge_cost(&self, name: &str) -> Num {
@@ -980,6 +1056,9 @@ impl<'a> GameHost<'a> {
             "recharge" => self.action_recharge(&args),
             "wire" => self.action_wire(&args, true),
             "unwire" => self.action_wire(&args, false),
+            "dig" => self.action_ground(&args, Ground::Dig),
+            "fill" => self.action_ground(&args, Ground::Fill),
+            "mine" => self.action_ground(&args, Ground::Mine),
             "move" => self.action_move(&args),
             "move_to" => self.action_move_to(&args),
             "pick" => self.action_pick(&args),

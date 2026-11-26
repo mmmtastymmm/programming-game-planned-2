@@ -11,12 +11,15 @@ its job has nothing to do, so a bot can try them in order:
             continue
         if wire_step():
             continue
+        if ground_step():
+            continue
         if mark_step():
             continue
         leg, steps = patrol_step(leg, steps)
 
-Plans come from the mark tools in the game (B, P, O and C): `plans(kind)`
-reads them as (x, y, value) tuples, value None for a plan to clear.
+Plans come from the mark tools in the game (B, P, O, C and G):
+`plans(kind)` reads them as (x, y, value) tuples, value None for a plan to
+clear. A ground plan's value is the height the tile should be brought to.
 
 A bot goes to recharge when its battery is half empty (low()), so that it
 gets there on what it has left. The low-power hook
@@ -26,11 +29,13 @@ that did not make it.
 
 from geo import DIRS, same, step, adjacent
 from sense import known, passable, has_building, buildable, nearest, machines
-from sense import ore_sources, charge_sources
+from sense import ore_sources, charge_sources, earth_sources
 from act import try_move, try_move_to, try_pick, try_drop, try_build, try_deconstruct
 from act import try_paint, try_unpaint, try_overlay, try_unoverlay
 from act import try_wire, try_unwire, try_recharge
+from act import try_dig, try_fill, try_mine
 from nav import approach
+from share import rank
 
 # Ore a bot carries at most (data/machines.toml).
 CAPACITY: int = 10
@@ -38,6 +43,8 @@ CAPACITY: int = 10
 LEG_STEPS: int = 40
 # Ore one tile of wire costs (data/machines.toml).
 WIRE_COST: int = 3
+# Earth a bot carries at most (data/machines.toml).
+EARTH_ROOM: int = 4
 # The share of its battery a bot recharges to before going back to work.
 FULL = 0.9
 # The share below which a bot goes to recharge before it takes another job.
@@ -117,6 +124,84 @@ def wire_step() -> bool:
     if approach(target) and not try_wire(target[0], target[1]):
         wait(1)
     return True
+
+
+# Shaping the ground
+
+
+def ground_step() -> bool:
+    """One step of shaping the ground; False when there is no ground plan
+    to act on.
+
+    A ground plan is a height. Rock under one is mined; a tile above its
+    plan is dug down, a level a dig, and its earth goes into the load; a
+    tile below its plan is filled, a level a fill, from the load. A bot
+    with earth fills first. One with a full load and nothing to fill
+    takes the earth to a depot, and one with a fill to do and no earth
+    fetches some from a depot: with no depot, digging stops at a full
+    load and filling waits for a dig.
+
+    A dig or a fill is a whole level whoever does it, so two bots on one
+    tile would take it a level too far. Each tile is therefore one bot's:
+    the plans are dealt out by rank, and a bot leaves alone a tile that
+    another is already at work on.
+    """
+    mines, digs, fills = [], [], []
+    for p in plans("ground"):
+        t = tile(p[0], p[1])
+        if t is None:
+            continue
+        if t.terrain == "rock":
+            mines.append((p[0], p[1]))
+        elif t.height > p[2]:
+            digs.append((p[0], p[1]))
+        elif t.height < p[2]:
+            fills.append((p[0], p[1]))
+    if not mines and not digs and not fills:
+        return False
+    place, bots = rank()
+    digs = [p for i, p in enumerate(digs) if i % bots == place and not at_work(p)]
+    fills = [p for i, p in enumerate(fills) if i % bots == place and not at_work(p)]
+    earth = me().load["earth"]
+    if fills and earth >= 1:
+        target = nearest(fills)
+        if approach(target) and not try_fill(target[0], target[1]):
+            wait(1)
+        return True
+    if mines:
+        target = nearest(mines)
+        if approach(target) and not try_mine(target[0], target[1]):
+            wait(1)
+        return True
+    if digs and earth < EARTH_ROOM:
+        target = nearest(digs)
+        if approach(target) and not try_dig(target[0], target[1]):
+            wait(1)
+        return True
+    if digs:
+        # A full load: somewhere has to take the earth.
+        depot = nearest([m.pos for m in machines("depot", me().team)])
+        if depot is None:
+            return False
+        if approach(depot) and not try_drop("earth"):
+            wait(1)
+        return True
+    if fills:
+        source = nearest(earth_sources())
+        if source is None:
+            return False
+        if approach(source) and not try_pick("earth"):
+            wait(1)
+        return True
+    return False
+
+
+def at_work(p: tuple[int, int]) -> bool:
+    """Whether another of the team's bots beside p is digging or filling."""
+    for m in machines("bot", me().team):
+        if m.id != me().id and m.busy in ("dig", "fill") and adjacent(m.pos, p):
+            return True
+    return False
 
 
 # Recharging

@@ -250,3 +250,95 @@ fn the_starter_bots_wire_a_panel_to_a_charger_and_recharge_when_low() {
         "only {recharges} recharges in {TICKS} ticks"
     );
 }
+
+/// Q65: on the default tree the bots carry out the team's ground plans.
+/// A channel two tiles long is dug two levels down, a tile is raised two
+/// levels with what was dug, a rock is mined away, and what earth is left
+/// over ends in the depot or in a load. Nobody faults, and every plan is
+/// used up.
+#[test]
+fn the_starter_bots_dig_a_planned_channel_raise_a_tile_and_mine_a_rock() {
+    let data = Data::load().unwrap();
+    let mut sim = Sim::new(Map::parse(MAP, &data).unwrap());
+    let at = |x, y| TilePos { x, y };
+    let ground: [(TilePos, &str); 4] = [
+        (at(0, 0), "2"),
+        (at(1, 0), "2"),
+        (at(0, -2), "6"),
+        // The rock at (-1, 2), at the height it stands on.
+        (at(-1, 2), "4"),
+    ];
+    let marks = |tick: u64| -> Vec<Command> {
+        let depot = CommandKind::Mark {
+            at: DEPOT,
+            plan: PlanKind::Building,
+            value: Some("depot".into()),
+        };
+        std::iter::once(depot)
+            .chain(ground.iter().map(|(p, h)| CommandKind::Mark {
+                at: *p,
+                plan: PlanKind::Ground,
+                value: Some(h.to_string()),
+            }))
+            .enumerate()
+            .map(|(i, kind)| Command::new(tick, TeamId(0), i as u32, kind))
+            .collect()
+    };
+    let level = |sim: &Sim, p: TilePos| sim.world.tile(p).unwrap().height.level();
+    let mut done_at = None;
+    for tick in 0..TICKS {
+        let commands = match tick {
+            0 => opening(),
+            2 => marks(sim.world.tick + 1),
+            _ => vec![],
+        };
+        let report = sim.step(&commands, &[]);
+        assert!(
+            report.dropped.is_empty(),
+            "tick {tick}: dropped {:?}",
+            report.dropped
+        );
+        for m in &sim.snapshot().machines {
+            if m.record.team == TeamId(0) {
+                assert!(
+                    m.fault.is_none(),
+                    "tick {tick}: {} faulted: {:?}",
+                    m.record.name,
+                    m.fault
+                );
+            }
+        }
+        let shaped = level(&sim, at(0, 0)) == 2
+            && level(&sim, at(1, 0)) == 2
+            && level(&sim, at(0, -2)) == 6
+            && sim.world.tile(at(-1, 2)).unwrap().terrain == sim::map::Terrain::Ground;
+        if done_at.is_none() && shaped {
+            done_at = Some(tick);
+        }
+    }
+    let done_at = done_at.expect("the ground is as planned");
+    eprintln!("the ground was shaped by tick {done_at}");
+    for (p, _) in ground {
+        assert!(
+            sim.world
+                .plans(TeamId(0), p)
+                .is_none_or(|pl| pl.ground.is_none()),
+            "{p:?}: its ground plan is used up"
+        );
+    }
+    // Four levels were dug and two filled: two of earth are somewhere.
+    let earth = |m: &sim::world::Machine| {
+        m.load
+            .get("earth")
+            .or(m.store.get("earth"))
+            .copied()
+            .unwrap_or(lang::Num::ZERO)
+    };
+    let held = sim
+        .world
+        .machines
+        .values()
+        .filter(|m| m.team == TeamId(0))
+        .fold(lang::Num::ZERO, |sum, m| sum.checked_add(earth(m)).unwrap());
+    assert_eq!(held, lang::Num::from_int(2).unwrap());
+}

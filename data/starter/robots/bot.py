@@ -5,9 +5,11 @@
 #      plan to clear it.
 #   2. Wire. Lay the team's planned wire, which costs a little ore a tile,
 #      and take up wire planned for removal.
-#   3. Paint. Carry out the team's paint and overlay plans: a color or a
+#   3. Ground. Bring a tile to the height the team planned for it: mine
+#      rock, dig it down, or fill it up with earth dug elsewhere.
+#   4. Paint. Carry out the team's paint and overlay plans: a color or a
 #      label, or a clear.
-#   4. Patrol. Walk straight until the map's edge or something in the way,
+#   5. Patrol. Walk straight until the map's edge or something in the way,
 #      turn, and go on, which uncovers the map as it goes.
 #
 # Everything a bot does runs its battery down, so before each job a bot
@@ -15,7 +17,7 @@
 # recharge. If it runs low anyway, the hook in interrupts/on_low_power.py
 # takes it there, and the bot then goes on with what it was doing.
 #
-# Place plans with the mark tools in the game (B, P, O, C) and the bots act
+# Place plans with the mark tools in the game (B, P, O, C, G) and the bots act
 # on them. The jobs are in lib/jobs.py, built from the rest of lib/:
 #
 #   geo    positions, directions, distances
@@ -23,9 +25,10 @@
 #   act    actions that return True or False instead of raising
 #   nav    go_to and approach, which find a way round rock and water
 #   share  splitting a list of jobs between bots
-#   jobs   build, wire, paint, patrol and recharge, one step at a time
+#   jobs   build, wire, ground, paint, patrol and recharge, one step at a time
 
-from jobs import low, recharge_step, build_step, wire_step, mark_step, patrol_step
+from jobs import low, recharge_step, build_step, wire_step, ground_step, mark_step
+from jobs import patrol_step
 
 # Each bot sets off in a different direction, so they spread out.
 leg = me().id % 4
@@ -36,6 +39,8 @@ while True:
     if build_step():
         continue
     if wire_step():
+        continue
+    if ground_step():
         continue
     if mark_step():
         continue

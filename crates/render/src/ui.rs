@@ -341,13 +341,28 @@ pub fn panels(
             .map(|t| {
                 t.plans
                     .iter()
-                    .filter_map(|(p, plans)| match &plans.overlay {
-                        Some(sim::world::Plan::Set(l)) => Some((*p, l.clone())),
-                        _ => None,
+                    .flat_map(|(p, plans)| {
+                        let overlay = match &plans.overlay {
+                            Some(sim::world::Plan::Set(l)) => Some((*p, l.clone())),
+                            _ => None,
+                        };
+                        // A ground plan's label is the height it asks for.
+                        let ground = match &plans.ground {
+                            Some(sim::world::Plan::Set(h)) => Some((*p, format!("→{h}"))),
+                            _ => None,
+                        };
+                        overlay.into_iter().chain(ground)
                     })
                     .collect()
             })
             .unwrap_or_default();
+        if let Tool::Mark(PlanKind::Ground, Some(h)) = &state.tool {
+            labels.extend(
+                view::plannable_preview(&state, &driver.0)
+                    .into_iter()
+                    .map(|p| (p, format!("→{h}"))),
+            );
+        }
         if let Tool::Mark(PlanKind::Overlay, Some(l)) = &state.tool {
             labels.extend(
                 view::plannable_preview(&state, &driver.0)

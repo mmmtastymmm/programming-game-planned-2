@@ -747,12 +747,12 @@ fn deposit_of(v: &toml::Value, data: &Data) -> Result<DepositSpec, DataError> {
             toml::Value::Integer(i) => {
                 let n = Num::from_int(i128::from(*i))
                     .map_err(|_| err(format!("`{k}` is out of range")))?;
-                for kind in &data.machines.kinds {
+                for kind in data.world.deposit_max.keys() {
                     out.insert(kind.clone(), n);
                 }
             }
             toml::Value::Table(t) => {
-                for kind in &data.machines.kinds {
+                for kind in data.world.deposit_max.keys() {
                     let x = t
                         .get(kind)
                         .ok_or_else(|| err(format!("`{k}` lacks `{kind}`")))?;
@@ -773,7 +773,9 @@ fn deposit_of(v: &toml::Value, data: &Data) -> Result<DepositSpec, DataError> {
     let cap = field("cap")?;
     let regrowth = field("regrowth")?;
     let amount = field("amount")?;
-    for kind in &data.machines.kinds {
+    // A deposit holds the kinds the tables give a `[deposit.*]` row, and
+    // no other: earth is a resource with no deposit (Q65).
+    for kind in data.world.deposit_max.keys() {
         let (max_cap, max_regrowth) = data
             .world
             .deposit_max

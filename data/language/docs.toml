@@ -53,11 +53,12 @@ it can hold); `load`, `color` and `flat` (out of power) for a bot;
 `store`, `powered` and `grid` for a building."""
 
 [game.plans]
-signature = "plans(kind: str) -> list[tuple[int, int, str | bool | None]]"
+signature = "plans(kind: str) -> list[tuple[int, int, str | bool | int | None]]"
 doc = """
-Your team's pending plans of one kind: "paint", "overlay", "building" or
-"wire", as (x, y, value) tuples sorted by row then column. The value is a
-color, a label, a model or True for a wire, or None for a plan to clear."""
+Your team's pending plans of one kind: "paint", "overlay", "building",
+"wire" or "ground", as (x, y, value) tuples sorted by row then column.
+The value is a color, a label, a model, True for a wire or the height a
+ground plan asks for, or None for a plan to clear."""
 
 [game.power]
 signature = "power() -> list[Power]"
@@ -199,6 +200,37 @@ Remove your team's wire from the adjacent tile (x, y). Nothing is
 refunded. A wire plan to clear the tile is used up.
 
 Raises ValueError if your team has no wire there."""
+
+[game.dig]
+signature = "dig(x: int, y: int) -> None"
+doc = """
+Lower the adjacent ground tile (x, y) one level and take its earth into
+your load. Any tile's ground, your team's or not; its water stays on it
+and runs where the new ground sends it. A ground plan the dig satisfies
+is used up.
+
+Raises ValueError if the tile is not ground, is already at height 0,
+holds a building, a site, a deposit, a spring or a sink, has a machine
+on it or moving onto it, or your load has no room for the earth."""
+
+[game.fill]
+signature = "fill(x: int, y: int) -> None"
+doc = """
+Raise the adjacent ground tile (x, y) one level with earth from your
+load. Water on it stays on it and runs off the higher ground. A ground
+plan the fill satisfies is used up.
+
+Raises ValueError if the tile is not ground, is already at the highest
+level, holds a building, a site, a deposit, a spring or a sink, has a
+machine on it or moving onto it, or you carry no earth."""
+
+[game.mine]
+signature = "mine(x: int, y: int) -> None"
+doc = """
+Turn the adjacent rock tile (x, y) into ground at the height it has.
+Nothing is gained. Water and sight that the rock held back pass.
+
+Raises ValueError if the tile is not rock."""
 
 [game.deconstruct]
 signature = "deconstruct(x: int, y: int) -> None"

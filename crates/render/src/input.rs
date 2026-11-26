@@ -83,6 +83,8 @@ pub fn keys(
         (KeyCode::KeyO, PlanKind::Overlay),
         // For cable: `W` pans the camera (Q62).
         (KeyCode::KeyC, PlanKind::Wire),
+        // The ground (Q65): a height for bots to dig or fill to.
+        (KeyCode::KeyG, PlanKind::Ground),
     ] {
         if keys.just_pressed(key) && !resting {
             state.row = Some(plan);

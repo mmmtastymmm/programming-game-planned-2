@@ -195,6 +195,7 @@ fn plan_byte(p: PlanKind) -> u8 {
         PlanKind::Overlay => 1,
         PlanKind::Building => 2,
         PlanKind::Wire => 3,
+        PlanKind::Ground => 4,
     }
 }
 
@@ -204,6 +205,7 @@ fn plan_of(b: u8) -> Result<PlanKind, String> {
         1 => Ok(PlanKind::Overlay),
         2 => Ok(PlanKind::Building),
         3 => Ok(PlanKind::Wire),
+        4 => Ok(PlanKind::Ground),
         _ => Err(format!("unknown plan kind byte {b}")),
     }
 }
