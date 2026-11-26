@@ -271,8 +271,9 @@ impl Sim {
             self.world.power_step(team, &roster.machines);
             self.print_step(team, roster);
         }
-        // 7. Regrowth.
+        // 7. Regrowth, then the water step (`docs/09`).
         self.regrow();
+        self.world.water_step();
         // 8. The vision pass.
         self.vision_pass();
         // The sounds emitted this tick are heard next tick.
@@ -968,6 +969,9 @@ impl Sim {
                 mem.seen_at = tick;
                 mem.terrain = tile.terrain;
                 mem.height = tile.height;
+                mem.water = tile.water;
+                mem.spring = tile.spring;
+                mem.sink = tile.sink;
                 let amount = tile.deposit.as_ref().map(|d| &d.amount);
                 if mem.deposit.as_ref() != amount {
                     mem.deposit = amount.cloned();
@@ -1068,6 +1072,9 @@ impl Sim {
                     h.write_u64(m.seen_at);
                     h.write_str(m.terrain.name());
                     h.write_u8(m.height.level());
+                    // A spring and a sink never change once seen, so
+                    // what is remembered of them is no state of its own.
+                    h.write_u32(m.water);
                     write_amounts(&mut h, m.deposit.as_ref());
                     write_opt_str(&mut h, m.paint.as_deref());
                     write_opt_str(&mut h, m.overlay.as_deref());
@@ -1088,11 +1095,14 @@ impl Sim {
             let t = &w.tiles[idx];
             h.write_str(t.terrain.name());
             h.write_u8(t.height.level());
+            h.write_u32(t.water);
             write_amounts(&mut h, t.deposit.as_ref().map(|d| &d.amount));
             write_opt_str(&mut h, t.paint.as_deref());
             write_opt_str(&mut h, t.overlay.as_deref());
             write_teams(&mut h, &t.wires);
         }
+        // The ground water (Q65; `docs/09`).
+        h.write_u64(w.ground_water);
         h.write_u32(w.next_id_value());
         h.write_u64(w.machines.len() as u64);
         for m in w.machines.values() {

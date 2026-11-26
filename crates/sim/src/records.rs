@@ -141,11 +141,13 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
         return Value::None;
     }
     // The height as the team knows it: the tile's now, or as last seen.
-    let height = if mem.state == TileState::Visible {
-        world.tiles[idx].height
+    let (height, water, spring, sink) = if mem.state == TileState::Visible {
+        let t = &world.tiles[idx];
+        (t.height, t.water, t.spring, t.sink)
     } else {
-        mem.height
+        (mem.height, mem.water, mem.spring, mem.sink)
     };
+    let rate = |r: Option<u32>| r.map_or(Value::None, |r| int(i128::from(r)));
     let (terrain, deposit, paint, overlay, wires, building, seen_at) =
         if mem.state == TileState::Visible {
             // The world now.
@@ -225,6 +227,9 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
             ("state", Value::str(state)),
             ("terrain", Value::str(terrain.name())),
             ("height", int(i128::from(height.level()))),
+            ("water", int(i128::from(water))),
+            ("spring", rate(spring)),
+            ("sink", rate(sink)),
             ("deposit", deposit_v),
             ("building", building_v),
             ("seen_at", int(i128::from(seen_at))),

@@ -124,6 +124,7 @@ pub struct TerrainData {
 pub struct WorldData {
     pub terrain: BTreeMap<String, TerrainData>,
     pub height: HeightData,
+    pub water: WaterData,
     /// Per resource kind: the largest cap and regrowth a map may set.
     pub deposit_max: BTreeMap<String, (Num, Num)>,
     pub overlays: Vec<String>,
@@ -138,6 +139,22 @@ pub struct HeightData {
     pub default: u8,
     pub lake_depth: u8,
     pub step: u8,
+}
+
+/// `[water]` (`docs/09`; Q65): how water is counted and what its amounts
+/// mean, every one a whole number of parts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaterData {
+    /// Parts to a level of height.
+    pub parts: u32,
+    /// From this many parts up a tile is wet; below, damp.
+    pub wet: u32,
+    /// A tile holding this many parts or fewer dries.
+    pub film: u32,
+    /// The most a bot wades through.
+    pub wade: u32,
+    /// The most a map may give a spring or a sink, parts a tick.
+    pub max_rate: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -507,7 +524,7 @@ impl WorldData {
                 },
             );
         }
-        for required in ["ground", "rock", "water"] {
+        for required in ["ground", "rock"] {
             if !terrain.contains_key(required) {
                 return Err(err(FILE, format!("no `terrain.{required}`")));
             }
@@ -544,6 +561,32 @@ impl WorldData {
         if height.step == 0 {
             return Err(err(FILE, "`height.step` is zero"));
         }
+        let water_t = get(FILE, &t, "water")?
+            .as_table()
+            .ok_or_else(|| err(FILE, "`water` is not a table"))?;
+        let parts = |key: &str| -> D<u32> {
+            let name = format!("water.{key}");
+            let v = uint(FILE, &name, get(FILE, water_t, key)?)?;
+            u32::try_from(v).map_err(|_| err(FILE, format!("`{name}` is too large")))
+        };
+        let water = WaterData {
+            parts: parts("parts")?,
+            wet: parts("wet")?,
+            film: parts("film")?,
+            wade: parts("wade")?,
+            max_rate: parts("max_rate")?,
+        };
+        // `docs/09`, Data: water thin enough to dry is never wet, and
+        // what a bot wades is water. A level of nothing is no level.
+        if water.parts == 0 {
+            return Err(err(FILE, "`water.parts` is zero"));
+        }
+        if water.film >= water.wet {
+            return Err(err(FILE, "`water.film` is not below `water.wet`"));
+        }
+        if water.wet > water.wade {
+            return Err(err(FILE, "`water.wet` is above `water.wade`"));
+        }
         let dep_t = get(FILE, &t, "deposit")?
             .as_table()
             .ok_or_else(|| err(FILE, "`deposit` is not a table"))?;
@@ -573,6 +616,7 @@ impl WorldData {
         Ok(WorldData {
             terrain,
             height,
+            water,
             deposit_max,
             overlays,
             speed_steps,
