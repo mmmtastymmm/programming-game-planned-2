@@ -98,8 +98,9 @@ pass.
   repeated here.
 - **The world's rulings live in [03-world](03-world.md)** — Q49 (paint,
   overlays and, as Q62 extends it, wires only on ground the team has seen)
-  and Q65 (a height on every tile, and bots that dig, fill and mine) are
-  its Decided entries, and they are not repeated here; Q21 and Q22, which
+  Q65 (a height on every tile, and bots that dig, fill and mine) and Q68
+  (ground no higher than the seer never blocks its sight) are its
+  Decided entries, and they are not repeated here; Q21 and Q22, which
   `03` cites, are `02`'s.
 - **Water's rulings live in [09-water](09-water.md)** — Q65 (water as
   small parts that flow, springs, sinks and the ground water, and

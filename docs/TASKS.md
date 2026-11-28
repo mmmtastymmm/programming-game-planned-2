@@ -55,9 +55,10 @@ fall and a bonk, and the PR says why every hash moved.
 
 **T44 — Sight over height in `sim`** `⚠HASH`
 
-`03`'s Line of sight, as Q65 extends it. A tile on the ray blocks when
-it stands above the straight line between the seer's ground and the
-seen tile's, by the integer test `03` gives; a machine's range to a
+`03`'s Line of sight, as Q65 extends it and Q68 amends it. A tile on
+the ray blocks when it is higher than the seer's ground and stands
+above the straight line between that ground and the seen tile's, by
+the integer test `03` gives; a machine's range to a
 tile is its vision plus its height less the tile's, nothing below
 zero; `attack` gains the blocking and keeps its range; hearing is
 unchanged. A change of height, or a mined rock, is a change to what a

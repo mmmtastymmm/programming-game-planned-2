@@ -15,6 +15,14 @@ doc = """
 Every machine your team sees right now, each once, nearest first (then by
 id). Your own machines are always included.
 
+A machine sees a tile within its vision with nothing in the way: rock
+blocks the line, and so does ground that is higher than the machine's
+own and stands above the straight line from the ground it stands on to
+the ground it looks at. Ground no higher than its own hides nothing, so
+it sees down into a hollow past the bank. It sees one tile further for
+each level it stands above the tile it looks at, and one less for each
+level below, so a hill sees far and a pit sees little.
+
 Costs one unit per machine returned."""
 
 [game.hear]
@@ -22,7 +30,7 @@ signature = "hear() -> list[Sound]"
 doc = """
 Every sound your team heard during the previous tick, nearest first. A
 sound has `cause`, `pos`, `loudness` and `tick`, and never names who made
-it."""
+it. Rock and height hide nothing from hearing."""
 
 [game.tile]
 signature = "tile(x: int, y: int) -> Tile | None"
@@ -249,8 +257,10 @@ Raises ValueError if there is nothing there."""
 signature = "attack(id: int) -> None"
 doc = """
 Hit the machine with this id: one your team can see, within
-`attack_range` and in line of sight. On completion, if it is still in
-range and sight, it loses `attack_damage` health.
+`attack_range` and in this bot's line of sight, which rock and higher
+ground between the two block as they block `see`. Height does not
+change the range. On completion, if it is still in range and sight, it
+loses `attack_damage` health.
 
 Raises ValueError if it cannot be attacked now."""
 

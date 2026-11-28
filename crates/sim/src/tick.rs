@@ -780,7 +780,7 @@ impl Sim {
                     w.tiles[idx].terrain = crate::map::Terrain::Ground;
                     // The rock was a wall to water and to sight.
                     w.stir(idx);
-                    w.sight_changed();
+                    w.ground_changed(idx);
                     w.settle_ground_plan(team, at);
                 }
             }

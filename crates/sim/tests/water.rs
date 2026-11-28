@@ -97,8 +97,9 @@ impl Lab {
 
     fn set_height(&mut self, x: i32, y: i32, level: u8) {
         let idx = self.idx(x, y);
-        self.sim.world.tiles[idx].height = Height::new(level, 9).unwrap();
-        self.sim.world.stir(idx);
+        self.sim
+            .world
+            .set_height(idx, Height::new(level, 9).unwrap());
     }
 
     fn step(&mut self, ticks: u64) {
@@ -702,8 +703,7 @@ fn the_step_leaves_what_a_walk_of_every_tile_leaves() {
             if next(6) == 0 {
                 let i = next(n as u64) as usize;
                 let level = 1 + next(6) as u8;
-                sim.world.tiles[i].height = Height::new(level, 9).unwrap();
-                sim.world.stir(i);
+                sim.world.set_height(i, Height::new(level, 9).unwrap());
                 walk.height[i] = u32::from(level);
             }
             sim.step(&[], &[]);
@@ -741,10 +741,13 @@ fn a_bot_wades_a_level_of_water_and_no_more() {
 fn a_program_reads_a_tiles_water_spring_and_sink() {
     let extra = "ground_water = 0\n[[spring]]\nat = [-6, -3]\nrate = \"0.07\"\n[[sink]]\nat = [-5, -3]\nrate = \"0.09\"\n";
     let mut lab = Lab::new(OPEN, None, extra);
+    // The bot stands beside all three tiles: the third is a level down,
+    // and from a tile further off the ground between would stand above
+    // the line to it (`docs/03`, Height on the line).
     let bot = lab
         .sim
         .world
-        .place(Model::Bot, TeamId(0), at(-6, -2), Some("bot".into()));
+        .place(Model::Bot, TeamId(0), at(-5, -2), Some("bot".into()));
     lab.set_height(-4, -3, 3);
     lab.sim.world.ground_water = 80;
     lab.pour(-4, -3, 80);

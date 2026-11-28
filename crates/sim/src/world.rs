@@ -1065,6 +1065,20 @@ impl World {
         self.generation = self.generation.wrapping_add(1);
     }
 
+    /// The ground at index `idx` changed — its height, or its terrain —
+    /// and a line of sight is drawn over the ground (Q65; `docs/03`), so
+    /// what some team sees may have changed with it. A build with debug
+    /// assertions also tells the sight cache which tile, so that one
+    /// changed without this call is caught at the next query
+    /// (`sense::SightCache`).
+    pub(crate) fn ground_changed(&mut self, idx: usize) {
+        self.sight_changed();
+        #[cfg(debug_assertions)]
+        self.sight.told_of_ground(idx, &self.tiles[idx]);
+        #[cfg(not(debug_assertions))]
+        let _ = idx;
+    }
+
     /// Set a machine's health: the one place health changes, so a printer
     /// that falls to zero or below loses its print there (`docs/02`,
     /// Printing), whatever dealt the damage.
@@ -1271,10 +1285,20 @@ impl World {
         let Some(height) = next.and_then(|l| Height::new(l, max)) else {
             return false;
         };
+        self.set_height(idx, height);
+        true
+    }
+
+    /// Stand the tile at index `idx` at `height`: the one place a height
+    /// changes after the map loads, so the water step and the sight cache
+    /// both hear of it — the ground is what a line of sight is drawn
+    /// over (Q65; `docs/03`, Line of sight). A match changes a height
+    /// only by `shift_height`, a level at a time; this is also how a test
+    /// sets one by fiat.
+    pub fn set_height(&mut self, idx: usize, height: Height) {
         self.tiles[idx].height = height;
         self.stir(idx);
-        self.sight_changed();
-        true
+        self.ground_changed(idx);
     }
 
     pub fn tidy_plans(&mut self, p: TilePos) {

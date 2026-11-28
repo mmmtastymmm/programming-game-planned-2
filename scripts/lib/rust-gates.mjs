@@ -129,6 +129,14 @@ export function runRustGates(repo) {
     { name: "golden replay: a move the sight cache is not told of", check: "replay-golden",
       expect: "the sight cache is stale", files: ["crates/sim/src/world.rs"],
       mutate: (d) => edit(join(d, "crates/sim/src/world.rs"), /m\.pos = to;\n\s*self\.sight_changed\(\);/, "m.pos = to;") },
+    // A line of sight is drawn over the ground's heights (Q65, T44), so a
+    // dig or a fill is one more site the counter must hear of. A dig lands
+    // in a tick in which other bots move and bump it, which would hide the
+    // one that forgot, so the debug build keeps the ground tile by tile
+    // as it is told of it, and names the rule whatever else moved.
+    { name: "golden replay: a change of height the sight cache is not told of", check: "replay-golden",
+      expect: "the sight cache is stale: the ground changed", files: ["crates/sim/src/world.rs"],
+      mutate: (d) => edit(join(d, "crates/sim/src/world.rs"), /self\.stir\(idx\);\n\s*self\.ground_changed\(idx\);/, "self.stir(idx);") },
     // The state hash tells a tile a team has never seen from an index the
     // vision pass keeps, and no longer from the team's memory (I12, T42),
     // so a pass that forgets the index hashes known tiles as unknown. The

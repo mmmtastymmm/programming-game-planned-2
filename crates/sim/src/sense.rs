@@ -3,15 +3,27 @@
 
 use crate::command::TeamId;
 use crate::map::TilePos;
+#[cfg(debug_assertions)]
+use crate::map::{Height, Terrain};
 use crate::world::{EntityId, Model, World};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Everything a team's sight depends on: every machine's id, position,
-/// model (its vision range) and team, and whether it is a dark building,
-/// which sees nothing (`docs/08`). Terrain, the other input, never
-/// changes after the map loads.
+/// What a team's sight depends on among the machines: every machine's
+/// id, position, model (its vision range) and team, and whether it is a
+/// dark building, which sees nothing (`docs/08`).
 #[cfg(debug_assertions)]
 type Basis = Vec<(EntityId, TilePos, Model, TeamId, bool)>;
+
+/// And what it depends on in the ground (Q65; `docs/03`, Line of sight):
+/// every tile's terrain, which a mined rock changes, and its height,
+/// which a dig and a fill change.
+#[cfg(debug_assertions)]
+type Ground = Vec<(Terrain, Height)>;
+
+#[cfg(debug_assertions)]
+fn ground_of(tile: &crate::world::Tile) -> (Terrain, Height) {
+    (tile.terrain, tile.height)
+}
 
 /// The tiles each team sees now, kept between queries while the basis
 /// they were computed from stands. Sightings are a function of the world
@@ -25,10 +37,19 @@ type Basis = Vec<(EntityId, TilePos, Model, TeamId, bool)>;
 /// was built at. Comparing the basis itself on every query was every
 /// machine for every `see()`, a hundred million comparisons a tick at
 /// ten thousand bots (I9). The price is that a machine placed, removed
-/// or moved by anything but `World`'s own methods leaves the cache
-/// stale, so a build with debug assertions still keeps the basis and
-/// compares it on every use: every test, the golden replay among them,
-/// fails on a site that forgot.
+/// or moved by anything but `World`'s own methods, or ground that
+/// changes without the count being told, leaves the cache stale, so a
+/// build with debug assertions still keeps the basis and compares it on
+/// every use: every test, the golden replay among them, fails on a site
+/// that forgot.
+///
+/// The two halves of the basis are kept differently. The machines' is
+/// taken afresh whenever the count has moved. The ground's is taken
+/// once and after that changed only a tile at a time, as the world says
+/// each changed (`World::ground_changed`): a dig lands in a tick in
+/// which other bots move, so a count that a move bumped would hide a
+/// dig that forgot to, and a ground taken afresh with it would never
+/// see one (T44).
 #[derive(Clone, Default)]
 pub struct SightCache {
     /// `World::generation` when `teams` was last emptied.
@@ -36,6 +57,18 @@ pub struct SightCache {
     pub(crate) teams: BTreeMap<TeamId, BTreeSet<TilePos>>,
     #[cfg(debug_assertions)]
     basis: Basis,
+    #[cfg(debug_assertions)]
+    ground: Ground,
+}
+
+#[cfg(debug_assertions)]
+impl SightCache {
+    /// The world says the tile at `idx` now stands as it does.
+    pub(crate) fn told_of_ground(&mut self, idx: usize, tile: &crate::world::Tile) {
+        if let Some(g) = self.ground.get_mut(idx) {
+            *g = ground_of(tile);
+        }
+    }
 }
 
 #[cfg(debug_assertions)]
@@ -44,6 +77,11 @@ fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamI
         .machines
         .values()
         .map(|m| (m.id, m.pos, m.model, m.team, m.is_dark()))
+}
+
+#[cfg(debug_assertions)]
+fn ground(world: &World) -> impl Iterator<Item = (Terrain, Height)> + '_ {
+    world.tiles.iter().map(ground_of)
 }
 
 /// Make `world.sight.teams[team]` the tiles `team` sees now.
@@ -56,10 +94,21 @@ pub fn ensure_sight(world: &mut World, team: TeamId) {
             world.sight.basis = basis(world).collect();
         }
     }
+    // The ground as it stood at the first query, a map having at least
+    // one tile; from then on only what the world tells of.
+    #[cfg(debug_assertions)]
+    if world.sight.ground.is_empty() {
+        world.sight.ground = ground(world).collect();
+    }
     #[cfg(debug_assertions)]
     assert!(
         world.sight.basis.iter().copied().eq(basis(world)),
         "the sight cache is stale: a machine was placed, removed, moved or changed, or a building went dark or was lit, by something other than `World::place`, `remove`, `move_machine`, `remove_team` or the power step"
+    );
+    #[cfg(debug_assertions)]
+    assert!(
+        world.sight.ground.iter().copied().eq(ground(world)),
+        "the sight cache is stale: the ground changed — a tile's height, or a rock mined away — by something other than `World::set_height` or a mine's landing, which tell it by `World::ground_changed`"
     );
     if !world.sight.teams.contains_key(&team) {
         let visible = team_visible_tiles(world, team);
@@ -98,20 +147,67 @@ pub fn ray(a: TilePos, b: TilePos) -> Vec<TilePos> {
     out
 }
 
-/// A clear line of sight from the seer at `a` to `b`: no tile the ray
-/// passes through blocks sight. Always evaluated from the seer.
-pub fn clear(world: &World, a: TilePos, b: TilePos) -> bool {
-    ray(a, b).into_iter().all(|p| !world.blocks_sight(p))
+/// The height of the ground at `p` in levels, and zero off the map.
+fn level(world: &World, p: TilePos) -> i64 {
+    world.tile(p).map_or(0, |t| i64::from(t.height.level()))
 }
 
-/// Whether the machine `seer` sees the tile `p`: within its model's vision
-/// range by squared distance, with a clear line of sight.
+/// A clear line of sight from the seer at `a` to `b`: no tile the ray
+/// passes through blocks sight by its terrain, and none stands both
+/// above the seer's own ground and above the straight line from the
+/// ground of `a` to the ground of `b` (`docs/03`, Height on the line;
+/// Q65 as Q68 amended it). Always evaluated from the seer.
+///
+/// The walk takes `n` steps, the last of them onto `b`, so the tile at
+/// step `k` is the `k`th the ray passes through, and it stands above
+/// the line where `height(tile) × n > height(a) × (n − k) + height(b) ×
+/// k`: the line's height there, with the division by `n` multiplied
+/// out, so a tile exactly on the line does not block. Ground no higher
+/// than the seer's never blocks, so a machine sees down into a hollow
+/// past its bank; looking up, the line is the higher of the two tests
+/// and a rim still hides what is above it.
+pub fn clear(world: &World, a: TilePos, b: TilePos) -> bool {
+    let through = ray(a, b);
+    let n = i64::try_from(through.len())
+        .unwrap_or(i64::MAX)
+        .saturating_add(1);
+    let (ha, hb) = (level(world, a), level(world, b));
+    (1..n).zip(through).all(|(k, p)| {
+        let line = ha
+            .saturating_mul(n.saturating_sub(k))
+            .saturating_add(hb.saturating_mul(k));
+        let h = level(world, p);
+        !world.blocks_sight(p) && (h <= ha || h.saturating_mul(n) <= line)
+    })
+}
+
+/// Whether `b` is within the range of a machine on `a` with vision
+/// `vision` (`docs/03`, Height and range): the squared distance is at
+/// most `r × r`, where `r = vision + height(a) − height(b)` — a tile
+/// further for each level it looks down and one less for each level up
+/// — and nothing is where `r` is below zero.
+fn in_reach(world: &World, vision: i64, a: TilePos, b: TilePos) -> bool {
+    let r = vision
+        .saturating_add(level(world, a))
+        .saturating_sub(level(world, b));
+    r >= 0 && a.dist2(b) <= r.saturating_mul(r)
+}
+
+/// Whether a machine on `a` with vision `vision` sees the tile `b`: the
+/// one test of sight from a machine to a tile (`docs/03`).
+fn in_sight(world: &World, vision: i64, a: TilePos, b: TilePos) -> bool {
+    in_reach(world, vision, a, b) && clear(world, a, b)
+}
+
+/// Whether the machine `seer` sees the tile `p`: within its model's
+/// vision by squared distance, as the two heights stretch or shorten
+/// it, with a clear line of sight.
 pub fn sees_tile(world: &World, seer: EntityId, p: TilePos) -> bool {
     let Some(m) = world.machines.get(&seer) else {
         return false;
     };
     let vision = world.data.model(m.model.name()).vision;
-    m.pos.dist2(p) <= vision.saturating_mul(vision) && clear(world, m.pos, p)
+    in_sight(world, vision, m.pos, p)
 }
 
 /// Every tile a team's machines see now, in row-then-column order.
@@ -124,14 +220,20 @@ pub fn team_visible_tiles(world: &World, team: TeamId) -> BTreeSet<TilePos> {
         .filter(|m| m.team == team && !m.is_dark())
     {
         let vision = world.data.model(m.model.name()).vision;
-        let r = i32::try_from(vision).unwrap_or(i32::MAX);
+        // The furthest it can see is to a tile at height zero: its vision
+        // and every level it stands above that (`in_reach`). That is a
+        // wider square than its vision alone, so the range is tested
+        // first, which is cheap, and the set and the ray only within it.
+        let furthest = vision.saturating_add(level(world, m.pos));
+        let r = i32::try_from(furthest).unwrap_or(i32::MAX);
         for dy in r.saturating_neg()..=r {
             for dx in r.saturating_neg()..=r {
                 let p = TilePos::new(m.pos.x.saturating_add(dx), m.pos.y.saturating_add(dy));
-                if !world.map.in_bounds(p) || out.contains(&p) {
+                if !world.map.in_bounds(p) || !in_reach(world, vision, m.pos, p) || out.contains(&p)
+                {
                     continue;
                 }
-                if m.pos.dist2(p) <= vision.saturating_mul(vision) && clear(world, m.pos, p) {
+                if clear(world, m.pos, p) {
                     out.insert(p);
                 }
             }
@@ -203,9 +305,7 @@ mod tests {
         for seer in world.machines.values().filter(|m| m.team == team) {
             let vision = world.data.model(seer.model.name()).vision;
             for target in world.machines.values() {
-                if seer.pos.dist2(target.pos) <= vision.saturating_mul(vision)
-                    && clear(world, seer.pos, target.pos)
-                {
+                if in_sight(world, vision, seer.pos, target.pos) {
                     out.insert(target.id);
                 }
             }
@@ -269,8 +369,11 @@ start = [4, -2]
             assert_eq!(team_can_see(w, t1, target), by_definition, "{target:?}");
         }
         // A conversion: a site, which sees two tiles, becomes a printer,
-        // which sees eight, and the team's view grows with it.
-        let site = w.place(Model::Site, t0, TilePos::new(-4, -3), None);
+        // which sees eight, and the team's view grows with it. The site
+        // stands on the level ground beside the lake and not in its bed,
+        // two levels down, where the ground around stands above every
+        // line out and a printer sees little more than a site (Q65).
+        let site = w.place(Model::Site, t0, TilePos::new(-2, -3), None);
         w.machines.get_mut(&site).unwrap().becomes = Some(Model::Printer);
         assert_eq!(team_sees(w, t0), team_sees_by_definition(w, t0));
         let before = w.sight.teams[&t0].clone();

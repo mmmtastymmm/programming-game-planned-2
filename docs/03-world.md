@@ -31,6 +31,13 @@ overrides those.
   above the tile it looks at and one less for each level below. `water`
   is no longer a terrain kind: it stands on ground (`09`). The rule that
   a tile's terrain never changes is withdrawn.
+- **Ground no higher than the seer never blocks its sight (Q68, amending
+  Q65).** Q65 had any tile above the straight line between two grounds
+  block it, which hid the bed of a lake from everything not on its bank.
+  A tile on the ray now blocks only if it is also higher than the ground
+  the seer stands on, so a machine sees lower ground within its range
+  past ground at its own height or below, and still sees less far up
+  than down (Line of sight, below).
 - **Paint, overlays and wires are planned only on ground the team has seen
   (Q49, as Q62 extends it to wires).** A `Mark` of a paint, an overlay or a
   wire plan, a value or a clear, applies only on a `ground` tile the
@@ -266,17 +273,22 @@ terrain and height, since a ray of length one passes through nothing.
 `rock` on `b` itself does not block: a machine sees a rock tile it has a
 clear line to, which is how walls are seen at all.
 
-**Height on the line (Q65).** Let the walk from `a` to `b` take `n` steps
-of rule 2, so that the tile reached at step `k`, for `k` from 1 to
-`n − 1`, is a tile the ray passes through. That tile stands above the
-line, and blocks it, if
+**Height on the line (Q65, as Q68 amended).** Let the walk from `a` to
+`b` take `n` steps of rule 2, so that the tile reached at step `k`, for
+`k` from 1 to `n − 1`, is a tile the ray passes through. That tile
+blocks the line if both of these hold:
+
+`height(tile) > height(a)`
 
 `height(tile) × n > height(a) × (n − k) + height(b) × k`
 
-— if its ground is above the straight line from the ground of `a` to the
-ground of `b`, in integers. A tile exactly on the line does not block, so
-level ground sees across level ground as before. Water adds nothing to a
-height here.
+— if its ground is higher than the seer's own, and above the straight
+line from the ground of `a` to the ground of `b`, in integers. A tile
+exactly on the line does not block, so level ground sees across level
+ground as before. Ground no higher than the seer's never blocks (Q68):
+a machine sees down into a hollow past its bank, and over a rise that
+is below it; from in the hollow, the bank is higher than the seer and
+hides what is beyond it. Water adds nothing to a height here.
 
 **Height and range (Q65).** A machine on tile `a` with vision `v` sees
 tile `b` if the line is clear and the squared distance between them is at

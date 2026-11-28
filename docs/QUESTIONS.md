@@ -78,7 +78,10 @@ from watching Q65's water run, amends Q65, and is `09`'s. Q67 — water
 piped between buildings: networks served oldest first, dry buildings,
 pumps, tanks, spouts, pipes and aqueducts — was opened and answered in
 one commit, amends Q10, Q27, Q37, Q42 and Q65, and is `09`'s, with
-entries in `02`, `03`, `06`, `07` and `08`. The rulings of Q7, Q9, Q21,
+entries in `02`, `03`, `06`, `07` and `08`. Q68 — ground no higher than
+the seer never blocks its sight — was opened and answered in one commit
+from seeing what Q65's line of sight hid, amends Q65, and is `03`'s. The
+rulings of Q7, Q9, Q21,
 Q22, Q23, Q24, Q25, Q30, Q42, Q43, Q62 and Q65 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and
