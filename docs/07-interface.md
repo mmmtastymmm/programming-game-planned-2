@@ -85,7 +85,9 @@ hash; a peer with a different renderer sees the same match.
   slope; damp ground is only a darker tint; a spring and a sink are each
   marked on their tile. The strip gains a
   **ground** row on `G`: *lower*, *raise*, *level* and its clear. A ground
-  plan shows as the tile's outline at the planned height. A flooded
+  plan to raise a tile shows as its outline at the planned height, on a
+  see-through block of the earth to add; one to lower it, whose height
+  is under the ground, as its outline on the tile, hatched. A flooded
   machine carries a mark over it, beside the power mark's place. The
   inspector gives the hovered tile's height and water, a spring's or a
   sink's rate, and a selected machine's `flooded`.
@@ -382,7 +384,9 @@ ground plan): *lower* one below, and *raise* one above, the height the
 tile's plan already holds or else the height the team knows it at;
 *level*, for every tile of a stroke, the known height of the tile the
 stroke began on; its *clear* is the `Unmark`. None is sent for a tile the
-team has not seen, or one already known to be ground at that height.
+team has not seen. Where a stroke asks for the height a tile is already
+known to be ground at, there is nothing to plan, and a plan the tile
+holds for another height is withdrawn.
 With none armed, a click selects and a drag pans. The renderer submits
 and forgets (Q15): what the player sees is the plan the sim reports,
 `delay` ticks later.

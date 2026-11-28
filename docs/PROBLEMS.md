@@ -60,11 +60,12 @@ conserved volume standing on the ground; `02`, `03`, `06`, `07`, `08` and
 and the step, `dig`, `fill` and `mine`, earth and the ground plan, and
 all of `09` — the flow, springs and sinks, wading and flooding
 ([T45](history/tasks-completed/task-completed-0045.md)). The rest is
-not. In the sim a move always takes the same ticks, no bot falls or is
-bonked, and sight tests only rock. The renderer draws heights and water
+not. In the sim a move always takes the same ticks and no bot falls or
+is bonked; sight over height is built
+([T44](history/tasks-completed/task-completed-0044.md)). The renderer draws heights and water
 but no ramp, no flooded mark and none of `07`'s ground tools. The first
 map and the starter's navigation know nothing of height. The work is
-[T43](TASKS.md), [T44](TASKS.md), [T46](TASKS.md) and [T47](TASKS.md),
+[T43](TASKS.md), [T46](TASKS.md) and [T47](TASKS.md),
 and this entry closes with the commit that finishes the last of them.
 
 **P12 — The code lags Q67: no water network**
