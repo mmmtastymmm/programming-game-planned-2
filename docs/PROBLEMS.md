@@ -73,11 +73,12 @@ it.
 
 Q67 ruled that a team's buildings pipe water — networks served oldest
 first, dry buildings, pumps, tanks, spouts, pipes and aqueducts — and
-`09`, with `02`, `03`, `06`, `07` and `08`, states it as current. None
-of it is built. The sim has no `pump`, `tank`, `spout` or `aqueduct`
-model, no tank on a printer, no pipe and no pipe plan, no network step,
-no `watered`, `network` or `pouring`, and none of `water()`, `pipes()`,
-`pipe`, `unpipe` and `pour`; the data has none of their rows; the
-renderer draws none of it; and the starter library knows nothing of it.
-The work is [T48](TASKS.md), [T49](TASKS.md) and [T50](TASKS.md), and
-this entry closes with the commit that finishes the last of them.
+`09`, with `02`, `03`, `06`, `07` and `08`, states it as current. The
+sim has all of it
+([T48](history/tasks-completed/task-completed-0048.md)). The renderer
+does not: the four models are drawn as stand-ins, no pipe is drawn,
+there is no pipe tool, no dry mark and nothing of a network in the
+inspector. And the starter library has no program for a pump, a tank
+or a spout and lays no pipe. The work is [T49](TASKS.md) and
+[T50](TASKS.md), and this entry closes with the commit that finishes
+the last of them.
