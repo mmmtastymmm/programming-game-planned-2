@@ -285,12 +285,14 @@ for each team in order:
    tiles beside it, the one holding the most water, the first of `n`,
    `e`, `s`, `w` among equals. A pump that is not powered (`08`), is
    flooded, or has no wet tile beside it has none, and lifts nothing
-   this tick. A pump with a source may lift up to its `pump_rate` in the
+   this tick; being dry does not stop a pump. A pump with a source may lift up to its `pump_rate` in the
    tick, and never more than its source holds at the moment it lifts.
 3. **Each network is served**, networks in ascending label, three times
    over. Wherever water is **drawn**, it is lifted by the network's
    pumps in ascending entity id, each as far as step 2 allows, and what
    they cannot give is taken from its tanks in ascending entity id.
+   Two pumps with one source share what it holds: the second lifts
+   only what the first has left.
    1. *The needs.* Each building in ascending entity id — oldest first:
       one with no need is **watered**. Each other: if what the pumps may
       still lift and the tanks hold covers its need, the need is drawn,
@@ -344,7 +346,8 @@ its own and a program.
   `None`, which its program sets with `pour(dir)` and which is `None`
   when it is built. It pours onto the tile beside it in that direction
   if that tile is `ground` on the map, at whatever height, and nowhere
-  if it is not. A dark or a dry spout pours nothing.
+  if it is not. A dark spout pours nothing, nor one the same step's
+  needs left dry.
 
 A building that leaves the world — deconstructed, dead, or its team
 out — gives what its tank holds to the ground water.
