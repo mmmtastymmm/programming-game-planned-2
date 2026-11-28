@@ -56,17 +56,17 @@ the commit that changes the numbers or the rule.
 
 Q65 ruled that every tile has a height bots change, and that water is a
 conserved volume standing on the ground; `02`, `03`, `06`, `07`, `08` and
-`09` state it as current. Part of it is built: a height on every tile
-and the step, `dig`, `fill` and `mine`, earth and the ground plan, and
-all of `09` — the flow, springs and sinks, wading and flooding
-([T45](history/tasks-completed/task-completed-0045.md)). The rest is
-not. In the sim a move always takes the same ticks and no bot falls or
-is bonked; sight over height is built
-([T44](history/tasks-completed/task-completed-0044.md)). The renderer draws heights and water
-but no ramp, no flooded mark and none of `07`'s ground tools. The first
-map and the starter's navigation know nothing of height. The work is
-[T43](TASKS.md), [T46](TASKS.md) and [T47](TASKS.md),
-and this entry closes with the commit that finishes the last of them.
+`09` state it as current. The sim has all of it: heights, digging,
+pace, falls and bonks
+([T43](history/tasks-completed/task-completed-0043.md)), sight over
+height ([T44](history/tasks-completed/task-completed-0044.md)) and all
+of `09`'s water on the ground
+([T45](history/tasks-completed/task-completed-0045.md)). What is not
+built is outside it. The renderer draws a bot crossing a tile in one
+tick whatever its pace, and shows no fall and no bonk. The first map
+is flat and dry, and the starter's navigation knows nothing of steps,
+drops or pace. The work is [T46](TASKS.md) and [T47](TASKS.md), and
+this entry closes with the commit that finishes the last of them.
 
 **P12 — The code lags Q67: no water network**
 
