@@ -155,6 +155,12 @@ Q22's is shared with `docs/03`, which cites it. Where a ruling says
   the actions `dig`, `fill` and `mine`, the resource `earth`, the
   attributes `flooded` and `pace`, what a `move` may do, and the damage
   of a flood and a fall.
+- **Water is piped between buildings (Q67).** The ruling is
+  [09-water](09-water.md)'s, and for want of room here so are the rows
+  it adds to a machine: the models `pump`, `tank`, `spout` and
+  `aqueduct`; the attributes `water`, `tank`, `watered`, `network` and
+  `pouring`; the senses `water()` and `pipes()`; and the actions `pipe`,
+  `unpipe` and `pour`.
 
 ## A machine
 
@@ -163,7 +169,7 @@ identity:
 
 | | Is | Set |
 |---|---|---|
-| **kind** | `"bot"` or `"building"`; every machine also has a **model** — `"bot"` for a bot, `"printer"`, `"depot"`, `"solar"`, `"charger"`, `"pylon"` or `"site"` for a building | at print or build, never changed |
+| **kind** | `"bot"` or `"building"`; every machine also has a **model** — `"bot"` for a bot, `"printer"`, `"depot"`, `"solar"`, `"charger"`, `"pylon"`, one of Q67's four (`09`) or `"site"` for a building | at print or build, never changed |
 | **team** | the allegiance it acts for, a small integral `num`; every machine of a team shares senses, memory, stores, deployments and the bot cap | at print or build, from the machine that made it; never changed |
 | **program** | the bundle of its **deployment**, which is its model's name: every bot runs the `bot` bundle, a building the bundle deployed to its model (Q42); a site and a pylon run none | by the command log, through the deployment (Q11) |
 | **name** | a `str` of at most `name_max` scalars, for the player's eyes and the log; not identity, not unique, and never read by the sim | at print, to `bot` plus the entity id (`bot17`); at build, a site to the name of the model it will become plus its entity id (`printer23`), and the completed building, a machine of its own, to its model plus its own id (Q42); changed by `rename` |
@@ -308,7 +314,7 @@ writable except through an action.
 | `id` | `num`, integral | the entity id, unique for the match, never reused |
 | `name` | `str` | the machine's name |
 | `kind` | `str` | `"bot"` or `"building"` |
-| `model` | `str` | `"bot"`, `"printer"`, `"depot"`, `"solar"`, `"charger"`, `"pylon"` or `"site"` |
+| `model` | `str` | `"bot"`, `"printer"`, `"depot"`, `"solar"`, `"charger"`, `"pylon"`, one of Q67's four (`09`) or `"site"` |
 | `team` | `num`, integral | the team's number |
 | `deployment` | `str` or `None` | the model name whose bundle the machine runs — `"bot"` for every bot (Q42); `None` for a site or a pylon |
 | `pos` | `(num, num)` | the tile it occupies, as `(x, y)`, integral |
@@ -355,7 +361,7 @@ their `[game]` row plus `factor.traverse` per element returned
 | `tile(x, y)` | the tile's record for the team — `x` and `y`; `state` one of `"unknown"`, `"visible"`, `"remembered"`; `terrain`, `height`, `water`, `spring` and `sink` as `03` and `09` define them (Q65); `deposit`, a `dict` of resource kind to amount or `None` (`03`); `building` a machine record or `None`; `seen_at` the tick; `paint` and `overlay`, the tile's realised marks, `wires`, the sorted team numbers with a wire on it (Q62), and `plans`, the team's pending plans by kind, as `03` defines them, present whatever the state — or `None` for an unknown tile. A visible tile is the world now; a remembered one is its snapshot. |
 | `tiles(x0, y0, x1, y1)` | the records of every tile in the rectangle, clipped to the map, that is not unknown, sorted by row then column. |
 | `me()` | the calling machine's own attribute record. |
-| `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"`, `"building"` (Q27), `"wire"` (Q62) or `"ground"` (Q65) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label, a model, `True` for a wire or a height for the ground, or `None` for a plan to clear. |
+| `plans(kind)` | the team's pending plans of `kind` — `"paint"`, `"overlay"`, `"building"` (Q27), `"wire"` (Q62), `"ground"` (Q65) or `"pipe"` (Q67) — as `(x, y, value)` tuples, sorted by row then column; the value is a color, a label, a model, `True` for a wire or a pipe, or a height for the ground, or `None` for a plan to clear. |
 | `painted(color)` | every tile the team sees or remembers whose paint is `color` — paint is the tile's, not a team's (Q28) — as `(x, y)` tuples, sorted by row then column. |
 | `overlaid(label)` | every tile the team sees or remembers whose overlay is `label`, as `(x, y)` tuples, sorted by row then column. |
 | `power()` | the team's grids as the last power step kept them (`08`): a list of records, one per grid, each `grid`, its label, and `generation`, `drain`, `stored` and `capacity`, sorted by `grid`. |

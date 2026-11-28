@@ -265,7 +265,9 @@ A building the last power step left dark, until the next one:
 Data keeps a printer from ever being dark for want of power (Charge and
 batteries, above). A flooded printer is dark (Q65; `09`), and the
 printer's entries here bind then. A building the water step floods is
-dark from that step, before the next power step runs.
+dark from that step, before the next power step runs. A **dry** building
+(Q67; `09`) is stopped in the same way by its water network, whatever
+its power.
 
 ## Lines
 

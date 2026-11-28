@@ -105,7 +105,9 @@ pass.
   small parts that flow, springs, sinks and the ground water, and
   flooding) and Q66 (a fifth to each lower tile, the flow in passes, a
   film that dries only unfed, a spring's head and a sink's sill, and
-  water written in levels) are its Decided entries, and they are not
+  water written in levels) and Q67 (water piped between buildings:
+  networks served oldest first, dry buildings, pumps, tanks, spouts,
+  pipes and aqueducts) are its Decided entries, and they are not
   repeated here.
 - **The architecture's rulings live in [06-architecture](06-architecture.md)**
   — Q6 (the speed), Q10 with Q26, Q27 and Q28 (the command log and marks),
@@ -146,7 +148,7 @@ inserted without renumbering:
 | `06` | Architecture — crates, the driver and tick loop, the command log, the snapshot, the state hash, testing strategy | — |
 | `07` | Interface — the screen, the editor, how a fault reaches the player, how a machine on the map reads | — |
 | `08` | Power — batteries and charge, a bot's low power, grids and how they are served, dark buildings, pylons and wire | — |
-| `09` | Water — what stands on the ground and how it flows, springs, sinks and the ground water, wading and flooding | — |
+| `09` | Water — what stands on the ground and how it flows, springs, sinks and the ground water, wading and flooding, and the water network: pumps, tanks, spouts, pipes and aqueducts | — |
 
 Each becomes a doorway plus a parts directory only when it outgrows one file
 (CLAUDE.md, *Splitting a doc*).

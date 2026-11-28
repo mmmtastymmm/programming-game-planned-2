@@ -26,7 +26,7 @@ Known-wrong *decided* text is not a question — it goes in
 [PROBLEMS.md](PROBLEMS.md). Raw unsorted observations go in
 [INBOX.md](INBOX.md).
 
-**Status 2026-11-26.** Every question this file has issued is answered
+**Status 2026-11-28.** Every question this file has issued is answered
 except the one under **Open** below, which I12 raised. Q33 through Q39 and Q41 were each opened and answered in one
 commit as [07-interface](07-interface.md) was written and revised, and
 their rulings are `07`'s Decided entries — Q39 amending Q33's panel to a
@@ -74,7 +74,11 @@ and Q62, and is `03`'s and [09-water](09-water.md)'s, with entries in
 `02`, `06`, `07` and `08`. Q66 — a tile's gift of a fifth, the flow in
 passes, a film that dries only unfed, a spring's head and a sink's sill,
 and water written in levels — was opened and answered in one commit
-from watching Q65's water run, amends Q65, and is `09`'s. The rulings of Q7, Q9, Q21,
+from watching Q65's water run, amends Q65, and is `09`'s. Q67 — water
+piped between buildings: networks served oldest first, dry buildings,
+pumps, tanks, spouts, pipes and aqueducts — was opened and answered in
+one commit, amends Q10, Q27, Q37, Q42 and Q65, and is `09`'s, with
+entries in `02`, `03`, `06`, `07` and `08`. The rulings of Q7, Q9, Q21,
 Q22, Q23, Q24, Q25, Q30, Q42, Q43, Q62 and Q65 are
 [02-machines](02-machines.md)'s Decided entries, `docs/03` cites Q21 and
 Q22 from there, the rulings of Q6, Q10, Q12, Q15, Q26 through Q28, Q32 and

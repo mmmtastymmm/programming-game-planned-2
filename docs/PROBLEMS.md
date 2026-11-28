@@ -32,7 +32,7 @@ on every CI run. Do not hand-edit half of it, and do not restate it anywhere
 else; other docs cite entries and their relationships, never totals. There is one
 status block and it is rewritten in place: `git log -p` is the history.
 
-**Status 2026-11-24: 11 opened, 9 fixed — 2 open.**
+**Status 2026-11-28: 12 opened, 9 fixed — 3 open.**
 
 ## Open
 
@@ -66,3 +66,16 @@ but no ramp, no flooded mark and none of `07`'s ground tools. The first
 map and the starter's navigation know nothing of height. The work is
 [T43](TASKS.md), [T44](TASKS.md), [T46](TASKS.md) and [T47](TASKS.md),
 and this entry closes with the commit that finishes the last of them.
+
+**P12 — The code lags Q67: no water network**
+
+Q67 ruled that a team's buildings pipe water — networks served oldest
+first, dry buildings, pumps, tanks, spouts, pipes and aqueducts — and
+`09`, with `02`, `03`, `06`, `07` and `08`, states it as current. None
+of it is built. The sim has no `pump`, `tank`, `spout` or `aqueduct`
+model, no tank on a printer, no pipe and no pipe plan, no network step,
+no `watered`, `network` or `pouring`, and none of `water()`, `pipes()`,
+`pipe`, `unpipe` and `pour`; the data has none of their rows; the
+renderer draws none of it; and the starter library knows nothing of it.
+The work is [T48](TASKS.md), [T49](TASKS.md) and [T50](TASKS.md), and
+this entry closes with the commit that finishes the last of them.

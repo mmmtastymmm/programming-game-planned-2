@@ -89,6 +89,15 @@ hash; a peer with a different renderer sees the same match.
   machine carries a mark over it, beside the power mark's place. The
   inspector gives the hovered tile's height and water, a spring's or a
   sink's rate, and a selected machine's `flooded`.
+- **The water network shows on the map, and the strip plans it (Q67,
+  amending Q37).** A team's pipe is drawn as its wire is, in water's
+  color, and an aqueduct's joins as a pylon's lines; a tank shows how
+  full it is and a spout which way it pours; a dry building carries a
+  mark beside the power mark's place. The strip gains a **pipe** tool
+  and its clear on `T`, and its building row `09`'s four models, an
+  entry past the ninth armed by a click. The inspector gives a machine's
+  `water` against its `tank`, its `watered`, `network` and `pouring`,
+  and the team's networks' figures.
 - **A stall is a banner with a resign; a desync freezes the match with
   the report and the replay saved (Q38).** The banner names the peer, the
   tick and the wait; everything else keeps working. A desync's banner

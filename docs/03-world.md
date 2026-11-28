@@ -40,8 +40,10 @@ overrides those.
   plan that asks for what the tile already has — to lay where the team's
   wire lies, or to clear where none does — is dropped on its tick too, and
   the team's `wire` or `unwire` that makes a tile match its plan consumes
-  it (`02`), so a wire plan is always one a bot can carry out. A building
-  plan may go anywhere, and an `Unmark` always applies.
+  it (`02`), so a wire plan is always one a bot can carry out. A pipe
+  plan (Q67; `09`) is a wire plan in every one of these rules, with
+  `pipe` and `unpipe`. A building plan may go anywhere, and an `Unmark`
+  always applies.
 
 ## Tiles
 
@@ -70,7 +72,8 @@ Every tile holds exactly:
 | `paint` | the tile's one paint, a color from `deployment.colors` in data or `None`; influences nothing |
 | `overlay` | the tile's one overlay, a label from `mark.overlays` in data or `None`; influences bots through the programs that read it |
 | `wires` | the set of teams with a wire on the tile, empty on anything but `ground`; each team's wire is underground, occupies nothing, and joins that team's grid (Q62, `08`) |
-| `plans` | **per team**, five plans — paint, overlay, building, wire (Q62), ground (Q65) — each `None` or a value (a color, a label, a model, `True` for a wire, a height for the ground; or a plan to clear, which the ground plan has none of); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint, overlay and wire only on ground the team has seen (Q49, Q62) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
+| `pipes` | the set of teams with a pipe on the tile, as `wires` is of wires; a pipe joins that team's water network (Q67, `09`) |
+| `plans` | **per team**, six plans — paint, overlay, building, wire (Q62), ground (Q65), pipe (Q67) — each `None` or a value (a color, a label, a model, `True` for a wire or a pipe, a height for the ground; or a plan to clear, which the ground plan has none of); placed and withdrawn by the player through `Mark` and `Unmark` (Q10, Q27) — paint, overlay, wire and pipe only on ground the team has seen (Q49, Q62, Q67) — read by that team's programs only, realised only by a bot's action, which consumes the plan; never sensed or remembered |
 | the machine on it | at most one (`02`, Occupancy); not a field of the tile, but of the machine |
 
 **Paint and overlay are the tile's, not a team's** (Q28): every team's bots
@@ -202,7 +205,7 @@ spring and no sink, and no machine is on it or moving onto it.
   `ground`, at the height it had; nothing is gained.
 
 A tile under water is dug and filled like any other: its water stays on
-it, and flows by `09`'s rule from the surface it then has. Paint, an overlay and wires stay on a tile whose ground changes.
+it, and flows by `09`'s rule from the surface it then has. Paint, an overlay, wires and pipes stay on a tile whose ground changes.
 
 **Earth** is a resource kind (`02`, Q22), the second: a row of the
 resource table with its capacities, carried, dropped into a depot and
