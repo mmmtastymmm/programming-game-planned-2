@@ -1,13 +1,16 @@
 //! The view: entities built from the completed-tick snapshot, never shared
 //! with the sim (Q15). Tiles are textured slabs rebuilt when their look
 //! changes; machines are atlas boxes diffed by entity id; positions
-//! interpolate between the last two snapshots in floats nothing reads back.
+//! interpolate between the last two snapshots in floats nothing reads back,
+//! a bot's along the move, the fall or the bonk the sim has it in
+//! ([`crate::motion`]).
 //! The look is the predecessor's: fog as an opaque cover over the unknown
 //! and a cold, unlit twin of every material for the remembered.
 
 use crate::app::{DriverResource, Screen, Tool, ViewState};
 use crate::camera::{OrbitCam, orbit_transform};
 use crate::driver::Driver;
+use crate::motion::{self, Pose};
 use crate::outlines::{TeamColors, TeamMats};
 use crate::palette::{
     BOT_HALF, Frame, Interface, LENS_BARREL_Z, LENS_GLASS_Z, LENS_Y, LEVEL_RISE, MARK_HALF,
@@ -121,7 +124,10 @@ pub struct MachineView {
     pub gauge: Option<Entity>,
     pub yaw: f32,
     pub yaw_prev: f32,
-    pub pos_seen: TilePos,
+    /// The move or the bonk `yaw` was last turned to face, as the tile it
+    /// was from and the tile it was toward ([`motion::Leg::heading`]);
+    /// `None` once the body has come to rest.
+    pub heading: Option<(TilePos, TilePos)>,
     /// The bot's `color` as last drawn (Q43); `None` on a building.
     pub color_seen: Option<Option<String>>,
 }
@@ -176,6 +182,10 @@ pub struct Tuning {
     /// Where the ground of a tile the team has never seen is drawn: at
     /// the height a map gives a tile it names none for.
     pub unknown_top: f32,
+    /// How much lower than a bot's tile the top of the next must be drawn
+    /// for a move onto it to be a fall and no step (`docs/03`, A drop):
+    /// half a level more than `height.step`.
+    pub drop: f32,
 }
 
 impl Tuning {
@@ -186,7 +196,9 @@ impl Tuning {
         let mut wet = u32::MAX;
         let mut parts = 1;
         let mut unknown_top = 0.0;
+        let mut drop = 1.5 * LEVEL_RISE;
         if let Ok(d) = sim::Data::load() {
+            drop = (f32::from(d.world.height.step) + 0.5) * LEVEL_RISE;
             wet = d.world.water.wet;
             parts = d.world.water.parts.max(1);
             unknown_top = f32::from(d.world.height.default) * LEVEL_RISE;
@@ -207,6 +219,7 @@ impl Tuning {
             wet,
             parts,
             unknown_top,
+            drop,
         }
     }
 
@@ -1210,15 +1223,6 @@ pub fn sync_machines(
                     view.dimmed = dimmed;
                 }
             }
-            if m.record.pos != view.pos_seen {
-                let from = frame.tile_xyz(view.pos_seen, 0.0);
-                let to = frame.tile_xyz(m.record.pos, 0.0);
-                let d = to - from;
-                view.yaw_prev = view.yaw;
-                // The face is on -Z; lead with it.
-                view.yaw = (-d.x).atan2(-d.z);
-                view.pos_seen = m.record.pos;
-            }
             if m.record.health != view.health_seen {
                 view.health_seen = m.record.health;
                 view.health_age = 0.0;
@@ -1776,7 +1780,7 @@ fn spawn_machine(
         gauge,
         yaw,
         yaw_prev: yaw,
-        pos_seen: m.record.pos,
+        heading: None,
         color_seen: m.record.color.clone(),
     }
 }
@@ -1993,52 +1997,108 @@ pub fn fault_marks(
     }
 }
 
-/// Draw each machine between its previous and current tile by the fraction
-/// of the tick elapsed (Q6), turning the shortest way round on the tick it
-/// moves and holding its heading otherwise.
+/// Draw each machine where the fraction of the tick elapsed has it (Q6):
+/// a building on its tile, and a bot on the move, the fall or the bonk the
+/// two snapshots either side of the tick show it in (`docs/03`, Moving;
+/// [`crate::motion`]), so that a move is seen over the whole of its ticks.
+/// It turns the shortest way round in the tick its move begins and holds
+/// its heading otherwise.
 pub fn interpolate(
     driver: NonSend<DriverResource>,
     frame: Res<Frame>,
-    ents: Res<Entities>,
+    tuning: Res<Tuning>,
+    mut ents: ResMut<Entities>,
     mut bodies: Query<&mut Transform, With<MachineBody>>,
 ) {
     // What the map draws: the fork's snapshots while one is open, moving
     // at its run's speed.
     let shown = driver.0.shown();
     let f = shown.fraction(driver.0.shown_speed());
-    let prev: HashMap<EntityId, TilePos> = shown
-        .prev
-        .as_ref()
-        .map(|s| {
-            s.machines
-                .iter()
-                .map(|m| (m.record.id, m.record.pos))
-                .collect()
+    let before = shown.prev.iter().flat_map(|s| &s.machines);
+    let prev: HashMap<EntityId, Pose> =
+        before.clone().map(|m| (m.record.id, Pose::of(m))).collect();
+    // The bonks in progress as the tick began, by the bot each was on: the
+    // tile of the bot that bonked, and the tile it bonked onto.
+    let bonks: HashMap<EntityId, (TilePos, TilePos)> = before
+        .filter_map(|m| {
+            let a = m.moving.as_ref()?;
+            Some((a.bonk?, (m.record.pos, a.to)))
         })
-        .unwrap_or_default();
+        .collect();
     for m in &shown.cur.machines {
-        let Some(view) = ents.machines.get(&m.record.id) else {
+        let id = m.record.id;
+        let Some(view) = ents.machines.get(&id) else {
             continue;
         };
         let Ok(mut t) = bodies.get_mut(view.body) else {
             continue;
         };
-        let lift = body_lift(view.model);
-        let cur = frame.tile_xyz(m.record.pos, ents.top(m.record.pos) + lift);
-        let was = prev.get(&m.record.id).copied();
-        let from = was
-            .map(|p| frame.tile_xyz(p, ents.top(p) + lift))
-            .unwrap_or(cur);
-        t.translation = from.lerp(cur, f);
-        // Turn only on the tick the machine moved: the headings change only
-        // on a move, so a machine standing still after a turn would
-        // otherwise replay that turn every tick.
+        let (cur, was) = (Pose::of(m), prev.get(&id).copied());
+        let hit =
+            was.is_some_and(|was| motion::shoved(bonks.get(&id).copied(), was, cur, m.record.pace));
+        let leg = motion::leg(was, cur, hit);
+        let (a, b) = leg.tiles();
+        let spot = leg.spot(
+            f,
+            standing_top(&ents, a, b),
+            standing_top(&ents, b, a),
+            tuning.drop,
+            body_half(view.model).x,
+        );
+        let (from, to) = (frame.tile_xyz(a, 0.0), frame.tile_xyz(b, 0.0));
+        let mut at = from.lerp(to, spot.along);
+        at.y = spot.top + spot.hop + body_lift(view.model);
+        t.translation = at;
+        // Face the move as it begins, not as it lands. A body at rest, and
+        // one a bonk shoved, keeps the heading it had; reading it changes
+        // nothing, so the view is marked changed only on a turn.
+        let heading = leg.heading();
+        if view.heading != heading
+            && let Some(view) = ents.machines.get_mut(&id)
+        {
+            if heading.is_some() {
+                let d = to - from;
+                view.yaw_prev = view.yaw;
+                // The face is on -Z; lead with it.
+                view.yaw = (-d.x).atan2(-d.z);
+            }
+            view.heading = heading;
+        }
+        let Some(view) = ents.machines.get(&id) else {
+            continue;
+        };
+        // Turn only in the tick the move began: the heading changes only
+        // then, so a machine standing still after a turn, or still on a
+        // long move, would otherwise replay that turn every tick.
         let yaw = Quat::from_rotation_y(view.yaw);
-        t.rotation = if was.is_some_and(|p| p != m.record.pos) {
+        let facing = if leg.begins() {
             Quat::from_rotation_y(view.yaw_prev).slerp(yaw, f)
         } else {
             yaw
         };
+        // A shoved bot rocks back from the way it was sent.
+        let back = (to - from).cross(Vec3::Y).normalize_or_zero();
+        t.rotation = if spot.tilt != 0.0 && back != Vec3::ZERO {
+            Quat::from_axis_angle(back, spot.tilt) * facing
+        } else {
+            facing
+        };
+    }
+}
+
+/// The top of tile `p` for a body moving between it and `other`: as the
+/// player knows it, or, where they have never seen it, the other tile's —
+/// a bot leaving into the unknown neither climbs nor falls toward a guess.
+fn standing_top(ents: &Entities, p: TilePos, other: TilePos) -> f32 {
+    let known = |p: TilePos| {
+        ents.tiles
+            .get(&p)
+            .is_some_and(|t| t.look.state != TileState::Unknown)
+    };
+    if known(p) || !known(other) {
+        ents.top(p)
+    } else {
+        ents.top(other)
     }
 }
 

@@ -301,7 +301,7 @@ value with no reference into the sim:
 | Part | Holds |
 |---|---|
 | `tick` | the tick just completed, and the speed in force — the driver's number, carried for the renderer, not the sim's |
-| `machines` | every machine's attribute record (`02`), the version of the bundle its program runs, which a deploy since may have left behind (Q11), plus its diagnostic log entries from this tick |
+| `machines` | every machine's attribute record (`02`), the version of the bundle its program runs, which a deploy since may have left behind (Q11), plus its diagnostic log entries from this tick, and, for a bot in a move or a bonk, where it is headed and how many ticks the whole of it takes, which the renderer draws it by and nothing else reads (Q65) |
 | `tiles`, per team | every tile's record as that team sees it: state, terrain, height, water, spring and sink (Q65), deposit, paint, overlay, wires, pipes (Q67), building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is part of a grid (Q62; `08`) |
 | `sounds` | every sound emitted this tick, with its cause, position, loudness and tick |
 | `faults` | every machine's fault record (`01`) |

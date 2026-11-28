@@ -1360,7 +1360,9 @@ impl Fork {
         snapshot.machines.retain(|m| m.record.team != self.team);
         let own = self.sim.world.machines.values();
         for m in own.filter(|m| m.team == self.team) {
-            snapshot.machines.push(MachineSnapshot::of(m));
+            snapshot
+                .machines
+                .push(MachineSnapshot::of(&self.sim.world, m));
         }
         snapshot.machines.sort_by_key(|m| m.record.id);
         snapshot
