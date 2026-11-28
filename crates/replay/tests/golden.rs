@@ -7,8 +7,8 @@
 //! UPDATE_GOLDEN=1 cargo test -p replay --test golden
 //! ```
 //!
-//! and the PR explains the hash change. The scenario: the first map, a
-//! player team running the bundles under `tests/golden/player/`, and the
+//! and the PR explains the hash change. The scenario: the first map, with
+//! a spring and a sink in its south-west lake, a player team running the bundles under `tests/golden/player/`, and the
 //! Fool as the opposition, with a **mid-match redeploy** of the player's
 //! `bot` deployment (T7: the hash-affecting path most likely to differ
 //! between peers), a speed change, and marks — among them a printer plan
@@ -17,7 +17,10 @@
 //! Q63), a charger, a pylon and a tile of wire that join the two printers
 //! and the charger into one grid, and one bot that only paces, so that
 //! inside the run's 480 ticks a battery falls to low power, the hook runs
-//! and the bot recharges. The alive test asserts on what
+//! and the bot recharges; and, for the ground and water (Q65, Q66), a
+//! hollow dug beside the lake, a pylon built in it, and a channel cut from
+//! the lake that floods the pylon until it dies of it, while the spring
+//! and the sink keep the lake's water moving. The alive test asserts on what
 //! the match must have done, so a run that did nothing cannot score green.
 
 use replay::Replay;
@@ -43,9 +46,39 @@ fn tree(dir: &Path) -> std::collections::BTreeMap<String, sim::Bundle> {
     sim::script::read_tree(dir).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// The fixture's map: the first map, with water that moves. A spring in
+/// the south-west lake's far corner brings ground water up to the lake's
+/// rim, and a sink beside it takes the lake down to half a level below,
+/// so there is a flow across the lake on every tick of the match, and the
+/// channel the scenario cuts from it stays fed. The first map gets water
+/// of its own with T47; until then the fixture adds its own.
+fn fixture_map() -> String {
+    let first = std::fs::read_to_string(data_dir().join("maps/first.toml")).expect("first map");
+    let key = "terrain = \"\"\"";
+    assert!(first.contains(key), "the first map has no terrain key");
+    let mut text = first.replacen(key, &format!("ground_water = 2\n{key}"), 1);
+    text.push_str(
+        "\n[[spring]]\nat = [-10, -6]\nrate = \"0.05\"\nhead = 4\n\n\
+         [[sink]]\nat = [-9, -6]\nrate = \"0.05\"\nsill = \"3.5\"\n",
+    );
+    text
+}
+
+/// The hollow the scenario's digger digs first, two tiles north of the
+/// lake, and where the pylon the flood takes is built.
+const HOLLOW: TilePos = TilePos::new(-10, -3);
+/// The channel: the tile between the hollow and the lake, dug last.
+const CHANNEL: TilePos = TilePos::new(-10, -4);
+/// The ticks the pylon's plan and the channel's are agreed for: after the
+/// hollow is dug, at about tick 350, and after the pylon stands in it,
+/// five ticks from its plan. A pylon lasts fifty ticks flooded, so the
+/// channel is early enough for the run to see it die.
+const PYLON_MARK: u64 = 360;
+const CHANNEL_MARK: u64 = 385;
+
 /// The canonical golden scenario.
 fn golden_replay() -> Replay {
-    let map_text = std::fs::read_to_string(data_dir().join("maps/first.toml")).expect("first map");
+    let map_text = fixture_map();
     let data = Data::load().expect("data");
     let map = Map::parse(&map_text, &data).expect("map");
     let player = TeamId(0);
@@ -142,6 +175,46 @@ fn golden_replay() -> Replay {
             at: wire_plan(&map),
             plan: PlanKind::Wire,
             value: Some("wire".into()),
+        },
+    ));
+    // The ground and the water (Q65): a hollow a level down, two tiles
+    // north of the lake, planned once the team has seen the tile; then a
+    // pylon in it; then the tile between it and the lake, which lets the
+    // lake in and floods the pylon.
+    let down = map
+        .tile(HOLLOW)
+        .expect("on the map")
+        .height
+        .level()
+        .saturating_sub(1);
+    commands.push(Command::new(
+        2,
+        player,
+        3,
+        CommandKind::Mark {
+            at: HOLLOW,
+            plan: PlanKind::Ground,
+            value: Some(down.to_string()),
+        },
+    ));
+    commands.push(Command::new(
+        PYLON_MARK,
+        player,
+        0,
+        CommandKind::Mark {
+            at: HOLLOW,
+            plan: PlanKind::Building,
+            value: Some("pylon".into()),
+        },
+    ));
+    commands.push(Command::new(
+        CHANNEL_MARK,
+        player,
+        0,
+        CommandKind::Mark {
+            at: CHANNEL,
+            plan: PlanKind::Ground,
+            value: Some(down.to_string()),
         },
     ));
     // The Fool's script, tiles relative to its first start.
@@ -247,6 +320,78 @@ fn power_seen(replay: &Replay) -> (u32, u32) {
     (hooks, recharges)
 }
 
+/// What the water did, seen tick by tick.
+struct WaterSeen {
+    /// Ticks on which the lake's tiles held other water than the tick
+    /// before: the lake finding its level.
+    lake_moved: u32,
+    /// The least and the most the ground water held after a tick.
+    ground: (u64, u64),
+    /// Whether the water on the tiles and under them ever summed to
+    /// anything but what the map began with.
+    total_held: bool,
+    /// Ticks the pylon in the hollow stood there, and of them the ticks
+    /// it was flooded and dark.
+    pylon: u32,
+    flooded: u32,
+    /// Its health when last seen, and whether it was flooded then.
+    last: Option<(lang::Num, bool)>,
+}
+
+/// The golden scenario stepped tick by tick for its water: the lake, the
+/// ground water, and the pylon in the hollow.
+fn water_seen(replay: &Replay) -> WaterSeen {
+    let data = Data::load().expect("data");
+    let mut sim = sim::Sim::new(Map::parse(&replay.map, &data).expect("map"));
+    let log = replay.log();
+    let lake: Vec<usize> = [(-10, -6), (-9, -6), (-10, -5), (-9, -5)]
+        .into_iter()
+        .map(|(x, y)| sim.world.tile_index(TilePos::new(x, y)).expect("lake"))
+        .collect();
+    let water =
+        |sim: &sim::Sim| -> Vec<u32> { lake.iter().map(|i| sim.world.tiles[*i].water).collect() };
+    let total = sim.world.water_total();
+    let mut before = water(&sim);
+    let mut seen = WaterSeen {
+        lake_moved: 0,
+        ground: (sim.world.ground_water, sim.world.ground_water),
+        total_held: true,
+        pylon: 0,
+        flooded: 0,
+        last: None,
+    };
+    for tick in 1..=replay.ticks {
+        let mut commands = if tick == 1 {
+            log.sets_for(0)
+        } else {
+            Vec::new()
+        };
+        commands.extend(log.sets_for(tick));
+        sim.step(&commands, &[]);
+        let now = water(&sim);
+        if now != before {
+            seen.lake_moved = seen.lake_moved.saturating_add(1);
+        }
+        before = now;
+        let ground = sim.world.ground_water;
+        seen.ground = (seen.ground.0.min(ground), seen.ground.1.max(ground));
+        seen.total_held &= sim.world.water_total() == total;
+        let pylon = sim
+            .world
+            .machines
+            .values()
+            .find(|m| m.model == Model::Pylon && m.pos == HOLLOW);
+        if let Some(m) = pylon {
+            seen.pylon = seen.pylon.saturating_add(1);
+            if m.flooded && !m.powered {
+                seen.flooded = seen.flooded.saturating_add(1);
+            }
+            seen.last = Some((m.health, m.flooded));
+        }
+    }
+    seen
+}
+
 fn hashes_to_text(hashes: &[u64]) -> String {
     hashes.iter().map(|h| format!("{h:016x}\n")).collect()
 }
@@ -343,7 +488,7 @@ fn golden_scenario_is_alive() {
     });
     assert!(ore_moved, "no ore was ever picked");
     assert_eq!(w.speed, 2, "the SetSpeed did not land");
-    // The bots built the planned printer (by about tick 300), so the
+    // The bots built the planned printer (by about tick 400), so the
     // player ends with two, and the plan was consumed.
     let printers: Vec<u32> = w
         .machines
@@ -368,11 +513,13 @@ fn golden_scenario_is_alive() {
         1,
         "the planned charger was never built"
     );
+    // The base's pylon alone: the one in the hollow is gone by now.
     assert_eq!(
         of(Model::Pylon).len(),
         1,
-        "the planned pylon was never built"
+        "the planned pylon was never built, or the flooded one outlived the run"
     );
+    assert_eq!(of(Model::Pylon)[0].pos, pylon_plan(&w.map));
     assert!(
         of(Model::Pylon)[0].program.is_none(),
         "a pylon runs no program"
@@ -401,6 +548,72 @@ fn golden_scenario_is_alive() {
     let (hooks, recharges) = power_seen(&replay);
     assert!(hooks > 0, "no bot ever ran its low-power hook");
     assert!(recharges > 0, "no bot ever recharged");
+    // The ground and the water (Q65, Q66). The hollow and the channel
+    // were dug a level down and their plans are done with; the digger
+    // holds the earth of both; and the lake stands in them.
+    let wet = w.data.world.water.wet;
+    let ground = w.data.world.height.default;
+    for (name, at) in [("hollow", HOLLOW), ("channel", CHANNEL)] {
+        let t = w.tile(at).expect("on the map");
+        assert_eq!(
+            t.height.level(),
+            ground.saturating_sub(1),
+            "the {name} was never dug"
+        );
+        assert!(w.plans(player, at).is_none(), "the {name} is still planned");
+        assert!(t.water >= wet, "the lake never reached the {name}");
+    }
+    let two = lang::Num::from_int(2).expect("two");
+    assert!(
+        w.machines
+            .values()
+            .any(|m| m.team == player && m.load.get("earth") == Some(&two)),
+        "no bot holds the earth of the two digs"
+    );
+    let seen = water_seen(&replay);
+    // The spring and the sink ran. The lake's water changed while it
+    // found its level, at the start and again when the channel opened,
+    // and the ground water with it; it settles to a flow that leaves
+    // every tile as it was, so what shows a live spring and a live sink
+    // at the end is the slope between their tiles, which still water
+    // would not hold; and not a part was made or lost.
+    assert!(
+        seen.lake_moved >= 20,
+        "the lake moved on {} ticks",
+        seen.lake_moved
+    );
+    let held = |x, y| w.tile(TilePos::new(x, y)).expect("lake").water;
+    assert!(
+        held(-10, -6) > held(-9, -6).saturating_add(w.data.world.water.film),
+        "no slope from the spring's tile, {}, to the sink's, {}",
+        held(-10, -6),
+        held(-9, -6)
+    );
+    assert!(
+        seen.ground.0 < seen.ground.1,
+        "the ground water never changed"
+    );
+    assert!(seen.total_held, "the water's total changed");
+    // The pylon stood dry in the hollow, then flooded and dark, and died
+    // of the flood: its last tick was a flooded one, at the last of its
+    // health, and it is gone.
+    assert!(
+        seen.pylon > seen.flooded && seen.flooded >= 40,
+        "the pylon stood {} ticks, {} of them flooded",
+        seen.pylon,
+        seen.flooded
+    );
+    let (health, flooded) = seen.last.expect("no pylon ever stood in the hollow");
+    let flood = w.data.world.water.flood_damage;
+    assert!(
+        flooded && health <= flood,
+        "the pylon was last seen at {} health",
+        health.to_decimal()
+    );
+    assert!(
+        !w.machines.values().any(|m| m.pos == HOLLOW),
+        "the flooded pylon is still standing"
+    );
     let remembered = w.teams[&TeamId(0)]
         .memory
         .iter()

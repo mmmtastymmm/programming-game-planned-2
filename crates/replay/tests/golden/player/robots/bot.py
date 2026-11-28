@@ -15,6 +15,12 @@ CAPACITY = 10
 # printer on this map gives a bot, and the lane is two tiles of its ground.
 RUNNER = 3
 LANE = (-6, 6)
+# The last bot the team's first printer prints under its cap digs (Q65):
+# it fills up with ore like any other, and from then on carries out the
+# team's ground plans, standing west of each, and places and fills the
+# site of a building plan beside it — all of it south of the base, by the
+# lake, so that it leaves the base's own sites to the others.
+DIGGER = 26
 
 
 def pace():
@@ -75,9 +81,50 @@ def step_off():
     wait(1)
 
 
+def lakeside(p):
+    return p[1] < 0 and adjacent(p)
+
+
+def dig_step():
+    for p in plans("building"):
+        if lakeside((p[0], p[1])):
+            try:
+                build(p[2], p[0], p[1])
+                log("lakeside site")
+            except ValueError:
+                wait(1)
+            return
+    for m in see():
+        if m.team == me().team and m.model == "site" and lakeside(m.pos):
+            try:
+                drop("ore")
+                log("lakeside filled")
+            except ValueError:
+                wait(1)
+            return
+    for p in plans("ground"):
+        here = me().pos
+        if (here[0], here[1]) == (p[0] - 1, p[1]):
+            try:
+                dig(p[0], p[1])
+                log("dug", p[0], p[1], "to", tile(p[0], p[1]).height)
+            except ValueError:
+                wait(1)
+        else:
+            try:
+                move_to(p[0] - 1, p[1])
+            except ValueError:
+                wait(1)
+        return
+    wait(1)
+
+
 while True:
     if me().id == RUNNER:
         pace()
+        continue
+    if me().id == DIGGER and (me().load["ore"] >= CAPACITY or me().load["earth"] > 0):
+        dig_step()
         continue
     full = me().load["ore"] >= CAPACITY
     job = "orange" if full else "cyan"
