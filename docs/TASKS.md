@@ -66,21 +66,15 @@ gates seed one that forgets. Tests: a ridge between two machines, a
 machine on a hill and one in a pit, level ground as before, and the
 walk from each end, since the ray is not symmetric.
 
-**T46 — Height and water in `render`**
+**T46 — Height and water in `render`: what is left**
 
-`07`'s Q65 entry, the screen table and Marks. Tiles drawn at their
-heights with a cliff's face; water as a see-through sheet at its
-surface, on a mesh of its own as `crates/render/CLAUDE.md` requires of a
-translucent layer, following the slope of water that is moving; damp
-ground as a tint; a spring's and a sink's mark; a bot
-standing at its tile's height and stepping between heights, on a ramp
-where they differ by a level, at the speed its pace gives, and shown
-falling and bonked; the ground
-row on `G` with *lower*, *raise*, *level* and its clear, a ground plan
-as the tile's outline at the planned height, and its ghost only where
-it would change what the team knows; the flooded mark; the inspector's
-height, water, a spring's or a sink's rate, and `flooded`. Machines, wires, pylon lines and
-marks all sit on the ground at its height.
+`07`'s Q65 entry is drawn but for what waits on T43: tiles at their
+heights, water as a sheet tipped to its slope, damp ground, a spring's
+and a sink's mark, a ramp at a step of one level, the ground row with
+*lower*, *raise*, *level* and its clear, a ground plan's outline and its
+ghost, the flooded mark and the inspector's lines. What is left is the
+bot once `03`'s Moving is built: stepping between heights at the speed
+its pace gives, and shown falling and bonked.
 
 **T47 — The starter library and the shipped maps know height and water**
 

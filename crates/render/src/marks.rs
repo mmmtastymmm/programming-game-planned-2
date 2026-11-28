@@ -30,16 +30,27 @@ pub fn row_key(plan: PlanKind) -> char {
     }
 }
 
+/// The ground row's tools (Q65; `docs/07`, Marks). Each becomes a `Mark`
+/// of a height that depends on the tile: one below, or one above, the
+/// height its plan holds or the team knows it at, or the height of the
+/// tile the stroke began on.
+pub const LOWER: &str = "lower";
+pub const RAISE: &str = "raise";
+pub const LEVEL: &str = "level";
+
 /// What each row lists: the values a plan may name, from the data `sim`
-/// validates against ([`Sim::markable`]).
+/// validates against ([`Sim::markable`]) — but for the ground row, whose
+/// entries are its tools.
 #[derive(Resource, Debug, Clone)]
 pub struct MarkRows {
     pub building: Vec<String>,
     pub paint: Vec<String>,
     pub overlay: Vec<String>,
     pub wire: Vec<String>,
-    /// The heights a ground plan may ask for (Q65).
+    /// The ground row's tools: [`LOWER`], [`RAISE`] and [`LEVEL`].
     pub ground: Vec<String>,
+    /// The highest a tile may stand, which *raise* stops at.
+    pub height_max: u8,
 }
 
 impl MarkRows {
@@ -50,7 +61,8 @@ impl MarkRows {
             paint: Sim::markable(&data, PlanKind::Paint),
             overlay: Sim::markable(&data, PlanKind::Overlay),
             wire: Sim::markable(&data, PlanKind::Wire),
-            ground: Sim::markable(&data, PlanKind::Ground),
+            ground: [LOWER, RAISE, LEVEL].map(str::to_string).to_vec(),
+            height_max: data.world.height.max,
         })
     }
 
@@ -86,20 +98,97 @@ pub fn slot(plans: &Plans, kind: PlanKind) -> &Option<Plan> {
     plans.of(kind)
 }
 
+/// What the team knows of a tile's ground: its height, and whether it is
+/// ground or still rock to mine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Known {
+    pub height: u8,
+    pub ground: bool,
+}
+
+/// What a ground tool has to go on beside the tile itself: the known
+/// height of the tile its stroke began on, for *level*, and the highest a
+/// tile may stand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stroke {
+    pub anchor: Option<u8>,
+    pub max: u8,
+}
+
+/// The height the team's ground plan in `held` asks for.
+pub fn planned_height(held: Option<&Plans>) -> Option<u8> {
+    match held.and_then(|p| p.ground.as_ref()) {
+        Some(Plan::Set(v)) => v.parse().ok(),
+        _ => None,
+    }
+}
+
+/// The height a ground tool asks of a tile (`docs/07`, Marks): *lower*
+/// one below, and *raise* one above, the height its plan already holds or
+/// else the height the team knows it at; *level* the stroke's own. `None`
+/// where there is no such height: below the lowest, above the highest, or
+/// a stroke begun on a tile the team has not seen.
+pub fn ground_target(tool: &str, known: Known, planned: Option<u8>, stroke: Stroke) -> Option<u8> {
+    let base = planned.unwrap_or(known.height);
+    match tool {
+        LOWER => base.checked_sub(1),
+        RAISE => base.checked_add(1).filter(|h| *h <= stroke.max),
+        LEVEL => stroke.anchor,
+        _ => None,
+    }
+}
+
+/// What a ground tool submits for a tile: a `Mark` of the height it asks
+/// for. Nothing for a tile the team has not seen, nor where the tile
+/// already carries that plan. Where it asks for the height the tile is
+/// already known to be ground at, there is nothing to plan, and a plan
+/// the tile holds for some other height is withdrawn. *Clear* (`None`)
+/// withdraws a plan and does nothing where there is none: a ground plan
+/// has no plan to clear (`docs/03`).
+pub fn ground_command(
+    tool: Option<&str>,
+    at: TilePos,
+    known: Option<Known>,
+    held: Option<&Plans>,
+    stroke: Stroke,
+) -> Option<CommandKind> {
+    let unmark = CommandKind::Unmark {
+        at,
+        plan: PlanKind::Ground,
+    };
+    let holds = held.is_some_and(|p| p.ground.is_some());
+    let Some(tool) = tool else {
+        return holds.then_some(unmark);
+    };
+    let known = known?;
+    let planned = planned_height(held);
+    let target = ground_target(tool, known, planned, stroke)?;
+    if planned == Some(target) {
+        return None;
+    }
+    if known.ground && target == known.height {
+        return holds.then_some(unmark);
+    }
+    Some(CommandKind::Mark {
+        at,
+        plan: PlanKind::Ground,
+        value: Some(target.to_string()),
+    })
+}
+
 /// What marking `at` with `tool` armed submits, given the team's plans
 /// there: a `Mark` of its kind and value — except *clear* on a tile where
 /// the team already holds a plan of that kind, which withdraws it as an
-/// `Unmark` (Q44). Nothing unarmed.
+/// `Unmark` (Q44). Nothing unarmed, and nothing for a ground tool, whose
+/// command is [`ground_command`]'s.
 pub fn command(tool: &Tool, at: TilePos, held: Option<&Plans>) -> Option<CommandKind> {
     let Tool::Mark(plan, value) = tool else {
         return None;
     };
-    let holds = held.is_some_and(|p| slot(p, *plan).is_some());
-    // A ground plan has no plan to clear (`docs/03`): its *clear* only
-    // withdraws one, and does nothing where there is none.
-    if *plan == PlanKind::Ground && value.is_none() && !holds {
+    if *plan == PlanKind::Ground {
         return None;
     }
+    let holds = held.is_some_and(|p| slot(p, *plan).is_some());
     Some(if value.is_none() && holds {
         CommandKind::Unmark { at, plan: *plan }
     } else {
@@ -170,11 +259,15 @@ pub fn wire_changes(lay: bool, wired: bool, holds_plan: bool) -> bool {
 }
 
 /// The plans the armed tool would leave on a tile, for its ghost under the
-/// cursor: `None` unarmed.
+/// cursor: `None` unarmed, and for a ground tool, whose plan depends on
+/// the tile ([`ground_ghost`]).
 pub fn ghost_of(tool: &Tool) -> Option<Plans> {
     let Tool::Mark(plan, value) = tool else {
         return None;
     };
+    if *plan == PlanKind::Ground {
+        return None;
+    }
     let p = Some(match value {
         Some(v) => Plan::Set(v.clone()),
         None => Plan::Clear,
@@ -182,6 +275,22 @@ pub fn ghost_of(tool: &Tool) -> Option<Plans> {
     let mut plans = Plans::default();
     *plans.of_mut(*plan) = p;
     Some(plans)
+}
+
+/// The plan a ground tool's command would leave on a tile, for its ghost:
+/// the height a `Mark` asks for, and nothing for an `Unmark`.
+pub fn ground_ghost(command: &CommandKind) -> Option<Plans> {
+    match command {
+        CommandKind::Mark {
+            plan: PlanKind::Ground,
+            value: Some(v),
+            ..
+        } => Some(Plans {
+            ground: Some(Plan::Set(v.clone())),
+            ..Plans::default()
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -213,32 +322,103 @@ mod tests {
         assert_eq!(r.entries(PlanKind::Overlay).last(), Some(&None));
         // The wire row (Q62): the wire, and its clear.
         assert_eq!(r.entries(PlanKind::Wire), vec![Some("wire".into()), None]);
-        // The ground row (Q65): every height the tables allow, and its
-        // clear, which only withdraws a plan.
-        let ground = r.entries(PlanKind::Ground);
-        assert_eq!(ground.first(), Some(&Some("0".into())));
-        assert_eq!(ground.last(), Some(&None));
-        assert_eq!(ground.len(), 11, "heights 0 to 9 and clear");
+        // The ground row (Q65): its three tools, and its clear.
+        assert_eq!(
+            r.entries(PlanKind::Ground),
+            vec![
+                Some(LOWER.into()),
+                Some(RAISE.into()),
+                Some(LEVEL.into()),
+                None
+            ]
+        );
+        assert_eq!(r.height_max, 9);
         assert_eq!(ROWS.map(row_key), ['B', 'P', 'O', 'C', 'G']);
-        // A height on any tile is a mark; clear is an unmark where the
-        // team holds a ground plan and nothing at all where it does not.
+    }
+
+    #[test]
+    fn the_ground_tools_each_ask_a_height_of_a_tile() {
         let at = TilePos::new(0, 0);
-        let held = Plans {
-            ground: Some(Plan::Set("3".into())),
+        let stroke = |anchor| Stroke { anchor, max: 9 };
+        let ground = |height| {
+            Some(Known {
+                height,
+                ground: true,
+            })
+        };
+        let plan = |h: u8| Plans {
+            ground: Some(Plan::Set(h.to_string())),
             ..Plans::default()
         };
-        let set = Tool::Mark(PlanKind::Ground, Some("2".into()));
-        assert!(matches!(
-            command(&set, at, None),
-            Some(CommandKind::Mark { .. })
-        ));
-        let clear = Tool::Mark(PlanKind::Ground, None);
-        assert!(matches!(
-            command(&clear, at, Some(&held)),
-            Some(CommandKind::Unmark { .. })
-        ));
-        assert_eq!(command(&clear, at, None), None);
-        assert_eq!(describe(&held), "ground 3");
+        let mark = |h: u8| {
+            Some(CommandKind::Mark {
+                at,
+                plan: PlanKind::Ground,
+                value: Some(h.to_string()),
+            })
+        };
+        let unmark = Some(CommandKind::Unmark {
+            at,
+            plan: PlanKind::Ground,
+        });
+        let send = |tool, known, held: Option<&Plans>, anchor| {
+            ground_command(tool, at, known, held, stroke(anchor))
+        };
+        // Lower and raise: one from the height the team knows.
+        assert_eq!(send(Some(LOWER), ground(4), None, None), mark(3));
+        assert_eq!(send(Some(RAISE), ground(4), None, None), mark(5));
+        // Or one from the height the tile's plan already holds, so a
+        // second stroke goes a level further.
+        assert_eq!(send(Some(LOWER), ground(4), Some(&plan(3)), None), mark(2));
+        assert_eq!(send(Some(RAISE), ground(4), Some(&plan(6)), None), mark(7));
+        // Never below the lowest, nor above the highest.
+        assert_eq!(send(Some(LOWER), ground(0), None, None), None);
+        assert_eq!(send(Some(RAISE), ground(9), None, None), None);
+        assert_eq!(send(Some(RAISE), ground(4), Some(&plan(9)), None), None);
+        // A stroke back to the height the ground has withdraws the plan.
+        assert_eq!(send(Some(RAISE), ground(4), Some(&plan(3)), None), unmark);
+        assert_eq!(send(Some(LOWER), ground(4), Some(&plan(5)), None), unmark);
+        // Level: the height of the tile the stroke began on, for every
+        // tile of it; nothing where the tile is ground at that height and
+        // holds no plan, nor where it carries that plan already.
+        assert_eq!(send(Some(LEVEL), ground(6), None, Some(4)), mark(4));
+        assert_eq!(send(Some(LEVEL), ground(2), None, Some(4)), mark(4));
+        assert_eq!(send(Some(LEVEL), ground(4), None, Some(4)), None);
+        assert_eq!(send(Some(LEVEL), ground(6), Some(&plan(4)), Some(4)), None);
+        assert_eq!(
+            send(Some(LEVEL), ground(4), Some(&plan(2)), Some(4)),
+            unmark
+        );
+        assert_eq!(send(Some(LEVEL), ground(6), None, None), None, "no anchor");
+        // Rock at the height asked for is not ground at it: the plan
+        // stands, and a bot mines it.
+        let rock = Some(Known {
+            height: 4,
+            ground: false,
+        });
+        assert_eq!(send(Some(LEVEL), rock, None, Some(4)), mark(4));
+        assert_eq!(send(Some(LOWER), rock, None, None), mark(3));
+        // Nothing for a tile the team has not seen.
+        for tool in [LOWER, RAISE, LEVEL] {
+            assert_eq!(send(Some(tool), None, None, Some(4)), None);
+        }
+        // Clear withdraws a plan, and does nothing where there is none.
+        assert_eq!(send(None, ground(4), Some(&plan(3)), None), unmark);
+        assert_eq!(send(None, None, Some(&plan(3)), None), unmark);
+        assert_eq!(send(None, ground(4), None, None), None);
+        // The general command leaves the ground row to this one.
+        let tool = Tool::Mark(PlanKind::Ground, Some(LOWER.into()));
+        assert_eq!(command(&tool, at, None), None);
+        assert_eq!(ghost_of(&tool), None);
+        // The ghost is the plan a mark would leave, and nothing for an
+        // unmark.
+        assert_eq!(ground_ghost(&mark(3).unwrap()), Some(plan(3)));
+        let withdrawn = CommandKind::Unmark {
+            at,
+            plan: PlanKind::Ground,
+        };
+        assert_eq!(ground_ghost(&withdrawn), None);
+        assert_eq!(describe(&plan(3)), "ground 3");
     }
 
     #[test]

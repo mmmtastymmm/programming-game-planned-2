@@ -181,6 +181,7 @@ pub fn click(
     cams: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     frame: Res<Frame>,
     ents: Res<Entities>,
+    rows: Res<MarkRows>,
     mut driver: NonSendMut<DriverResource>,
     mut state: ResMut<ViewState>,
 ) {
@@ -207,7 +208,14 @@ pub fn click(
             ..
         }) = state.drag.take()
         {
-            mark_tiles(&mut driver.0, &mut state, &tool, marks::rect(a, b));
+            mark_tiles(
+                &mut driver.0,
+                &mut state,
+                &tool,
+                marks::rect(a, b),
+                Some(a),
+                rows.height_max,
+            );
         }
         if tool == Tool::Select {
             select(&gesture, tile, &mut driver, &ents, &mut state);
@@ -222,6 +230,7 @@ pub fn click(
     let corner = clamp(tile, driver.0.bounds);
     let mut drag = state.drag.take().unwrap_or_else(|| Drag {
         anchor: shift.then_some(corner),
+        began: Some(corner),
         ..Drag::default()
     });
     let crossed = match (drag.anchor, drag.last) {
@@ -234,7 +243,14 @@ pub fn click(
         .into_iter()
         .filter(|p| drag.done.insert(*p))
         .collect();
-    mark_tiles(&mut driver.0, &mut state, &tool, fresh);
+    mark_tiles(
+        &mut driver.0,
+        &mut state,
+        &tool,
+        fresh,
+        drag.began,
+        rows.height_max,
+    );
     state.drag = Some(drag);
 }
 
@@ -244,14 +260,24 @@ fn clamp(p: sim::TilePos, (min, max): (sim::TilePos, sim::TilePos)) -> sim::Tile
 }
 
 /// Submit what marking each of `tiles` on the map with `tool` becomes,
-/// given the team's plans there as the sim last reported them.
+/// given the team's plans there as the sim last reported them. `began` is
+/// the tile the stroke began on and `height_max` the highest a tile may
+/// stand, which the ground row's tools go by (Q65).
 fn mark_tiles(
     driver: &mut crate::driver::Driver,
     state: &mut ViewState,
     tool: &Tool,
     tiles: Vec<sim::TilePos>,
+    began: Option<sim::TilePos>,
+    height_max: u8,
 ) {
     if tiles.is_empty() {
+        return;
+    }
+    if let Tool::Mark(PlanKind::Ground, value) = tool {
+        for kind in driver.ground_commands(value.as_deref(), &tiles, began, height_max) {
+            submit(driver, state, kind);
+        }
         return;
     }
     let (min, max) = driver.bounds;

@@ -36,6 +36,14 @@ pub struct TileLook {
     /// Whether a spring is here, or a sink (`docs/09`).
     pub spring: bool,
     pub sink: bool,
+    /// Which of the tiles to the north, east, south and west (bit 0 to
+    /// bit 3) is ground the team knows to stand one level higher: a step
+    /// up, drawn as a ramp on this tile (Q65).
+    pub ramps: u8,
+    /// How the water's surface slopes across the tile, in parts a tile:
+    /// up to the east, and up to the north (`docs/07`: moving water shows
+    /// its slope).
+    pub slope: (i32, i32),
     pub ore: bool,
     pub mask: u8,
     pub paint: Option<String>,
@@ -81,6 +89,11 @@ pub struct HoverMarker;
 #[derive(Component)]
 pub struct PowerMark;
 
+/// The waves over a flooded machine (`docs/07`; Q65), beside the power
+/// mark's place.
+#[derive(Component)]
+pub struct FloodMark;
+
 /// A machine's charge bar, under its health bar, and what fills it; a
 /// charger's gauge fills the same way.
 #[derive(Component)]
@@ -101,6 +114,7 @@ pub struct MachineView {
     pub bar_fill: Entity,
     pub mark: Entity,
     pub power_mark: Entity,
+    pub flood_mark: Entity,
     pub charge_root: Entity,
     pub charge_fill: Entity,
     /// A charger's gauge, which fills with its charge.
@@ -130,9 +144,9 @@ pub struct Entities {
     /// What the rings last sounded for: the match or which fork, and its
     /// tick. A fork's steps inside one tick do not ring it again.
     pub sounds_tick: Option<(u64, u64)>,
-    /// The armed tool's ghost: what it shows, and on which tiles — the one
-    /// under the cursor, or a `Shift`+drag's rectangle (Q44).
-    pub cursor: (Tool, Vec<TilePos>),
+    /// The armed tool's ghost: the plans it shows, tile by tile — on the
+    /// one under the cursor, or over a `Shift`+drag's rectangle (Q44).
+    pub cursor: Vec<(TilePos, Plans)>,
     pub cursor_entities: Vec<Entity>,
     /// The lines pylons draw (Q62): which pairs they were last built for,
     /// at which stamp of the map, and their entities.
@@ -351,9 +365,10 @@ pub fn setup(
         .find(|m| m.record.team == player && m.record.model == Model::Printer)
         .map(|m| frame.tile_xyz(m.record.pos, 0.0))
         .unwrap_or(Vec3::ZERO);
+    let look = crate::app::screenshot_look();
     let cam = OrbitCam {
-        focus: home,
-        distance: 22.0,
+        focus: look.map_or(home, |(p, _)| frame.tile_xyz(p, 0.0)),
+        distance: look.map_or(22.0, |(_, d)| d),
         yaw: 0.0,
         pitch: 0.85,
     };
@@ -371,9 +386,50 @@ fn look_of(
     player: sim::TeamId,
     live: &HashMap<TilePos, bool>,
     wet_from: u32,
+    parts: u32,
 ) -> TileLook {
     let ore = mem.deposit.is_some();
     let wet = mem.terrain == Terrain::Ground && mem.water >= wet_from;
+    // The four tiles beside it, north first, as the team knows them.
+    let beside = [(0, 1), (1, 0), (0, -1), (-1, 0)].map(|(dx, dy)| {
+        memory
+            .get(&TilePos::new(p.x.wrapping_add(dx), p.y.wrapping_add(dy)))
+            .copied()
+            .filter(|m| m.state != TileState::Unknown && m.terrain == Terrain::Ground)
+    });
+    let mut ramps = 0u8;
+    if mem.terrain == Terrain::Ground {
+        for (bit, n) in beside.iter().enumerate() {
+            if n.is_some_and(|n| n.height.level() == mem.height.level().saturating_add(1)) {
+                ramps |= 1 << bit;
+            }
+        }
+    }
+    // The water's slope: from the wet tiles either side, or from the one
+    // there is and this tile; held to under half a level a tile, so the
+    // sheet at the lip of a fall tips and does not stand on end.
+    let surface =
+        |m: &TileMemory| i64::from(m.height.level()) * i64::from(parts) + i64::from(m.water);
+    let own = surface(mem);
+    let wet_beside = beside.map(|n| n.filter(|n| n.water >= wet_from).map(surface));
+    let along = |up: Option<i64>, down: Option<i64>| -> i32 {
+        let rise = match (up, down) {
+            (Some(a), Some(b)) => (a - b) / 2,
+            (Some(a), None) => a - own,
+            (None, Some(b)) => own - b,
+            (None, None) => 0,
+        };
+        let most = i64::from(parts) * 2 / 5;
+        rise.clamp(-most, most) as i32
+    };
+    let slope = if wet {
+        (
+            along(wet_beside[1], wet_beside[3]),
+            along(wet_beside[0], wet_beside[2]),
+        )
+    } else {
+        (0, 0)
+    };
     // A NESW same-neighbour mask (bit 0 = N … bit 3 = W); off the map or
     // unknown counts as same, so the art runs off clean and gives nothing
     // away.
@@ -401,6 +457,8 @@ fn look_of(
         wet,
         spring: mem.spring.is_some(),
         sink: mem.sink.is_some(),
+        ramps,
+        slope,
         ore,
         mask,
         paint: mem.paint.clone(),
@@ -492,6 +550,7 @@ pub fn sync_tiles(
             player,
             &live,
             tuning.wet,
+            tuning.parts,
         );
         for w in &look.wires {
             wire_mats.entry(w.team).or_insert_with(|| {
@@ -660,14 +719,46 @@ fn spawn_plans(
         };
         spawn(mesh, mat, at.with_scale(Vec3::splat(scale)));
     }
-    if plans.ground.is_some() {
-        // A ground plan (Q65): a see-through frame on the tile, the color
-        // of earth, with the height it asks for as a label over it.
-        spawn(
-            palette.ground_plan_frame.clone(),
-            palette.ground_plan_mat.clone(),
-            Transform::from_translation(frame.tile_xyz(p, surface + WIRE_LIFT + 0.04)),
-        );
+    if let Some(plan) = &plans.ground {
+        // A ground plan (Q65): the tile's outline at the planned height,
+        // with that height as a label over it. Above the tile, the frame
+        // floats there on a see-through block of the earth to be added.
+        // Below it, where the planned height is under the ground and no
+        // frame there could be seen, the frame lies on the tile and the
+        // ground to be taken away is hatched, as a clear plan's slot is.
+        let lift = WIRE_LIFT + 0.04;
+        let planned = match plan {
+            Plan::Set(v) => v.parse::<u8>().ok(),
+            Plan::Clear => None,
+        }
+        .map(|level| f32::from(level) * LEVEL_RISE + SLAB_HALF);
+        match planned.filter(|at| *at > surface + 0.01) {
+            Some(at) => {
+                spawn(
+                    palette.ground_plan_frame.clone(),
+                    palette.ground_plan_mat.clone(),
+                    Transform::from_translation(frame.tile_xyz(p, at + lift)),
+                );
+                spawn(
+                    palette.ground_plan_block.clone(),
+                    palette.ground_ghost_mat.clone(),
+                    Transform::from_translation(frame.tile_xyz(p, (surface + at) / 2.0 + lift))
+                        .with_scale(Vec3::new(1.0, at - surface, 1.0)),
+                );
+            }
+            None => {
+                spawn(
+                    palette.ground_plan_frame.clone(),
+                    palette.ground_plan_mat.clone(),
+                    Transform::from_translation(frame.tile_xyz(p, surface + lift)),
+                );
+                spawn(
+                    palette.ground_hatch_quad.clone(),
+                    palette.hatch_mat.clone(),
+                    Transform::from_translation(frame.tile_xyz(p, surface + lift + 0.02)),
+                );
+            }
+        }
     }
     if let Some(plan) = &plans.wire {
         // A see-through line across the tile in the team's color for a
@@ -696,11 +787,30 @@ fn spawn_plans(
 /// The tiles the armed tool's ghost covers ([`ViewState::preview`]) that
 /// it can plan: a paint or overlay tool none that is rock, water or still
 /// unknown to the team (Q49).
-pub fn plannable_preview(state: &ViewState, driver: &Driver) -> Vec<TilePos> {
+pub fn plannable_preview(
+    state: &ViewState,
+    driver: &Driver,
+    height_max: u8,
+) -> Vec<(TilePos, Plans)> {
     let mut tiles = state.preview();
+    // A ground tool's ghost is the plan it would leave on each tile
+    // (Q65): the height it asks for there, and only where it asks one.
+    if let Tool::Mark(sim::PlanKind::Ground, value) = &state.tool {
+        let began = state.drag.as_ref().and_then(|d| d.began);
+        return driver
+            .ground_commands(value.as_deref(), &tiles, began, height_max)
+            .iter()
+            .filter_map(|c| match c {
+                sim::CommandKind::Mark { at, .. } => {
+                    crate::marks::ground_ghost(c).map(|g| (*at, g))
+                }
+                _ => None,
+            })
+            .collect();
+    }
     let (Tool::Mark(plan, _), Some(ghost)) = (&state.tool, crate::marks::ghost_of(&state.tool))
     else {
-        return tiles;
+        return Vec::new();
     };
     let snap = driver.snapshot();
     let held: HashMap<TilePos, &Plans> = snap
@@ -726,7 +836,7 @@ pub fn plannable_preview(state: &ViewState, driver: &Driver) -> Vec<TilePos> {
             );
         !already && !idle_wire && driver.may_plan(*p, *plan).is_ok()
     });
-    tiles
+    tiles.into_iter().map(|p| (p, ghost.clone())).collect()
 }
 
 pub fn cursor_ghost(
@@ -739,15 +849,16 @@ pub fn cursor_ghost(
     mut palette: ResMut<Palette>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ents: ResMut<Entities>,
+    rows: Res<crate::marks::MarkRows>,
 ) {
-    let want = (state.tool.clone(), plannable_preview(&state, &driver.0));
+    let want = plannable_preview(&state, &driver.0, rows.height_max);
     if ents.cursor == want {
         return;
     }
     for e in std::mem::take(&mut ents.cursor_entities) {
         commands.entity(e).despawn();
     }
-    if let Some(plans) = crate::marks::ghost_of(&want.0) {
+    if !want.is_empty() {
         let player = driver.0.player;
         let own_wire = team_mats(
             &mut colors,
@@ -758,7 +869,7 @@ pub fn cursor_ghost(
             &mut materials,
         )
         .wire;
-        for p in &want.1 {
+        for (p, plans) in &want {
             let top = ents.top(*p);
             let surface = surface_at(&ents, *p);
             let spawned = spawn_plans(
@@ -769,7 +880,7 @@ pub fn cursor_ghost(
                 *p,
                 top,
                 surface,
-                &plans,
+                plans,
                 &own_wire,
             );
             ents.cursor_entities.extend(spawned);
@@ -818,6 +929,11 @@ fn spawn_tile(
             palette.ore_mats[mask].clone(),
             0.0,
         ),
+        // Ground with any water on it is darker (Q65): damp, or the bed
+        // under a sheet.
+        Terrain::Ground if look.water > 0 => {
+            (palette.tile_slab.clone(), palette.damp_mat.clone(), 0.0)
+        }
         Terrain::Ground => (palette.tile_slab.clone(), palette.ground_mat.clone(), 0.0),
     };
     let material = mat(palette, live);
@@ -888,15 +1004,45 @@ fn spawn_tile(
             );
         }
     }
+    // A step of one level (Q65): a ramp on this tile against each tile
+    // beside it that stands a level higher. North is -Z, which is how the
+    // wedge is built; a turn about Y points it east, south or west.
+    if look.ramps != 0 {
+        // The ground's own art on its slope, so it reads as ground.
+        let earth = mat(palette, palette.ground_mat.clone());
+        for (bit, turn) in [0.0, -FRAC_PI_2, PI, FRAC_PI_2].into_iter().enumerate() {
+            if look.ramps & (1 << bit) == 0 {
+                continue;
+            }
+            out.push(
+                commands
+                    .spawn((
+                        DespawnOnEnter(Screen::Start),
+                        Mesh3d(palette.ramp_wedge.clone()),
+                        MeshMaterial3d(earth.clone()),
+                        Transform::from_translation(frame.tile_xyz(p, ground + SLAB_HALF))
+                            .with_rotation(Quat::from_rotation_y(turn)),
+                    ))
+                    .id(),
+            );
+        }
+    }
     if look.wet && look.terrain == Terrain::Ground {
         let sheet = mat(palette, palette.water_mat.clone());
+        // Tipped to the water's slope, so that a stream reads as one
+        // surface and not a stair: up to the east about Z, up to the
+        // north, which is -Z, about X; stretched to still cover the tile.
+        let rise = |parts: i32| parts as f32 / water_parts.max(1) as f32 * LEVEL_RISE;
+        let (east, north) = (rise(look.slope.0).atan(), rise(look.slope.1).atan());
         out.push(
             commands
                 .spawn((
                     DespawnOnEnter(Screen::Start),
                     Mesh3d(palette.water_sheet.clone()),
                     MeshMaterial3d(sheet),
-                    Transform::from_translation(frame.tile_xyz(p, ground + SLAB_HALF + depth)),
+                    Transform::from_translation(frame.tile_xyz(p, ground + SLAB_HALF + depth))
+                        .with_rotation(Quat::from_rotation_z(east) * Quat::from_rotation_x(north))
+                        .with_scale(Vec3::new(1.0 / east.cos(), 1.0, 1.0 / north.cos())),
                 ))
                 .id(),
         );
@@ -1437,6 +1583,7 @@ fn spawn_machine(
     let mut bar_fill = Entity::PLACEHOLDER;
     let mut mark = Entity::PLACEHOLDER;
     let mut power_mark = Entity::PLACEHOLDER;
+    let mut flood_mark = Entity::PLACEHOLDER;
     let mut charge_root = Entity::PLACEHOLDER;
     let mut charge_fill = Entity::PLACEHOLDER;
     let mut gauge = None;
@@ -1550,6 +1697,18 @@ fn spawn_machine(
                     Visibility::Hidden,
                 ))
                 .id();
+            // The flooded mark (Q65), beside the power mark: its quad is
+            // set off to one side, and the two face the camera together.
+            flood_mark = parent
+                .spawn((
+                    FloodMark,
+                    BillboardBar,
+                    Mesh3d(palette.flood_quad.clone()),
+                    MeshMaterial3d(palette.flood_mat.clone()),
+                    Transform::from_xyz(0.0, bar_height(model) + 0.3, 0.0),
+                    Visibility::Hidden,
+                ))
+                .id();
             // The charge bar, under the health bar (Q62).
             charge_root = parent
                 .spawn((
@@ -1611,6 +1770,7 @@ fn spawn_machine(
         bar_fill,
         mark,
         power_mark,
+        flood_mark,
         charge_root,
         charge_fill,
         gauge,
@@ -1645,12 +1805,25 @@ pub fn power_marks(
     driver: NonSend<DriverResource>,
     ents: Res<Entities>,
     mut marks: Query<&mut Visibility, With<PowerMark>>,
+    mut floods: Query<&mut Visibility, (With<FloodMark>, Without<PowerMark>)>,
 ) {
     let snap = driver.0.drawn();
     for m in &snap.machines {
         let Some(view) = ents.machines.get(&m.record.id) else {
             continue;
         };
+        // The flooded mark (Q65), while the snapshot says so: a bot, a
+        // building or a site.
+        if let Ok(mut vis) = floods.get_mut(view.flood_mark) {
+            let want = if m.record.flooded && view.shown {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            if *vis != want {
+                *vis = want;
+            }
+        }
         let Ok(mut vis) = marks.get_mut(view.power_mark) else {
             continue;
         };
@@ -2018,8 +2191,10 @@ pub fn animate(
     }
     *clock = 0.0;
     *frame = (*frame + 1) % 3;
-    if let Some(mut m) = materials.get_mut(&palette.ground_mat) {
-        m.base_color_texture = Some(palette.ground_frames[*frame].clone());
+    for ground in [&palette.ground_mat, &palette.damp_mat] {
+        if let Some(mut m) = materials.get_mut(ground) {
+            m.base_color_texture = Some(palette.ground_frames[*frame].clone());
+        }
     }
     for (mats, frames) in [
         (&palette.water_mats, &palette.water_frames),
@@ -2106,4 +2281,114 @@ pub fn tile(snap: &Snapshot, player: sim::TeamId, p: TilePos) -> Option<&TileMem
         .iter()
         .find(|(q, _)| *q == p)
         .map(|(_, m)| m)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sim::map::Height;
+    use std::collections::BTreeSet;
+
+    /// Ground the team sees, at `height` with `water` parts on it.
+    fn ground(height: u8, water: u32) -> TileMemory {
+        TileMemory {
+            state: TileState::Visible,
+            seen_at: 1,
+            terrain: Terrain::Ground,
+            height: Height::new(height, 9).unwrap(),
+            water,
+            spring: None,
+            sink: None,
+            head: None,
+            sill: None,
+            deposit: None,
+            paint: None,
+            overlay: None,
+            wires: BTreeSet::new(),
+            building: None,
+        }
+    }
+
+    /// The look of the tile at the origin among `tiles`, at a hundred
+    /// parts to a level and wet from ten.
+    fn look(tiles: &[((i32, i32), TileMemory)]) -> TileLook {
+        let memory: HashMap<TilePos, &TileMemory> = tiles
+            .iter()
+            .map(|((x, y), m)| (TilePos::new(*x, *y), m))
+            .collect();
+        let at = TilePos::new(0, 0);
+        look_of(
+            at,
+            memory[&at],
+            &memory,
+            None,
+            sim::TeamId(0),
+            &HashMap::new(),
+            10,
+            100,
+        )
+    }
+
+    #[test]
+    fn a_ramp_stands_against_each_tile_a_level_higher() {
+        // North a level up, east two up, south level, west a level down.
+        let mut tiles = vec![
+            ((0, 0), ground(4, 0)),
+            ((0, 1), ground(5, 0)),
+            ((1, 0), ground(6, 0)),
+            ((0, -1), ground(4, 0)),
+            ((-1, 0), ground(3, 0)),
+        ];
+        assert_eq!(look(&tiles).ramps, 0b0001, "north alone is a step up");
+        // A tile the team has not seen, and rock, take no ramp.
+        tiles[1].1.state = TileState::Unknown;
+        assert_eq!(look(&tiles).ramps, 0);
+        tiles[1].1.state = TileState::Remembered;
+        assert_eq!(look(&tiles).ramps, 0b0001);
+        tiles[1].1.terrain = Terrain::Rock;
+        assert_eq!(look(&tiles).ramps, 0);
+        // West and south a level up as well as north.
+        let all = vec![
+            ((0, 0), ground(2, 0)),
+            ((0, 1), ground(3, 0)),
+            ((1, 0), ground(3, 0)),
+            ((0, -1), ground(3, 0)),
+            ((-1, 0), ground(3, 0)),
+        ];
+        assert_eq!(look(&all).ramps, 0b1111);
+    }
+
+    #[test]
+    fn a_water_sheet_tips_to_the_slope_of_the_water_beside_it() {
+        // Level water: a flat sheet.
+        let level = vec![
+            ((0, 0), ground(4, 50)),
+            ((1, 0), ground(4, 50)),
+            ((-1, 0), ground(4, 50)),
+        ];
+        assert_eq!(look(&level).slope, (0, 0));
+        // Higher to the east and lower to the west: half the difference
+        // between them, a tile.
+        let stream = vec![
+            ((0, 0), ground(4, 50)),
+            ((1, 0), ground(4, 70)),
+            ((-1, 0), ground(4, 40)),
+            ((0, 1), ground(4, 20)),
+        ];
+        assert_eq!(look(&stream).slope, (15, -30));
+        // Height counts: the surface is what slopes, not the depth.
+        let bed = vec![
+            ((0, 0), ground(4, 50)),
+            ((1, 0), ground(3, 130)),
+            ((-1, 0), ground(5, 0)),
+        ];
+        assert_eq!(look(&bed).slope, (-20, 0), "a dry bank is no surface");
+        // At a fall the slope is held to two fifths of a level.
+        let fall = vec![((0, 0), ground(4, 50)), ((1, 0), ground(1, 50))];
+        assert_eq!(look(&fall).slope, (-40, 0));
+        // Damp ground has no sheet to tip.
+        let damp = vec![((0, 0), ground(4, 5)), ((1, 0), ground(4, 90))];
+        assert_eq!(look(&damp).slope, (0, 0));
+        assert!(!look(&damp).wet);
+    }
 }

@@ -43,6 +43,9 @@ pub enum Tool {
 /// until release, then fills the rectangle from the anchor to `last` (Q44).
 #[derive(Debug, Default)]
 pub struct Drag {
+    /// The tile the stroke began on, whose height the ground row's
+    /// *level* asks of every tile of it (Q65).
+    pub began: Option<sim::TilePos>,
     pub last: Option<sim::TilePos>,
     pub done: std::collections::BTreeSet<sim::TilePos>,
     pub anchor: Option<sim::TilePos>,
@@ -150,7 +153,8 @@ pub struct DriverResource(pub Driver);
 /// scene has settled — at frame `RENDER_SCREENSHOT_FRAME` (default 90), or
 /// once the driver reaches tick `RENDER_SCREENSHOT_TICK`, which two peers
 /// can share — then exit a second later: a look at the view without a
-/// person at the window.
+/// person at the window. `RENDER_SCREENSHOT_LOOK=x,y,distance` points the
+/// camera at a tile from that far off, in place of the team's printer.
 fn screenshot(
     mut commands: Commands,
     driver: Option<NonSend<DriverResource>>,
@@ -176,6 +180,17 @@ fn screenshot(
     if taken.is_some_and(|t| *frames == t + 60) {
         exit.write(AppExit::Success);
     }
+}
+
+/// Where `RENDER_SCREENSHOT_LOOK` points the camera: a tile and a
+/// distance, or `None` unset or unreadable.
+pub fn screenshot_look() -> Option<(sim::TilePos, f32)> {
+    let text = std::env::var("RENDER_SCREENSHOT_LOOK").ok()?;
+    let mut parts = text.split(',').map(str::trim);
+    let x = parts.next()?.parse().ok()?;
+    let y = parts.next()?.parse().ok()?;
+    let distance = parts.next()?.parse().ok()?;
+    Some((sim::TilePos::new(x, y), distance))
 }
 
 /// Run one frame of the driver with the wall-clock delta (`docs/06`).
