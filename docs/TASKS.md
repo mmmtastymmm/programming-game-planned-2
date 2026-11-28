@@ -33,35 +33,17 @@ Two conventions carried over from the predecessor project:
 
 ## M13 — Height and water
 
-Q65, in the order to build it: each task stands on the one before, and
-[P11](PROBLEMS.md) closes with the last.
-
-**T43 — Height in `sim`: what is left — pace, falls and bonks** `⚠HASH`
-
-A height on every tile, the step, `dig`, `fill` and `mine`, earth and
-the ground plan are built and tested. What is left is `03`'s Moving. A
-bot's `pace`: a move's ticks fixed as it begins from `move_ticks`,
-`pace_max`, `up_ticks` and `down_ticks`, pace gained on completing and
-lost as the slices end. A drop, for `move` alone: a fall and its
-`fall_damage` in step 4, broken by water as deep as `water.cushion`,
-which goes into `[water]` with this. A bonk, with `bonk_ticks`, its
-sound, the bot it puts a tile onward and that bot's action ended. Tests
-for each rule — a bot that keeps moving and one that pauses, a turn, a
-climb and a descent, a fall of two levels and of four, a fall into
-water, a bonk onto level ground, off a cliff and against a wall, a bonk
-from a standstill refused, and a bonked bot's action ended — and the
-golden replay, which already digs, gains a filled and a mined tile, a
-fall and a bonk, and the PR says why every hash moved.
+What is left of Q65, and [P11](PROBLEMS.md) closes with the last.
 
 **T46 — Height and water in `render`: what is left**
 
-`07`'s Q65 entry is drawn but for what waits on T43: tiles at their
+`07`'s Q65 entry is drawn but for the bot's own movement: tiles at their
 heights, water as a sheet tipped to its slope, damp ground, a spring's
 and a sink's mark, a ramp at a step of one level, the ground row with
 *lower*, *raise*, *level* and its clear, a ground plan's outline and its
 ghost, the flooded mark and the inspector's lines. What is left is the
-bot once `03`'s Moving is built: stepping between heights at the speed
-its pace gives, and shown falling and bonked.
+bot, now that `03`'s Moving is built: stepping between heights at the
+speed its pace gives, and shown falling and bonked.
 
 **T47 — The starter library and the shipped maps know height and water**
 
