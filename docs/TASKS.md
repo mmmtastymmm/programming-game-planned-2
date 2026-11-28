@@ -36,31 +36,22 @@ Two conventions carried over from the predecessor project:
 Q65, in the order to build it: each task stands on the one before, and
 [P11](PROBLEMS.md) closes with the last.
 
-**T43 — Height in `sim`: a height on every tile, steps, pace, falls and bonks, `dig`, `fill` and `mine`, earth, the ground plan** `⚠HASH`
+**T43 — Height in `sim`: what is left — pace, falls and bonks** `⚠HASH`
 
-`03`'s Height and Changing the ground, `02`'s rows and `06`'s steps. A
-`height` on every tile, read from a map's grid of digits or from
-`height.default`; `[height]` in `data/world.toml` with `max`, `default`,
-`lake_depth`, `step` and `earth_per_level`. A step: ground, heights at most `step` apart,
-for `move_to`, where a printed bot appears, and a map's check that a
-start reaches a deposit; a drop, for `move` alone. `03`'s Moving: a
-bot's `pace`, a move's ticks fixed as it begins from `move_ticks`,
+A height on every tile, the step, `dig`, `fill` and `mine`, earth and
+the ground plan are built and tested. What is left is `03`'s Moving. A
+bot's `pace`: a move's ticks fixed as it begins from `move_ticks`,
 `pace_max`, `up_ticks` and `down_ticks`, pace gained on completing and
-lost as the slices end; a fall and its `fall_damage` in step 4; and a
-bonk, with `bonk_ticks`, its sound, the bot it puts a tile onward and
-that bot's action ended. Water does not break a fall until T45. The actions `dig`, `fill` and `mine`
-with their ticks, cycle costs, charge costs and sounds in data; a tile
-that is clear; `earth` in the resource table with a bot's and a depot's
-capacity for it. The ground plan: a fifth plan kind in `Mark` and
-`Unmark` and on the wire, what drops one on its tick, and what consumes
-it. A tile's record, a team's memory of it, the snapshot and the state
-hash carry its height. `water` stays a terrain kind until T45, so this
-task alone leaves a match playable. Tests for each rule — a bot that keeps moving and one that pauses, a
-turn, a climb and a descent, a fall of two levels and of four, a bonk
-onto level ground, off a cliff and against a wall, a bonk from a
-standstill refused, and a bonked bot's action ended — and the golden
-replay gains a dug, a filled and a mined tile, a ground plan carried
-out, a fall and a bonk, and the PR says why every hash moved.
+lost as the slices end. A drop, for `move` alone: a fall and its
+`fall_damage` in step 4, broken by water as deep as `water.cushion`,
+which goes into `[water]` with this. A bonk, with `bonk_ticks`, its
+sound, the bot it puts a tile onward and that bot's action ended. Tests
+for each rule — a bot that keeps moving and one that pauses, a turn, a
+climb and a descent, a fall of two levels and of four, a fall into
+water, a bonk onto level ground, off a cliff and against a wall, a bonk
+from a standstill refused, and a bonked bot's action ended — and the
+golden replay, which already digs, gains a filled and a mined tile, a
+fall and a bonk, and the PR says why every hash moved.
 
 **T44 — Sight over height in `sim`** `⚠HASH`
 
@@ -74,17 +65,6 @@ team sees, so it bumps the count the sight cache holds (T38), and the
 gates seed one that forgets. Tests: a ridge between two machines, a
 machine on a hill and one in a pit, level ground as before, and the
 walk from each end, since the ray is not symmetric.
-
-**T45 — Water in `sim`: what is left** `⚠HASH`
-
-`09`'s rules are built and tested: the flow, springs and sinks, the
-ground water, drying, wading, and flooding — `flooded` set by the water
-step, a flooded bot's moves refused, a flooded building dark through the
-power step, and flood damage in step 4. `crates/replay/benches/scale.rs`
-has a river and a lake under `--water` and says what the water step
-costs. What is left is the fixture: the golden replay gains a spring, a
-sink, a channel dug from a lake and a building the channel floods, and
-its alive test asserts each happened.
 
 **T46 — Height and water in `render`**
 
