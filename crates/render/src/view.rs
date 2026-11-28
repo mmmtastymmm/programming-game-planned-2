@@ -254,10 +254,18 @@ fn body_lift(model: Model) -> f32 {
     match model {
         Model::Bot => BOT_HALF,
         Model::Printer => 0.25,
-        Model::Depot => 0.15,
+        // A tank is a depot until T49 draws it.
+        Model::Depot | Model::Tank => 0.15,
         // Each stands on its tile's slab, none of it sunk in it, so a
-        // panel's low foot and a plan's small ghost still show.
-        Model::Solar | Model::Charger | Model::Pylon => SLAB_HALF + body_half(model).y,
+        // panel's low foot and a plan's small ghost still show. A pump
+        // and a spout are chargers, and an aqueduct a pylon, until T49
+        // draws them.
+        Model::Solar
+        | Model::Charger
+        | Model::Pylon
+        | Model::Pump
+        | Model::Spout
+        | Model::Aqueduct => SLAB_HALF + body_half(model).y,
         Model::Site => 0.35,
     }
 }
@@ -267,10 +275,11 @@ fn bar_height(model: Model) -> f32 {
     match model {
         Model::Bot => 0.85,
         Model::Printer => 0.75,
-        Model::Depot => 0.6,
+        // Q67's four ride where their stand-ins do until T49 draws them.
+        Model::Depot | Model::Tank => 0.6,
         Model::Solar => 0.7,
-        Model::Charger => 0.65,
-        Model::Pylon => 0.8,
+        Model::Charger | Model::Pump | Model::Spout => 0.65,
+        Model::Pylon | Model::Aqueduct => 0.8,
         Model::Site => 0.85,
     }
 }
@@ -713,8 +722,14 @@ fn spawn_plans(
             Model::Site => (palette.site_cube.clone(), palette.site_mat.clone()),
             Model::Printer => (palette.printer_box.clone(), palette.printer_mat.clone()),
             Model::Solar => (palette.panel_plate.clone(), palette.panel_mat.clone()),
-            Model::Charger => (palette.charger_block.clone(), palette.neutral_mat.clone()),
-            Model::Pylon => (palette.pylon_mast.clone(), palette.neutral_mat.clone()),
+            // Q67's four ghost as their stand-ins until T49 draws them:
+            // a tank falls to the crate below.
+            Model::Charger | Model::Pump | Model::Spout => {
+                (palette.charger_block.clone(), palette.neutral_mat.clone())
+            }
+            Model::Pylon | Model::Aqueduct => {
+                (palette.pylon_mast.clone(), palette.neutral_mat.clone())
+            }
             _ => (palette.crate_box.clone(), palette.crate_mat.clone()),
         };
         let (mat, scale) = match plan {
@@ -1290,14 +1305,21 @@ fn body_mat(
             palette.printer_lights.clone(),
             0.5,
         ),
-        Model::Depot => (
+        // A tank wears the depot's art until T49 draws it.
+        Model::Depot | Model::Tank => (
             "depot".to_string(),
             palette.crate_texture.clone(),
             palette.crate_lights.clone(),
             0.9,
         ),
-        // A neutral body; its team is its lamp (Q62).
-        Model::Solar | Model::Charger | Model::Pylon => return palette.neutral_mat.clone(),
+        // A neutral body; its team is its lamp (Q62). A pump, a spout and
+        // an aqueduct too, until T49 draws them.
+        Model::Solar
+        | Model::Charger
+        | Model::Pylon
+        | Model::Pump
+        | Model::Spout
+        | Model::Aqueduct => return palette.neutral_mat.clone(),
         Model::Site => return palette.site_mat.clone(),
     };
     let team = m.record.team;
@@ -1558,12 +1580,13 @@ fn spawn_machine(
     let mesh = match model {
         Model::Bot => palette.bot_cube.clone(),
         Model::Printer => palette.printer_box.clone(),
-        Model::Depot => palette.crate_box.clone(),
+        // Q67's four each take the nearest body until T49 draws them.
+        Model::Depot | Model::Tank => palette.crate_box.clone(),
         // Q62: a panel's foot under its plate, a charger's block, a
         // pylon's mast.
         Model::Solar => palette.panel_foot.clone(),
-        Model::Charger => palette.charger_block.clone(),
-        Model::Pylon => palette.pylon_mast.clone(),
+        Model::Charger | Model::Pump | Model::Spout => palette.charger_block.clone(),
+        Model::Pylon | Model::Aqueduct => palette.pylon_mast.clone(),
         Model::Site => palette.site_cube.clone(),
     };
     let live_mat = body_mat(palette, interface, colors, materials, player, m);
@@ -1665,11 +1688,17 @@ fn spawn_machine(
                     );
                     spawn_lamp(parent, palette, &lamp_mat, Vec3::new(0.0, 0.25, 0.0));
                 }
-                Model::Pylon => {
+                // An aqueduct is a pylon until T49 draws it.
+                Model::Pylon | Model::Aqueduct => {
                     // A lamp at its head, where its lines run.
                     spawn_lamp(parent, palette, &lamp_mat, Vec3::new(0.0, PYLON_LAMP, 0.0));
                 }
-                Model::Depot | Model::Site => {}
+                // A pump and a spout are a charger's block with its lamp
+                // and no gauge, having no battery, until T49 draws them.
+                Model::Pump | Model::Spout => {
+                    spawn_lamp(parent, palette, &lamp_mat, Vec3::new(0.0, 0.25, 0.0));
+                }
+                Model::Depot | Model::Tank | Model::Site => {}
             }
             // A site's team is its outline (Q43): the body's own mesh, a
             // little larger. Every other machine's is its lights (Q45, Q47).
@@ -2365,6 +2394,7 @@ mod tests {
             paint: None,
             overlay: None,
             wires: BTreeSet::new(),
+            pipes: BTreeSet::new(),
             building: None,
         }
     }

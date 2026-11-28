@@ -15,7 +15,7 @@ use lang::{Host, HostCall, Interrupt, Num, Program};
 
 /// Every game builtin (`docs/02`), each with a row in the `[game]` cost
 /// table and a charge cost in `[power.cost]` (`docs/08`).
-pub const BUILTINS: [&str; 32] = [
+pub const BUILTINS: [&str; 37] = [
     "see",
     "hear",
     "tile",
@@ -26,6 +26,8 @@ pub const BUILTINS: [&str; 32] = [
     "overlaid",
     "power",
     "wires",
+    "water",
+    "pipes",
     "move",
     "move_to",
     "pick",
@@ -39,6 +41,8 @@ pub const BUILTINS: [&str; 32] = [
     "unoverlay",
     "wire",
     "unwire",
+    "pipe",
+    "unpipe",
     "dig",
     "fill",
     "mine",
@@ -48,6 +52,7 @@ pub const BUILTINS: [&str; 32] = [
     "log",
     "rename",
     "set_color",
+    "pour",
 ];
 
 /// One machine's view of the world for one slice.
@@ -215,8 +220,16 @@ impl<'a> GameHost<'a> {
             };
             if let Some(pl) = plans.of(kind) {
                 let v = match pl {
-                    // A wire plan to lay one reads `True` (`docs/02`).
-                    Plan::Set(_) if kind == crate::command::PlanKind::Wire => Value::Bool(true),
+                    // A wire plan to lay one reads `True` (`docs/02`), and
+                    // a pipe plan (Q67).
+                    Plan::Set(_)
+                        if matches!(
+                            kind,
+                            crate::command::PlanKind::Wire | crate::command::PlanKind::Pipe
+                        ) =>
+                    {
+                        Value::Bool(true)
+                    }
                     // A ground plan reads the height it asks for (Q65).
                     Plan::Set(s) if kind == crate::command::PlanKind::Ground => {
                         s.parse::<i128>().map_or(Value::None, crate::records::int)
@@ -773,6 +786,31 @@ impl<'a> GameHost<'a> {
         Ok(HostCall::Value(Value::None))
     }
 
+    /// `pour(dir)` (Q67; `docs/09`, Pumps, tanks and spouts): a spout's
+    /// alone, and it takes no ticks, as `set_color` takes none — so a
+    /// busy spout is refused, and a `dying` one, which may begin no
+    /// action but the few `docs/02` names. The direction is `"n"`, `"e"`,
+    /// `"s"` or `"w"`, or `None` to pour nowhere; anything else is a
+    /// `ValueError`.
+    fn pour(&mut self, args: &[Value]) -> R<HostCall> {
+        let [dir] = args else {
+            return Err(type_error());
+        };
+        let me = self.me();
+        if me.model != Model::Spout || me.action.is_some() || me.dying {
+            return Err(value_error());
+        }
+        let pouring = match dir {
+            Value::None => None,
+            v => {
+                let name = v.expect_str().map_err(|_| value_error())?;
+                Some(crate::map::Dir::from_name(&name).ok_or_else(value_error)?)
+            }
+        };
+        self.me_mut().pouring = pouring;
+        Ok(HostCall::Value(Value::None))
+    }
+
     // ------------------------------------------------------------ power ---
 
     /// `power()`: the team's grids as the last power step kept them.
@@ -798,15 +836,43 @@ impl<'a> GameHost<'a> {
         self.charged(v, n)
     }
 
+    /// `water()`: the team's water networks as the last network step
+    /// kept them (`docs/09`), as `power()` does its grids.
+    fn water(&mut self) -> HostCall {
+        let team = self.team();
+        let networks = self.world.teams[&team].networks.clone();
+        let n = networks.len();
+        let per_level = self.world.data.world.water.parts;
+        let values: Vec<Value> = networks
+            .iter()
+            .map(|f| crate::records::water_record(f, per_level))
+            .collect();
+        let v = list(self.world, values);
+        self.charged(v, n)
+    }
+
+    /// `pipes()`: the tiles carrying the team's own pipe, row then
+    /// column, as `wires()` does its wire.
+    fn pipes(&mut self) -> HostCall {
+        let team = self.team();
+        let mut tiles: Vec<TilePos> = self.world.teams[&team].pipe_tiles.iter().copied().collect();
+        tiles.sort_by(crate::map::row_then_column);
+        let n = tiles.len();
+        let values: Vec<Value> = tiles.into_iter().map(pos_value).collect();
+        let v = list(self.world, values);
+        self.charged(v, n)
+    }
+
     /// What a `recharge` from `from` would move now: `min(recharge_rate,
     /// its charge, the bot's free battery)`, and nothing from a building
-    /// that is gone, dark or a site (`docs/02`, `recharge`).
+    /// that is gone, dark, dry or a site (`docs/02`, `recharge`;
+    /// `docs/09`, A dry building).
     pub fn recharge_amount(&self, from: EntityId) -> Num {
         let me = self.me();
         let Some(b) = self.world.machines.get(&from) else {
             return Num::ZERO;
         };
-        if !b.is_building() || b.model == Model::Site || !b.powered {
+        if !b.is_building() || b.model == Model::Site || b.is_stopped() {
             return Num::ZERO;
         }
         let rate = self.world.data.model(b.model.name()).recharge_rate;
@@ -827,10 +893,10 @@ impl<'a> GameHost<'a> {
         }
         let here = self.pos();
         // The adjacent powered building, any team's, holding the most
-        // charge, ties by lower id.
+        // charge, ties by lower id. A dry one is stopped as a dark one is.
         let mut best: Option<(Num, EntityId)> = None;
         for m in self.world.machines.values() {
-            if !m.is_building() || m.model == Model::Site || !m.powered {
+            if !m.is_building() || m.model == Model::Site || m.is_stopped() {
                 continue;
             }
             if !here.is_adjacent(m.pos) || m.charge <= Num::ZERO {
@@ -886,6 +952,45 @@ impl<'a> GameHost<'a> {
             return Err(value_error());
         }
         self.begin("wire", md.wire_ticks, Effect::Wire { at }, false)
+    }
+
+    /// `pipe(x, y)` and `unpipe(x, y)` (Q67; `docs/09`, Pipes and
+    /// aqueducts): `wire` and `unwire` in every rule, for the team's own
+    /// pipe; laying one needs `pipe_cost` in the load.
+    fn action_pipe(&mut self, args: &[Value], lay: bool) -> R<HostCall> {
+        self.require_bot()?;
+        let [x, y] = args else {
+            return Err(type_error());
+        };
+        let at = TilePos::new(coord(x)?, coord(y)?);
+        if !self.pos().is_adjacent(at) {
+            return Err(value_error());
+        }
+        let team = self.team();
+        let has = self.world.has_pipe(team, at);
+        let md = self.model_data();
+        if !lay {
+            if !has {
+                return Err(value_error());
+            }
+            return self.begin("unpipe", md.unpipe_ticks, Effect::Unpipe { at }, false);
+        }
+        let ground = self
+            .world
+            .tile(at)
+            .is_some_and(|t| t.terrain == crate::map::Terrain::Ground);
+        if !ground || has {
+            return Err(value_error());
+        }
+        let me = self.me();
+        let short = md
+            .pipe_cost
+            .iter()
+            .any(|(k, cost)| me.load.get(k).copied().unwrap_or(Num::ZERO) < *cost);
+        if short {
+            return Err(value_error());
+        }
+        self.begin("pipe", md.pipe_ticks, Effect::Pipe { at }, false)
     }
 
     /// `dig(x, y)`, `fill(x, y)` and `mine(x, y)` (Q65; `docs/03`,
@@ -1086,7 +1191,12 @@ impl<'a> GameHost<'a> {
             "overlaid" => self.marked(&args, Slot::Overlay),
             "power" if args.is_empty() => Ok(self.power()),
             "wires" if args.is_empty() => Ok(self.wires()),
-            "power" | "wires" => Err(type_error()),
+            "water" if args.is_empty() => Ok(self.water()),
+            "pipes" if args.is_empty() => Ok(self.pipes()),
+            "power" | "wires" | "water" | "pipes" => Err(type_error()),
+            "pipe" => self.action_pipe(&args, true),
+            "unpipe" => self.action_pipe(&args, false),
+            "pour" => self.pour(&args),
             "recharge" => self.action_recharge(&args),
             "wire" => self.action_wire(&args, true),
             "unwire" => self.action_wire(&args, false),

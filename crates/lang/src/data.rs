@@ -385,11 +385,13 @@ mod tests {
     /// `method.list.append`. A key the doc never names is a price nobody
     /// can read; a name the table lacks is a price nobody pays (T10: the
     /// docs and the data cannot drift silently). Game rows are `docs/02`'s
-    /// and are checked by name there.
+    /// and are checked by name there — or `docs/09`'s, which holds the
+    /// rows Q67 adds to a machine for want of room in `docs/02`.
     #[test]
     fn every_cost_key_is_named_by_the_doc_and_vice_versa() {
         const DOC: &str = include_str!("../../../docs/01-language/costs.md");
         const MACHINES: &str = include_str!("../../../docs/02-machines.md");
+        const WATER: &str = include_str!("../../../docs/09-water.md");
         let map = flatten("costs.toml", COSTS_TOML).expect("costs");
         let mut named: Vec<String> = Vec::new();
         // A backticked chunk is a formula — `op.operator + n × factor.copy`
@@ -424,11 +426,14 @@ mod tests {
         let unknown: Vec<&String> = costs
             .game
             .keys()
-            .filter(|name| !MACHINES.contains(&format!("`{name}(")))
+            .filter(|name| {
+                let call = format!("`{name}(");
+                !MACHINES.contains(&call) && !WATER.contains(&call)
+            })
             .collect();
         assert!(
             unknown.is_empty(),
-            "[game] rows docs/02 has no builtin for: {unknown:?}"
+            "[game] rows neither docs/02 nor docs/09 has a builtin for: {unknown:?}"
         );
     }
 

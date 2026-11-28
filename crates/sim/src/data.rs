@@ -88,8 +88,25 @@ pub struct ModelData {
     pub down_ticks: u64,
     pub bonk_ticks: u64,
     pub fall_damage: Num,
-    /// How far a pylon joins, in tiles by squared distance.
+    /// How far a pylon joins a grid, and an aqueduct a water network, in
+    /// tiles by squared distance.
     pub span: i64,
+    /// Water (`docs/09`, The water network), each written in levels and
+    /// kept in whole parts: the most the model's tank holds; what a
+    /// building needs a tick, and a printer more while it prints; the
+    /// well that covers so much of the need and moves no water; the most
+    /// a pump lifts a tick, and the most a spout pours.
+    pub tank: u32,
+    pub water_drain: u32,
+    pub print_water: u32,
+    pub well: u32,
+    pub pump_rate: u32,
+    pub pour_rate: u32,
+    /// A bot's price for a tile of pipe, per kind, and the ticks to lay
+    /// and remove one (`docs/09`, Pipes and aqueducts).
+    pub pipe_cost: BTreeMap<String, Num>,
+    pub pipe_ticks: u64,
+    pub unpipe_ticks: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,9 +213,12 @@ pub struct Data {
 
 impl Data {
     pub fn load() -> D<Data> {
+        // The world table first: it says how finely water is counted,
+        // and the machines' amounts of water are kept in those parts.
+        let world = WorldData::parse(WORLD_TOML)?;
         Ok(Data {
-            machines: MachinesData::parse(MACHINES_TOML)?,
-            world: WorldData::parse(WORLD_TOML)?,
+            machines: MachinesData::parse_in(MACHINES_TOML, world.water.parts)?,
+            world,
             net: NetData::parse(NET_TOML)?,
         })
     }
@@ -281,9 +301,34 @@ fn strings(file: &'static str, key: &str, v: &toml::Value) -> D<Vec<String>> {
 }
 
 impl MachinesData {
+    /// The table, with its amounts of water counted as the shipped world
+    /// table counts them ([`MachinesData::parse_in`]).
     pub fn parse(text: &str) -> D<MachinesData> {
+        MachinesData::parse_in(text, WorldData::parse(WORLD_TOML)?.water.parts)
+    }
+
+    /// The table, with every amount of water — written in levels — kept
+    /// in whole parts at `parts` to a level (`docs/09`): `water.parts`
+    /// of the world table the match runs on.
+    pub fn parse_in(text: &str, parts: u32) -> D<MachinesData> {
         const FILE: &str = "data/machines.toml";
         let t = table(FILE, text)?;
+        let levels = |key: &str, v: &toml::Value| -> D<u32> {
+            let amount = num(FILE, key, v)?;
+            Num::from_int(i128::from(parts))
+                .and_then(|p| amount.checked_mul(p))
+                .ok()
+                .and_then(Num::as_integral)
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| {
+                    err(
+                        FILE,
+                        format!(
+                            "`{key}` is not a whole number of parts, at `water.parts` to a level"
+                        ),
+                    )
+                })
+        };
         let resource = get(FILE, &t, "resource")?
             .as_table()
             .ok_or_else(|| err(FILE, "`resource` is not a table"))?;
@@ -362,11 +407,20 @@ impl MachinesData {
                     "bonk_ticks" => d.bonk_ticks = uint(FILE, &key(k), v)?,
                     "fall_damage" => d.fall_damage = num(FILE, &key(k), v)?,
                     "span" => d.span = int(FILE, &key(k), v)?,
+                    "tank" => d.tank = levels(&key(k), v)?,
+                    "water_drain" => d.water_drain = levels(&key(k), v)?,
+                    "print_water" => d.print_water = levels(&key(k), v)?,
+                    "well" => d.well = levels(&key(k), v)?,
+                    "pump_rate" => d.pump_rate = levels(&key(k), v)?,
+                    "pour_rate" => d.pour_rate = levels(&key(k), v)?,
+                    "pipe_cost" => d.pipe_cost = num_map(FILE, &key(k), v)?,
+                    "pipe_ticks" => d.pipe_ticks = uint(FILE, &key(k), v)?,
+                    "unpipe_ticks" => d.unpipe_ticks = uint(FILE, &key(k), v)?,
                     other => {
                         return Err(err(
                             FILE,
                             format!(
-                                "`model.{name}.{other}` is not a field docs/02 or docs/08 names"
+                                "`model.{name}.{other}` is not a field docs/02, docs/08 or docs/09 names"
                             ),
                         ));
                     }
@@ -375,7 +429,8 @@ impl MachinesData {
             models.insert(name.clone(), d);
         }
         for required in [
-            "bot", "printer", "depot", "solar", "charger", "pylon", "site",
+            "bot", "printer", "depot", "solar", "charger", "pylon", "pump", "tank", "spout",
+            "aqueduct", "site",
         ] {
             if !models.contains_key(required) {
                 return Err(err(FILE, format!("no `model.{required}`")));
@@ -457,6 +512,12 @@ impl MachinesData {
                 return Err(err(
                     FILE,
                     format!("`model.{name}.wire_cost.{k}` is negative"),
+                ));
+            }
+            if let Some((k, _)) = m.pipe_cost.iter().find(|(_, v)| **v < Num::ZERO) {
+                return Err(err(
+                    FILE,
+                    format!("`model.{name}.pipe_cost.{k}` is negative"),
                 ));
             }
         }
@@ -775,6 +836,53 @@ mod tests {
         let instant = MACHINES_TOML.replace("print_ticks = 30", "print_ticks = 0");
         let e = MachinesData::parse(&instant).expect_err("zero print_ticks");
         assert!(e.message.contains("print_ticks"), "{e}");
+    }
+
+    /// Q67 (`docs/09`, The water network): a model's amounts of water are
+    /// written in levels and kept in whole parts, and the printer's well
+    /// starts at its need, so that nothing is asked of a team's water
+    /// until the well is tuned down.
+    #[test]
+    fn a_models_water_is_kept_in_whole_parts() {
+        let d = Data::load().expect("data");
+        let printer = d.model("printer");
+        assert_eq!(
+            (printer.tank, printer.water_drain, printer.print_water),
+            (2000, 2, 8)
+        );
+        assert_eq!(
+            printer.well,
+            printer.water_drain.saturating_add(printer.print_water)
+        );
+        assert_eq!(d.model("tank").tank, 20_000);
+        assert_eq!(d.model("pump").pump_rate, 50);
+        assert_eq!(d.model("spout").pour_rate, 50);
+        assert_eq!(d.model("aqueduct").span, 4);
+        assert_eq!(d.model("bot").pipe_ticks, 2);
+        // The same table at a hundred parts to a level: a twentieth of a
+        // level is five parts, and two thousandths is not a whole one.
+        let coarse = MachinesData::parse_in(
+            &MACHINES_TOML.replace("water_drain = \"0.002\"", "water_drain = \"0.01\""),
+            100,
+        );
+        let e = coarse.expect_err("print_water is 0.008");
+        assert!(e.message.contains("print_water"), "{e}");
+        let swap = |from: &str, to: &str| {
+            assert!(
+                MACHINES_TOML.contains(from),
+                "the shipped table lacks {from:?}"
+            );
+            MachinesData::parse(&MACHINES_TOML.replace(from, to))
+        };
+        let e = swap("pump_rate = \"0.05\"", "pump_rate = \"0.0505\"").expect_err("half a part");
+        assert!(e.message.contains("whole number of parts"), "{e}");
+        let e = swap("tank = 20", "tank = -1").expect_err("negative");
+        assert!(e.message.contains("model.tank.tank"), "{e}");
+        let e = swap("pipe_cost = { ore = 3 }", "pipe_cost = { ore = -3 }").expect_err("negative");
+        assert!(e.message.contains("pipe_cost"), "{e}");
+        // Nothing holds the well up: a printer may be left to its network.
+        let d = swap("well = \"0.01\"", "well = 0").expect("no well");
+        assert_eq!(d.models["printer"].well, 0);
     }
 
     #[test]

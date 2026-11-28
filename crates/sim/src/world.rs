@@ -4,7 +4,7 @@
 
 use crate::command::{Bundle, PlanKind, TeamId};
 use crate::data::Data;
-use crate::map::{Height, Map, Slope, Terrain, TilePos, index};
+use crate::map::{Dir, Height, Map, Slope, Terrain, TilePos, index};
 use lang::{Costs, Limits, Num, Program};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -34,10 +34,13 @@ pub enum Plan {
 /// kinds, so there is one.
 pub const WIRE: &str = "wire";
 
+/// The value a pipe plan to lay one carries (`docs/09`), as a wire's is.
+pub const PIPE: &str = "pipe";
+
 /// The resource a dug tile yields and a filled one takes (Q65).
 pub const EARTH: &str = "earth";
 
-/// A team's five plans on one tile.
+/// A team's six plans on one tile.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Plans {
     pub paint: Option<Plan>,
@@ -48,6 +51,8 @@ pub struct Plans {
     /// The height the team wants the tile brought to (Q65), as its digit;
     /// never a plan to clear.
     pub ground: Option<Plan>,
+    /// To lay the team's pipe ([`PIPE`]) or to clear it (Q67).
+    pub pipe: Option<Plan>,
 }
 
 impl Plans {
@@ -57,6 +62,7 @@ impl Plans {
             && self.building.is_none()
             && self.wire.is_none()
             && self.ground.is_none()
+            && self.pipe.is_none()
     }
 
     pub fn of(&self, kind: PlanKind) -> &Option<Plan> {
@@ -66,6 +72,7 @@ impl Plans {
             PlanKind::Building => &self.building,
             PlanKind::Wire => &self.wire,
             PlanKind::Ground => &self.ground,
+            PlanKind::Pipe => &self.pipe,
         }
     }
 
@@ -76,6 +83,7 @@ impl Plans {
             PlanKind::Building => &mut self.building,
             PlanKind::Wire => &mut self.wire,
             PlanKind::Ground => &mut self.ground,
+            PlanKind::Pipe => &mut self.pipe,
         }
     }
 }
@@ -101,6 +109,9 @@ pub struct Tile {
     /// team's own. Changed only by `World::lay_wire`, `remove_wire` and
     /// `clear_wires`, which keep each team's index of its own in step.
     pub wires: BTreeSet<TeamId>,
+    /// The teams with a pipe on the tile (Q67), as `wires` is of wires.
+    /// Changed only by `World::lay_pipe`, `remove_pipe` and `clear_pipes`.
+    pub pipes: BTreeSet<TeamId>,
     /// Per team; absent means no plans.
     pub plans: BTreeMap<TeamId, Plans>,
 }
@@ -113,17 +124,26 @@ pub enum Model {
     Solar,
     Charger,
     Pylon,
+    /// The water network's four (Q67; `docs/09`).
+    Pump,
+    Tank,
+    Spout,
+    Aqueduct,
     Site,
 }
 
 impl Model {
-    pub const ALL: [Model; 7] = [
+    pub const ALL: [Model; 11] = [
         Model::Bot,
         Model::Printer,
         Model::Depot,
         Model::Solar,
         Model::Charger,
         Model::Pylon,
+        Model::Pump,
+        Model::Tank,
+        Model::Spout,
+        Model::Aqueduct,
         Model::Site,
     ];
 
@@ -135,15 +155,20 @@ impl Model {
             Model::Solar => "solar",
             Model::Charger => "charger",
             Model::Pylon => "pylon",
+            Model::Pump => "pump",
+            Model::Tank => "tank",
+            Model::Spout => "spout",
+            Model::Aqueduct => "aqueduct",
             Model::Site => "site",
         }
     }
 
     /// The deployment a machine of the model runs: its name, or none for
-    /// a pylon and a site, which run no program (Q42, Q62).
+    /// a pylon, an aqueduct and a site, which run no program (Q42, Q62,
+    /// Q67).
     pub fn deployment(self) -> Option<&'static str> {
         match self {
-            Model::Pylon | Model::Site => None,
+            Model::Pylon | Model::Aqueduct | Model::Site => None,
             m => Some(m.name()),
         }
     }
@@ -169,6 +194,10 @@ impl Model {
             "solar" => Some(Model::Solar),
             "charger" => Some(Model::Charger),
             "pylon" => Some(Model::Pylon),
+            "pump" => Some(Model::Pump),
+            "tank" => Some(Model::Tank),
+            "spout" => Some(Model::Spout),
+            "aqueduct" => Some(Model::Aqueduct),
             "site" => Some(Model::Site),
             _ => None,
         }
@@ -216,6 +245,13 @@ pub enum Effect {
         at: TilePos,
     },
     Unwire {
+        at: TilePos,
+    },
+    /// Lay or remove the team's pipe on a tile (Q67).
+    Pipe {
+        at: TilePos,
+    },
+    Unpipe {
         at: TilePos,
     },
     /// Lower a tile a level, raise one a level, or turn rock to ground
@@ -315,6 +351,17 @@ pub struct Machine {
     /// as printed, raised as a move completes, and lost as a tick's
     /// slices end with the bot in no move. Always zero on a building.
     pub pace: u64,
+    /// The parts of water its tank holds (`docs/09`, The water network):
+    /// never above its model's `tank`, and zero on a model with none.
+    pub water: u32,
+    /// A building the last network step watered, or left dry; a building
+    /// is placed watered, and a site never is.
+    pub watered: bool,
+    /// The label of the network the last network step found a building on.
+    pub network: Option<EntityId>,
+    /// The way a spout pours, set by `pour` and `None` as built; `None`
+    /// on every other model.
+    pub pouring: Option<Dir>,
     /// `low_power` fell due during the machine's own slice, where its
     /// program is out of its body: the interpreter collects it after the
     /// call that caused it (`Host::take_raised`). Never set between calls.
@@ -338,6 +385,19 @@ impl Machine {
     /// has none of the three.
     pub fn is_dark(&self) -> bool {
         self.is_building() && self.model != Model::Site && !self.powered
+    }
+
+    /// A building the last network step left dry (`docs/09`, A dry
+    /// building): stopped as a dark one is, whatever its power.
+    pub fn is_dry(&self) -> bool {
+        self.is_building() && self.model != Model::Site && !self.watered
+    }
+
+    /// A building that is dark or dry: its rules, its program and its
+    /// senses stop (`docs/08`, A dark building; `docs/09`, A dry
+    /// building). The two are apart, and either stops it.
+    pub fn is_stopped(&self) -> bool {
+        self.is_dark() || self.is_dry()
     }
 
     pub fn busy(&self) -> Option<&'static str> {
@@ -428,6 +488,13 @@ pub struct MachineRecord {
     pub flooded: bool,
     /// A bot's `pace` (`docs/03`, Moving); absent on a building.
     pub pace: Option<u64>,
+    /// The parts of water its tank holds (`docs/09`).
+    pub water: u32,
+    /// A building's `watered` and `network`; absent on a bot.
+    pub watered: Option<bool>,
+    pub network: Option<Option<EntityId>>,
+    /// A spout's `pouring`; absent on every other model.
+    pub pouring: Option<Option<Dir>>,
 }
 
 impl MachineRecord {
@@ -453,6 +520,10 @@ impl MachineRecord {
             grid: m.is_building().then_some(m.grid),
             flooded: m.flooded,
             pace: m.is_bot().then_some(m.pace),
+            water: m.water,
+            watered: m.is_building().then_some(m.watered),
+            network: m.is_building().then_some(m.network),
+            pouring: (m.model == Model::Spout).then_some(m.pouring),
         }
     }
 }
@@ -478,11 +549,16 @@ pub struct TileMemory {
     pub overlay: Option<String>,
     /// The teams with a wire on it, as last seen (Q62).
     pub wires: BTreeSet<TeamId>,
+    /// The teams with a pipe on it, as last seen (Q67).
+    pub pipes: BTreeSet<TeamId>,
     pub building: Option<MachineRecord>,
 }
 
-/// A team's deployments: one per model that runs a program (Q42, Q62).
-pub const DEPLOYMENTS: [&str; 5] = ["bot", "printer", "depot", "solar", "charger"];
+/// A team's deployments: one per model that runs a program (Q42, Q62,
+/// Q67).
+pub const DEPLOYMENTS: [&str; 8] = [
+    "bot", "printer", "depot", "solar", "charger", "pump", "tank", "spout",
+];
 
 /// One grid's figures as a power step kept them (`docs/08`, The power
 /// step): its label, and four sums over its buildings.
@@ -495,6 +571,21 @@ pub struct GridFigures {
     /// The charge held after the step.
     pub stored: Num,
     pub capacity: Num,
+}
+
+/// One water network's figures as a network step kept them (`docs/09`,
+/// The network step): its label, and four sums over its buildings, each
+/// in parts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkFigures {
+    pub network: EntityId,
+    /// The `pump_rate` of every pump that had a source.
+    pub supply: u64,
+    /// Every need, watered or dry.
+    pub drain: u64,
+    /// The water its tanks hold after the step.
+    pub stored: u64,
+    pub capacity: u64,
 }
 
 /// One team's machines as one pass over every machine found them
@@ -548,6 +639,14 @@ pub struct Team {
     /// Those of them the last power step found on a grid, for the
     /// snapshot; derived, never hashed.
     pub live_wires: BTreeSet<TilePos>,
+    /// The team's water networks as its last network step kept them,
+    /// ascending label (`docs/09`).
+    pub networks: Vec<NetworkFigures>,
+    /// The tiles carrying the team's pipe, and those of them the last
+    /// network step found on a network: as `wire_tiles` and `live_wires`
+    /// are of its wire, and no more in the hash than they are.
+    pub pipe_tiles: BTreeSet<TilePos>,
+    pub live_pipes: BTreeSet<TilePos>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -626,6 +725,7 @@ impl World {
                 paint: None,
                 overlay: None,
                 wires: BTreeSet::new(),
+                pipes: BTreeSet::new(),
                 plans: BTreeMap::new(),
             })
             .collect();
@@ -696,6 +796,7 @@ impl World {
                     paint: None,
                     overlay: None,
                     wires: BTreeSet::new(),
+                    pipes: BTreeSet::new(),
                     building: None,
                 })
                 .collect();
@@ -714,6 +815,9 @@ impl World {
                     grids: Vec::new(),
                     wire_tiles: BTreeSet::new(),
                     live_wires: BTreeSet::new(),
+                    networks: Vec::new(),
+                    pipe_tiles: BTreeSet::new(),
+                    live_pipes: BTreeSet::new(),
                 },
             );
             for &s in starts {
@@ -724,12 +828,15 @@ impl World {
             }
         }
         // The match is built with its grids traced, every building
-        // powered and the figures kept, no charge having moved.
+        // powered and the figures kept, no charge having moved; and with
+        // its water networks traced, every building watered and their
+        // figures kept, no water having moved (`docs/09`).
         let teams: Vec<TeamId> = world.teams.keys().copied().collect();
         let rosters = world.rosters();
         for team in teams {
             let own = rosters.get(&team).map_or(&[][..], |r| &r.machines);
             world.trace_and_keep(team, own);
+            world.trace_and_keep_networks(team, own);
         }
         world
     }
@@ -769,6 +876,10 @@ impl World {
                     grid: m.grid,
                     flooded: m.flooded,
                     pace: m.pace,
+                    water: m.water,
+                    watered: m.watered,
+                    network: m.network,
+                    pouring: m.pouring,
                     low_power_due: m.low_power_due,
                     program: m.program.as_ref().map(|p| p.deep_copy()),
                     log: m.log.clone(),
@@ -793,6 +904,9 @@ impl World {
                     grids: t.grids.clone(),
                     wire_tiles: t.wire_tiles.clone(),
                     live_wires: t.live_wires.clone(),
+                    networks: t.networks.clone(),
+                    pipe_tiles: t.pipe_tiles.clone(),
+                    live_pipes: t.live_pipes.clone(),
                 };
                 (*id, copy)
             })
@@ -1060,6 +1174,13 @@ impl World {
                 grid: None,
                 flooded: false,
                 pace: 0,
+                // Every tank starts empty, and a building is placed
+                // watered and on no network until a network step
+                // (`docs/09`).
+                water: 0,
+                watered: model != Model::Bot && model != Model::Site,
+                network: None,
+                pouring: None,
                 low_power_due: false,
                 program,
                 log: Vec::new(),
@@ -1070,10 +1191,12 @@ impl World {
     }
 
     /// Remove a machine from the world: the one way one leaves it, so
-    /// the sight cache hears of it.
+    /// the sight cache hears of it, and what its tank held goes to the
+    /// ground water (`docs/09`, Pumps, tanks and spouts).
     pub fn remove(&mut self, id: EntityId) -> Option<Machine> {
         let gone = self.machines.remove(&id);
-        if gone.is_some() {
+        if let Some(m) = &gone {
+            self.ground_water = self.ground_water.saturating_add(u64::from(m.water));
             self.sight_changed();
         }
         gone
@@ -1091,6 +1214,13 @@ impl World {
     /// Remove every machine of `team`, as a team that goes out loses
     /// them (`docs/06`, step 5).
     pub fn remove_team(&mut self, team: TeamId) {
+        // What their tanks held goes to the ground water (`docs/09`).
+        let held = self
+            .machines
+            .values()
+            .filter(|m| m.team == team)
+            .fold(0u64, |sum, m| sum.saturating_add(u64::from(m.water)));
+        self.ground_water = self.ground_water.saturating_add(held);
         self.machines.retain(|_, m| m.team != team);
         self.sight_changed();
     }
@@ -1151,6 +1281,7 @@ impl World {
             PlanKind::Paint => "paint",
             PlanKind::Overlay => "an overlay",
             PlanKind::Wire => "a wire",
+            PlanKind::Pipe => "a pipe",
             PlanKind::Ground => return self.may_plan_ground(team, p),
         };
         let idx = self
@@ -1222,6 +1353,45 @@ impl World {
         for p in tiles {
             if let Some(tile) = self.tile_mut(p) {
                 tile.wires.remove(&team);
+            }
+        }
+    }
+
+    /// Whether `team`'s pipe lies on `p`.
+    pub fn has_pipe(&self, team: TeamId, p: TilePos) -> bool {
+        self.tile(p).is_some_and(|t| t.pipes.contains(&team))
+    }
+
+    /// Lay `team`'s pipe on `p`; `false` if it was there or `p` is no tile.
+    pub fn lay_pipe(&mut self, team: TeamId, p: TilePos) -> bool {
+        let laid = self.tile_mut(p).is_some_and(|t| t.pipes.insert(team));
+        if laid && let Some(t) = self.teams.get_mut(&team) {
+            t.pipe_tiles.insert(p);
+        }
+        laid
+    }
+
+    /// Remove `team`'s pipe from `p`; `false` if there was none.
+    pub fn remove_pipe(&mut self, team: TeamId, p: TilePos) -> bool {
+        let gone = self.tile_mut(p).is_some_and(|t| t.pipes.remove(&team));
+        if gone && let Some(t) = self.teams.get_mut(&team) {
+            t.pipe_tiles.remove(&p);
+            t.live_pipes.remove(&p);
+        }
+        gone
+    }
+
+    /// Clear every pipe of `team`, as a team that goes out loses them
+    /// (`docs/06`, step 5).
+    pub fn clear_pipes(&mut self, team: TeamId) {
+        let Some(t) = self.teams.get_mut(&team) else {
+            return;
+        };
+        let tiles = std::mem::take(&mut t.pipe_tiles);
+        t.live_pipes.clear();
+        for p in tiles {
+            if let Some(tile) = self.tile_mut(p) {
+                tile.pipes.remove(&team);
             }
         }
     }

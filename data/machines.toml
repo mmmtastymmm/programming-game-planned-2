@@ -10,8 +10,9 @@ kinds = ["ore", "earth"]
 
 [deployment]
 # a team's deployments are one per model that runs a program — `bot`,
-# `printer`, `depot`, `solar` and `charger` (Q42, Q62); a pylon and a site
-# run none. This table holds what is shared across them
+# `printer`, `depot`, `solar`, `charger`, `pump`, `tank` and `spout` (Q42,
+# Q62, Q67); a pylon, an aqueduct and a site run none. This table holds
+# what is shared across them
 # the paint colors a plan may name (Q10)
 colors = ["red", "blue", "green", "yellow", "purple", "orange", "cyan", "magenta"]
 # the bot cap: this many bots per standing printer (Q24)
@@ -56,6 +57,12 @@ recharge_ticks = 2
 wire_cost = { ore = 3 }
 wire_ticks = 2
 unwire_ticks = 2
+# underground pipe (Q67, docs/09): ore per tile, and the ticks to lay and
+# to remove one. Wire's numbers, since a pipe is a wire in every rule but
+# what it carries; dearer than the aqueducts that would cover the ground
+pipe_cost = { ore = 3 }
+pipe_ticks = 2
+unpipe_ticks = 2
 # changing the ground (Q65, docs/03): the ticks to dig a tile down a level,
 # to fill one up a level, and to mine a rock away
 dig_ticks = 4
@@ -107,6 +114,18 @@ generation = 6
 drain = 1
 print_drain = 1
 recharge_rate = 40
+# water (Q67, docs/09), in levels: a printer needs `water_drain` a tick and
+# `print_water` more while it prints, less its `well`, which moves no
+# water. The well starts at the two together, so a printer needs nothing
+# of its network and a team that lays no pipe prints as it always did; no
+# check holds the well up, and bringing it down is what makes pumps
+# matter. Thousandths of a level are what water is counted in: an idle
+# printer would use a level in 500 ticks and a print of 30 ticks 0.3 of
+# one. Its `tank` is small: 200 ticks of printing with the well at zero
+tank = 2
+water_drain = "0.002"
+print_water = "0.008"
+well = "0.01"
 
 [model.depot]
 vision = 4
@@ -168,6 +187,73 @@ deconstruct_ticks = 3
 defence_damage = 0
 span = 4
 
+[model.pump]
+# lifts water off the wet tile beside it into its network (Q67, docs/09),
+# up to `pump_rate` levels a tick, while it is powered: it has no
+# generation and no battery, so its `drain` must come from its grid, and a
+# pump that touches nothing is dark. A printer's 4 to spare runs four.
+# At 0.05 a tile a level deep is lifted in 20 ticks, well under what the
+# flow brings a tile in a pond. The rest is the charger's row
+vision = 3
+hearing = 3
+health = 30
+death_threshold = -15
+store = { ore = 0 }
+cost = { ore = 30 }
+cost_step = { ore = 0 }
+build_ticks = 15
+deconstruct_ticks = 8
+defence_damage = 0
+drain = 1
+pump_rate = "0.05"
+
+[model.tank]
+# only holds water (Q67): `tank` levels, ten times the printer's own. The
+# rest is the depot's row, with nothing in its store
+vision = 4
+hearing = 4
+health = 40
+death_threshold = -20
+store = { ore = 0 }
+cost = { ore = 40 }
+cost_step = { ore = 0 }
+build_ticks = 20
+deconstruct_ticks = 10
+defence_damage = 0
+tank = 20
+
+[model.spout]
+# pours onto the tile it faces (Q67), up to `pour_rate` levels a tick: a
+# pump's rate, so that one pump keeps one spout running. It drains no
+# power, so only a flood darkens it. The rest is the charger's row
+vision = 3
+hearing = 3
+health = 30
+death_threshold = -15
+store = { ore = 0 }
+cost = { ore = 30 }
+cost_step = { ore = 0 }
+build_ticks = 15
+deconstruct_ticks = 8
+defence_damage = 0
+pour_rate = "0.05"
+
+[model.aqueduct]
+# overhead pipe (Q67): joins its team's aqueducts and buildings within
+# `span` tiles, by squared distance, into a water network; no program,
+# no tank and no need. The pylon's row, span included
+vision = 1
+hearing = 1
+health = 10
+death_threshold = -5
+store = { ore = 0 }
+cost = { ore = 5 }
+cost_step = { ore = 0 }
+build_ticks = 5
+deconstruct_ticks = 3
+defence_damage = 0
+span = 4
+
 [model.site]
 # a site's store capacity is the price of what it becomes (Q42); its ranges
 # and health are these
@@ -214,6 +300,8 @@ painted = 0
 overlaid = 0
 power = 0
 wires = 0
+water = 0
+pipes = 0
 move = 1
 move_to = 1
 pick = 1
@@ -227,6 +315,8 @@ overlay = 1
 unoverlay = 1
 wire = 1
 unwire = 1
+pipe = 1
+unpipe = 1
 dig = 2
 fill = 2
 mine = 2
@@ -236,3 +326,5 @@ wait = 0
 log = 0
 rename = 0
 set_color = 0
+# a spout's alone, and a building's calls take nothing
+pour = 0

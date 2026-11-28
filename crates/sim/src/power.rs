@@ -9,11 +9,13 @@ use lang::{Interrupt, Num};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One grid as traced: its label, its buildings in ascending entity id,
-/// and the tiles of the team's wire that are part of it.
+/// and the tiles of the team's wire that are part of it. A water network
+/// is traced into the same (`docs/09`, Networks), its line the team's
+/// pipe.
 pub(crate) struct Grid {
     pub label: EntityId,
     pub buildings: Vec<EntityId>,
-    pub wires: Vec<TilePos>,
+    pub lines: Vec<TilePos>,
 }
 
 fn add(a: Num, b: Num) -> Num {
@@ -51,6 +53,26 @@ impl World {
     /// ([`World::rosters`]), so that tracing one team's grids reads that
     /// team's machines and no other's.
     pub(crate) fn trace_grids(&self, team: TeamId, own: &[EntityId]) -> Vec<Grid> {
+        let none = BTreeSet::new();
+        let wire = self.teams.get(&team).map_or(&none, |t| &t.wire_tiles);
+        self.trace_joined(team, own, wire, Model::Pylon)
+    }
+
+    /// The sets of a team's conductors that hold a building, which a grid
+    /// and a water network both are (`docs/08`, Grids; `docs/09`,
+    /// Networks): the tiles of its buildings, sites excluded, and of
+    /// `lines` — its wire, or its pipe — joined where they are adjacent,
+    /// and from each building of the model `spanner` — a pylon, or an
+    /// aqueduct — to every one of those and every building of the team
+    /// within that model's span. Nothing else tells the two apart, and
+    /// neither's line or span joins the other.
+    pub(crate) fn trace_joined(
+        &self,
+        team: TeamId,
+        own: &[EntityId],
+        lines: &BTreeSet<TilePos>,
+        spanner: Model,
+    ) -> Vec<Grid> {
         let buildings: Vec<(EntityId, TilePos, Model)> = own
             .iter()
             .filter_map(|id| self.machines.get(id))
@@ -62,11 +84,9 @@ impl World {
             let n = nodes.len();
             nodes.entry(*pos).or_insert(n);
         }
-        if let Some(t) = self.teams.get(&team) {
-            for p in &t.wire_tiles {
-                let n = nodes.len();
-                nodes.entry(*p).or_insert(n);
-            }
+        for p in lines {
+            let n = nodes.len();
+            nodes.entry(*p).or_insert(n);
         }
         let mut parent: Vec<usize> = (0..nodes.len()).collect();
         // Adjacent conductors: east and north of each covers every pair.
@@ -81,11 +101,11 @@ impl World {
                 }
             }
         }
-        // A pylon's span, whatever stands between.
-        let span = self.data.model("pylon").span;
+        // A pylon's span, or an aqueduct's, whatever stands between.
+        let span = self.data.model(spanner.name()).span;
         let reach = span.saturating_mul(span);
         for (_, pylon, model) in &buildings {
-            if *model != Model::Pylon {
+            if *model != spanner {
                 continue;
             }
             for (_, other, _) in &buildings {
@@ -103,17 +123,15 @@ impl World {
                 .or_insert_with(|| Grid {
                     label: *id,
                     buildings: Vec::new(),
-                    wires: Vec::new(),
+                    lines: Vec::new(),
                 })
                 .buildings
                 .push(*id);
         }
-        if let Some(t) = self.teams.get(&team) {
-            for p in &t.wire_tiles {
-                let root = find(&mut parent, nodes[p]);
-                if let Some(g) = by_root.get_mut(&root) {
-                    g.wires.push(*p);
-                }
+        for p in lines {
+            let root = find(&mut parent, nodes[p]);
+            if let Some(g) = by_root.get_mut(&root) {
+                g.lines.push(*p);
             }
         }
         let mut grids: Vec<Grid> = by_root.into_values().collect();
@@ -250,7 +268,7 @@ impl World {
             let (f, c) = self.serve(grid, moving);
             figures.push(f);
             changed |= c;
-            live.extend(grid.wires.iter().copied());
+            live.extend(grid.lines.iter().copied());
         }
         for id in own {
             if let Some(m) = self.machines.get_mut(id)

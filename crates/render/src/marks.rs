@@ -27,6 +27,8 @@ pub fn row_key(plan: PlanKind) -> char {
         // For cable, since `W` pans the camera (Q62).
         PlanKind::Wire => 'C',
         PlanKind::Ground => 'G',
+        // The pipe row's key (Q67); T49 puts the row on the strip.
+        PlanKind::Pipe => 'T',
     }
 }
 
@@ -47,6 +49,8 @@ pub struct MarkRows {
     pub paint: Vec<String>,
     pub overlay: Vec<String>,
     pub wire: Vec<String>,
+    /// The pipe row (Q67), which T49 puts on the strip.
+    pub pipe: Vec<String>,
     /// The ground row's tools: [`LOWER`], [`RAISE`] and [`LEVEL`].
     pub ground: Vec<String>,
     /// The highest a tile may stand, which *raise* stops at.
@@ -61,6 +65,7 @@ impl MarkRows {
             paint: Sim::markable(&data, PlanKind::Paint),
             overlay: Sim::markable(&data, PlanKind::Overlay),
             wire: Sim::markable(&data, PlanKind::Wire),
+            pipe: Sim::markable(&data, PlanKind::Pipe),
             ground: [LOWER, RAISE, LEVEL].map(str::to_string).to_vec(),
             height_max: data.world.height.max,
         })
@@ -75,6 +80,7 @@ impl MarkRows {
             PlanKind::Overlay => &self.overlay,
             PlanKind::Wire => &self.wire,
             PlanKind::Ground => &self.ground,
+            PlanKind::Pipe => &self.pipe,
         };
         values.iter().cloned().map(Some).chain([None]).collect()
     }
@@ -312,6 +318,12 @@ mod tests {
                 Some("solar".into()),
                 Some("charger".into()),
                 Some("pylon".into()),
+                // Q67's four, as the data lists them; T49 arms the
+                // entries past the ninth.
+                Some("pump".into()),
+                Some("tank".into()),
+                Some("spout".into()),
+                Some("aqueduct".into()),
                 None
             ]
         );
@@ -456,12 +468,14 @@ mod tests {
             Some(paint_red.clone())
         );
         assert_eq!(r.pick(PlanKind::Paint, 1, &paint_red), Some(Tool::Select));
+        // The building row holds Q67's four now, so its clear is its
+        // tenth entry, past what a digit reaches; T49 arms it by a click.
         assert_eq!(
-            r.pick(PlanKind::Building, 6, &paint_red),
+            r.pick(PlanKind::Building, 10, &paint_red),
             Some(Tool::Mark(PlanKind::Building, None)),
             "the last entry is clear"
         );
-        assert_eq!(r.pick(PlanKind::Building, 7, &Tool::Select), None);
+        assert_eq!(r.pick(PlanKind::Building, 11, &Tool::Select), None);
         assert_eq!(r.pick(PlanKind::Paint, 0, &Tool::Select), None);
     }
 
@@ -556,6 +570,7 @@ mod tests {
             building: None,
             wire: None,
             ground: None,
+            pipe: None,
         };
         assert_eq!(describe(&plans), "paint red · overlay clear");
         assert_eq!(ghost_of(&Tool::Select), None);

@@ -44,6 +44,44 @@ impl TilePos {
     }
 }
 
+/// One of the four sides of a tile, in the order `n`, `e`, `s`, `w`
+/// (`docs/02`): the way a spout pours (`docs/09`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Dir {
+    N,
+    E,
+    S,
+    W,
+}
+
+impl Dir {
+    pub const ALL: [Dir; 4] = [Dir::N, Dir::E, Dir::S, Dir::W];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Dir::N => "n",
+            Dir::E => "e",
+            Dir::S => "s",
+            Dir::W => "w",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<Dir> {
+        Dir::ALL.into_iter().find(|d| d.name() == s)
+    }
+
+    /// The tile beside `p` on this side.
+    pub fn of(self, p: TilePos) -> TilePos {
+        let n = p.neighbours();
+        match self {
+            Dir::N => n[0],
+            Dir::E => n[1],
+            Dir::S => n[2],
+            Dir::W => n[3],
+        }
+    }
+}
+
 /// Row then column (`docs/03`): north to south, then west to east.
 pub fn row_then_column(a: &TilePos, b: &TilePos) -> std::cmp::Ordering {
     b.y.cmp(&a.y).then(a.x.cmp(&b.x))

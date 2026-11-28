@@ -16,14 +16,19 @@
 //! printers taking turns (Q42) all feed the hash; and, for power (Q62,
 //! Q63), a charger, a pylon and a tile of wire that join the two printers
 //! and the charger into one grid, and one bot that paces, so that
-//! inside the run's 480 ticks a battery falls to low power, the hook runs
+//! inside the run's 540 ticks a battery falls to low power, the hook runs
 //! and the bot recharges; and, for the ground and water (Q65, Q66), a
 //! hollow dug beside the lake, a pylon built in it, and a channel cut from
 //! the lake that floods the pylon until it dies of it, while the spring
 //! and the sink keep the lake's water moving; and, for moving (Q65), the
 //! pacing bot first digs a tile and fills the one beside it, falls from
 //! the one onto the other, and mines a rock away, and then, pacing at
-//! full pace, bonks a bot that has stopped beside its lane. The alive test
+//! full pace, bonks a bot that has stopped beside its lane; and, for the
+//! water network (Q67), a second program for the bots, deployed once the
+//! planned printer's site is full, under which they lay wire south from
+//! the base, build a tank, a pump beside the flooded hollow and a spout,
+//! join the spout to the tank with a tile of wire and of pipe, and dig a
+//! hollow that the spout then fills from the lake. The alive test
 //! asserts on what the match must have done, so a run that did nothing
 //! cannot score green.
 
@@ -54,15 +59,18 @@ fn tree(dir: &Path) -> std::collections::BTreeMap<String, sim::Bundle> {
 /// the south-west lake's far corner brings ground water up to the lake's
 /// rim, and a sink beside it takes the lake down to half a level below,
 /// so there is a flow across the lake on every tick of the match, and the
-/// channel the scenario cuts from it stays fed. The first map gets water
-/// of its own with T47; until then the fixture adds its own.
+/// channel the scenario cuts from it stays fed. The spring brings up
+/// twice what the sink takes, so that the sink still has water to take
+/// while the scenario's pump lifts a sink's worth from the hollow (Q67).
+/// The first map gets water of its own with T47; until then the fixture
+/// adds its own.
 fn fixture_map() -> String {
     let first = std::fs::read_to_string(data_dir().join("maps/first.toml")).expect("first map");
     let key = "terrain = \"\"\"";
     assert!(first.contains(key), "the first map has no terrain key");
     let mut text = first.replacen(key, &format!("ground_water = 2\n{key}"), 1);
     text.push_str(
-        "\n[[spring]]\nat = [-10, -6]\nrate = \"0.05\"\nhead = 4\n\n\
+        "\n[[spring]]\nat = [-10, -6]\nrate = \"0.1\"\nhead = 4\n\n\
          [[sink]]\nat = [-9, -6]\nrate = \"0.05\"\nsill = \"3.5\"\n",
     );
     text
@@ -87,6 +95,26 @@ const CHANNEL_MARK: u64 = 385;
 const DUG: TilePos = TilePos::new(-3, 7);
 const FILLED: TilePos = TilePos::new(-2, 7);
 const MINED: TilePos = TilePos::new(0, 6);
+
+/// The tick the waterworks program and its plans are agreed for (Q67):
+/// two ticks after the planned printer's site is full, at 384, which is
+/// when the haulers run out of anything to haul to.
+const WATERWORKS: u64 = 386;
+/// The waterworks, south of the base beside the flooded hollow: the wire
+/// that carries the base's grid down to the tank, the tank, the pump west
+/// of it and north of the hollow, the tile east of the tank that takes a
+/// wire and a pipe, the spout east of that, and the hollow east of the
+/// spout, which `water/main.py` has a bot dig and the spout fills.
+const WATER_WIRE: [TilePos; 3] = [
+    TilePos::new(-9, 1),
+    TilePos::new(-9, 0),
+    TilePos::new(-9, -1),
+];
+const WATER_TANK: TilePos = TilePos::new(-9, -2);
+const WATER_PUMP: TilePos = TilePos::new(-10, -2);
+const WATER_LINE: TilePos = TilePos::new(-8, -2);
+const WATER_SPOUT: TilePos = TilePos::new(-7, -2);
+const WATER_HOLLOW: TilePos = TilePos::new(-6, -2);
 
 /// The canonical golden scenario.
 fn golden_replay() -> Replay {
@@ -229,6 +257,61 @@ fn golden_replay() -> Replay {
             value: Some(down.to_string()),
         },
     ));
+    // The water network (Q67): the player's spout has a program from the
+    // start, and once the haulers have nothing left to haul to, the
+    // `bot` deployment is redeployed with the waterworks program — the
+    // same bundle with another `main.py`, so the hooks stay — and the
+    // plans it carries out are placed: a line of wire south from the
+    // planned printer, a tank at its end with a pump west of it, beside
+    // the flooded hollow, and a spout a tile east, joined to the tank by
+    // a tile that takes both a wire and a pipe.
+    commands.push(Command::new(
+        0,
+        player,
+        7,
+        CommandKind::Deploy {
+            deployment: "spout".into(),
+            bundle: composed["spout"].clone(),
+        },
+    ));
+    let mut waterworks = composed["bot"].clone();
+    let main = std::fs::read_to_string(fixture_dir().join("water/main.py")).expect("water/main.py");
+    for (name, text) in &mut waterworks.files {
+        if name == "main.py" {
+            *text = main.clone();
+        }
+    }
+    commands.push(Command::new(
+        WATERWORKS,
+        player,
+        0,
+        CommandKind::Deploy {
+            deployment: "bot".into(),
+            bundle: waterworks,
+        },
+    ));
+    let mut seq = 1u32;
+    let mut mark = |at: TilePos, plan: PlanKind, value: &str| {
+        commands.push(Command::new(
+            WATERWORKS,
+            player,
+            seq,
+            CommandKind::Mark {
+                at,
+                plan,
+                value: Some(value.into()),
+            },
+        ));
+        seq = seq.saturating_add(1);
+    };
+    for at in WATER_WIRE {
+        mark(at, PlanKind::Wire, "wire");
+    }
+    mark(WATER_LINE, PlanKind::Wire, "wire");
+    mark(WATER_LINE, PlanKind::Pipe, "pipe");
+    mark(WATER_TANK, PlanKind::Building, "tank");
+    mark(WATER_PUMP, PlanKind::Building, "pump");
+    mark(WATER_SPOUT, PlanKind::Building, "spout");
     // The Fool's script, tiles relative to its first start.
     let script =
         sim::script::Script::load(&data_dir().join("opposition/fool")).expect("the Fool's script");
@@ -259,17 +342,19 @@ fn golden_replay() -> Replay {
     Replay {
         map: map_text,
         commands,
-        ticks: 480,
+        ticks: 540,
         version: None,
         final_hash: None,
         team: None,
     }
 }
 
-/// The tick the golden scenario's `bot` redeploy is agreed for, of its
-/// 480: after the pacing bot has run its battery down to the low-power
-/// level and recharged, and the last of the planned buildings is up.
-const REDEPLOY: u64 = 440;
+/// The tick the golden scenario's `bot` redeploy to the guards is agreed
+/// for, of its 540: after the pacing bot has run its battery down to the
+/// low-power level and recharged, and the last of the planned buildings
+/// is on its way up — the waterworks' sites are full by about tick 480,
+/// and stand and pump by themselves from 492.
+const REDEPLOY: u64 = 500;
 
 fn charger_plan(map: &Map) -> TilePos {
     let start = map.teams[0][0];
@@ -348,6 +433,13 @@ struct WaterSeen {
     flooded: u32,
     /// Its health when last seen, and whether it was flooded then.
     last: Option<(lang::Num, bool)>,
+    /// Ticks the spout ended turned east, and ticks the water in the
+    /// hollow it faces rose; and whether it ever rose on any other.
+    pouring: u32,
+    poured: u32,
+    rose_unpoured: bool,
+    /// The most the scenario's tank ever held, in parts.
+    stored: u32,
 }
 
 /// The golden scenario stepped tick by tick for its water: the lake, the
@@ -371,7 +463,13 @@ fn water_seen(replay: &Replay) -> WaterSeen {
         pylon: 0,
         flooded: 0,
         last: None,
+        pouring: 0,
+        poured: 0,
+        rose_unpoured: false,
+        stored: 0,
     };
+    let hollow = sim.world.tile_index(WATER_HOLLOW).expect("hollow");
+    let mut hollow_held = sim.world.tiles[hollow].water;
     for tick in 1..=replay.ticks {
         let mut commands = if tick == 1 {
             log.sets_for(0)
@@ -400,8 +498,33 @@ fn water_seen(replay: &Replay) -> WaterSeen {
             }
             seen.last = Some((m.health, m.flooded));
         }
+        // The spout turns in its slice and the network step pours in the
+        // same tick, so a tick the hollow rose in ends with it turned.
+        let turned = sim
+            .world
+            .machines
+            .values()
+            .any(|m| m.model == Model::Spout && m.pouring == Some(sim::map::Dir::E));
+        let rose = sim.world.tiles[hollow].water > hollow_held;
+        hollow_held = sim.world.tiles[hollow].water;
+        seen.pouring = seen.pouring.saturating_add(u32::from(turned));
+        seen.poured = seen.poured.saturating_add(u32::from(rose));
+        seen.rose_unpoured |= rose && !turned;
+        let stored = sim
+            .world
+            .machines
+            .values()
+            .filter(|m| m.model == Model::Tank)
+            .map(|m| m.water)
+            .max()
+            .unwrap_or(0);
+        seen.stored = seen.stored.max(stored);
     }
     seen
+}
+
+fn tile_at(w: &sim::World, at: TilePos) -> &sim::world::Tile {
+    w.tile(at).expect("on the map")
 }
 
 /// What moving did (Q65; `docs/03`, Moving), seen tick by tick.
@@ -553,7 +676,7 @@ fn golden_scenario_is_alive() {
     // fail here, not agree with itself.
     assert_eq!(
         run.hashes.len(),
-        480,
+        540,
         "the match ended early: {:?}",
         run.sim.ended()
     );
@@ -728,6 +851,103 @@ fn golden_scenario_is_alive() {
         !w.machines.values().any(|m| m.pos == HOLLOW),
         "the flooded pylon is still standing"
     );
+    // The water network (Q67; `docs/09`). Under the waterworks program
+    // the bots built a tank, a pump and a spout, one of each and where
+    // they were planned; laid the wire that carries the base's grid to
+    // them — the loop above has found each on the one grid and powered —
+    // and the tile of pipe between the tank and the spout; and every
+    // plan of it is done with.
+    for (model, at) in [
+        (Model::Tank, WATER_TANK),
+        (Model::Pump, WATER_PUMP),
+        (Model::Spout, WATER_SPOUT),
+    ] {
+        let built = of(model);
+        assert_eq!(
+            built.len(),
+            1,
+            "the planned {} was never built",
+            model.name()
+        );
+        assert_eq!(built[0].pos, at);
+        assert!(built[0].watered, "{} is dry", built[0].name);
+        assert!(w.plans(player, at).is_none());
+    }
+    for at in WATER_WIRE {
+        assert!(w.has_wire(player, at), "no wire at {at:?}");
+        assert!(w.plans(player, at).is_none());
+    }
+    assert!(w.has_wire(player, WATER_LINE) && w.has_pipe(player, WATER_LINE));
+    assert!(w.plans(player, WATER_LINE).is_none(), "the line's plans");
+    // The three are one water network, labelled by its oldest building,
+    // and the pipe is what makes them one: the spout touches neither of
+    // the others. Wire joins no network, so no printer is on it.
+    let (tank, pump, spout) = (of(Model::Tank)[0], of(Model::Pump)[0], of(Model::Spout)[0]);
+    let label = [tank.id, pump.id, spout.id].into_iter().min();
+    for m in [tank, pump, spout] {
+        assert_eq!(m.network, label, "{} is on another network", m.name);
+    }
+    assert!(!spout.pos.is_adjacent(tank.pos) && !spout.pos.is_adjacent(pump.pos));
+    assert!(
+        of(Model::Printer).iter().all(|m| m.network != label),
+        "a printer is on the waterworks' network"
+    );
+    // The pump has the flooded hollow for a source and still lifts, into
+    // the tank; nothing on the network needs any.
+    let figures = w.teams[&player]
+        .networks
+        .iter()
+        .find(|n| Some(n.network) == label)
+        .expect("the waterworks' figures");
+    let rows = (w.data.model("pump"), w.data.model("tank"));
+    assert_eq!(
+        (figures.supply, figures.drain, figures.capacity),
+        (u64::from(rows.0.pump_rate), 0, u64::from(rows.1.tank)),
+        "the network's supply, drain and capacity"
+    );
+    assert_eq!(figures.stored, u64::from(tank.water));
+    assert!(tank.water > 0, "the pump never filled the tank");
+    // The hollow east of the spout was dug a level down, and the spout
+    // filled it, to the four fifths of a level its program stops at, and
+    // turned itself off. The ground beside the hollow is dry, so nothing
+    // but the spout put water in it: it rose on ticks the spout was
+    // turned east and on no other, and the water came from the flooded
+    // hollow by the lake, four tiles west, none of it across the ground
+    // between.
+    let hollow = tile_at(w, WATER_HOLLOW);
+    assert_eq!(
+        hollow.height.level(),
+        ground.saturating_sub(1),
+        "the spout's hollow was never dug"
+    );
+    let full = w
+        .data
+        .world
+        .water
+        .parts
+        .saturating_mul(4)
+        .checked_div(5)
+        .unwrap_or(0);
+    assert!(
+        hollow.water >= full,
+        "the spout left the hollow at {} parts of {full}",
+        hollow.water
+    );
+    assert_eq!(spout.pouring, None, "the spout is still pouring");
+    for beside in WATER_HOLLOW.neighbours() {
+        assert!(
+            tile_at(w, beside).water < wet,
+            "water stands at {beside:?}, beside the hollow"
+        );
+    }
+    assert!(
+        seen.poured >= 10 && seen.pouring >= seen.poured && !seen.rose_unpoured,
+        "the hollow rose on {} ticks, the spout was turned east on {}, and it rose on another: {}",
+        seen.poured,
+        seen.pouring,
+        seen.rose_unpoured
+    );
+    assert!(seen.stored >= tank.water);
     // Moving (Q65; `docs/03`). The pacing bot dug a tile a level down
     // and filled the one beside it a level up with that earth, and mined
     // a rock, which is ground now at the height it had.
