@@ -45,6 +45,7 @@ pub mod input;
 pub mod launch;
 pub mod layout;
 pub mod marks;
+pub mod motion;
 pub mod outlines;
 pub mod palette;
 pub mod playback;

@@ -4,7 +4,10 @@
 use crate::command::TeamId;
 use crate::map::TilePos;
 use crate::tick::Sim;
-use crate::world::{GridFigures, LogEntry, Machine, MachineRecord, Plans, Sound, TileMemory};
+use crate::world::{
+    Action, Effect, EntityId, GridFigures, LogEntry, Machine, MachineRecord, Plans, Sound,
+    TileMemory, World,
+};
 use lang::FaultRecord;
 use std::collections::BTreeMap;
 
@@ -16,16 +19,60 @@ pub struct MachineSnapshot {
     pub runs: Option<u64>,
     pub log: Vec<LogEntry>,
     pub fault: Option<FaultRecord>,
+    /// A bot's move or bonk in progress (T46), for the renderer alone:
+    /// read off the machine's action as the snapshot is taken, stored
+    /// nowhere in the world, and no part of the record or the state hash.
+    pub moving: Option<Motion>,
+}
+
+/// A move or a bonk in progress (`docs/03`, Moving), as the renderer needs
+/// it to draw one over the whole of its ticks: `record.busy` is `"move"`
+/// for both and `record.progress` the ticks left, which say neither where
+/// the bot is headed nor how far through it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Motion {
+    /// The tile a move takes the bot onto, or the tile of the bot a bonk
+    /// is on.
+    pub to: TilePos,
+    /// The ticks the whole of it takes, of which `record.progress` are
+    /// left: a bonk's are its model's `bonk_ticks`, and a move's are
+    /// worked out again from the bot's pace and the slope, which is what
+    /// fixed them as it began unless the ground has changed under it
+    /// since. Never fewer than are left.
+    pub ticks: u64,
+    /// The bot a bonk is on; `None` for a move.
+    pub bonk: Option<EntityId>,
 }
 
 impl MachineSnapshot {
-    pub(crate) fn of(m: &Machine) -> MachineSnapshot {
+    pub(crate) fn of(w: &World, m: &Machine) -> MachineSnapshot {
         MachineSnapshot {
             record: MachineRecord::of(m),
             runs: m.program.as_ref().map(|p| p.version()),
             log: m.log.clone(),
             fault: m.program.as_ref().and_then(|p| p.fault_record.clone()),
+            moving: Motion::of(w, m),
         }
+    }
+}
+
+impl Motion {
+    fn of(w: &World, m: &Machine) -> Option<Motion> {
+        let Action {
+            remaining, effect, ..
+        } = m.action.as_ref()?;
+        let (to, ticks, bonk) = match effect {
+            Effect::Move { to } => (*to, w.move_ticks(m.id, *to), None),
+            Effect::Bonk { to, target } => {
+                (*to, w.data.model(m.model.name()).bonk_ticks, Some(*target))
+            }
+            _ => return None,
+        };
+        Some(Motion {
+            to,
+            ticks: ticks.max(*remaining),
+            bonk,
+        })
     }
 }
 
@@ -63,7 +110,11 @@ pub struct Snapshot {
 impl Sim {
     pub fn snapshot(&self) -> Snapshot {
         let w = &self.world;
-        let machines = w.machines.values().map(MachineSnapshot::of).collect();
+        let machines = w
+            .machines
+            .values()
+            .map(|m| MachineSnapshot::of(w, m))
+            .collect();
         let teams = w
             .teams
             .values()
