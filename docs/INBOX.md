@@ -35,28 +35,4 @@ still has to say why.
 
 ## Open
 
-**I13 — Two places the ground row does not do what `07` says, both on purpose**
-
-Building `07`'s ground row (T46) turned up two sentences of Marks that
-cannot be followed to the letter. *A ground plan shows as the tile's
-outline at the planned height*: for a plan to lower a tile that height
-is under the ground, where no outline can be seen, so the renderer
-draws the outline on the tile and hatches the ground to be taken away,
-as a clear plan's slot is hatched; a plan to raise does float its
-outline at the planned height, on a see-through block of the earth to
-add. And *none is sent for a tile already known to be ground at that
-height*: where such a tile holds a plan for some other height, sending
-nothing leaves that plan standing, so a second stroke of *raise* over a
-tile planned a level down, or *level* over one, could never bring it
-back; the renderer sends the `Unmark` there. Both read as what Q65
-meant, and neither is what `07` says.
-
-**I14 — `02` and `07` are within two kilobytes of the size cap, and Q67's rows went to `09` for it**
-
-Writing Q67, the rows a ruling adds to a machine — four models, five
-attributes, two senses and three actions — would not fit in `02`, which
-stood at 38,957 bytes of 40,960, so they are in `09` and `02` points
-there; `07` took one short entry and stands as close. `02` owns what a
-machine is, senses and does, and now holds that for everything but the
-water network. Either doc wants splitting into a doorway and parts
-before the next ruling that touches it.
+*(none — every observation so far is triaged)*

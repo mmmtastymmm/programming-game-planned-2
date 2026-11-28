@@ -53,20 +53,6 @@ from a standstill refused, and a bonked bot's action ended — and the
 golden replay, which already digs, gains a filled and a mined tile, a
 fall and a bonk, and the PR says why every hash moved.
 
-**T44 — Sight over height in `sim`** `⚠HASH`
-
-`03`'s Line of sight, as Q65 extends it and Q68 amends it. A tile on
-the ray blocks when it is higher than the seer's ground and stands
-above the straight line between that ground and the seen tile's, by
-the integer test `03` gives; a machine's range to a
-tile is its vision plus its height less the tile's, nothing below
-zero; `attack` gains the blocking and keeps its range; hearing is
-unchanged. A change of height, or a mined rock, is a change to what a
-team sees, so it bumps the count the sight cache holds (T38), and the
-gates seed one that forgets. Tests: a ridge between two machines, a
-machine on a hill and one in a pit, level ground as before, and the
-walk from each end, since the ray is not symmetric.
-
 **T46 — Height and water in `render`: what is left**
 
 `07`'s Q65 entry is drawn but for what waits on T43: tiles at their
@@ -138,3 +124,17 @@ the spout's pouring toward the lowest ground beside it; `jobs` lays
 and takes up planned pipe as it does wire, and `act` gains the guarded
 calls. The starter tests run a match in which a pump, pipe and a spout
 are planned and built and a hollow fills.
+
+## M15 — The corpus
+
+**T51 — Split `02` and `07` into a doorway and parts**
+
+Both stand within two kilobytes of the size cap (I14), and Q67 had to
+put the rows it adds to a machine in `09` for want of room in `02`.
+Each splits as CLAUDE.md's *Splitting a doc* has it: a doorway holding
+the invariants that cross its parts and a table of what each part
+owns, and parts that open with their breadcrumb. `02`'s Decided
+entries, attributes, senses and actions want a part each, and with
+room made, the models, attributes, senses and actions Q67 listed in
+`09` move back to `02`, with `09` citing them. Every link into either
+doc still resolves, and the checks that read a doc's layout pass.
