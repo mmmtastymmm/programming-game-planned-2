@@ -44,6 +44,7 @@ fn lab_data() -> Data {
         max_rate: 100,
         passes: 4,
         flood_damage: data.world.water.flood_damage,
+        cushion: 50,
     };
     data
 }

@@ -234,6 +234,7 @@ mod tests {
                 powered: Some(true),
                 grid: Some(None),
                 flooded: false,
+                pace: None,
             }),
         }
     }

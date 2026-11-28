@@ -282,6 +282,18 @@ impl<'a> GameHost<'a> {
         effect: Effect,
         noisy: bool,
     ) -> R<HostCall> {
+        self.begin_heard(name, ticks, effect, noisy.then_some(name))
+    }
+
+    /// [`GameHost::begin`], for an action whose sound is not its name: a
+    /// bonk is a `move` that sounds `"bonk"` (`docs/03`, Moving).
+    fn begin_heard(
+        &mut self,
+        name: &'static str,
+        ticks: u64,
+        effect: Effect,
+        sound: Option<&'static str>,
+    ) -> R<HostCall> {
         let me = self.me();
         if me.action.is_some() {
             return Err(value_error());
@@ -295,8 +307,8 @@ impl<'a> GameHost<'a> {
             remaining: ticks,
             effect,
         });
-        if noisy {
-            self.world.sound(name, pos);
+        if let Some(cause) = sound {
+            self.world.sound(cause, pos);
         }
         Ok(HostCall::Wait)
     }
@@ -313,13 +325,33 @@ impl<'a> GameHost<'a> {
         self.world.data.model(self.me().model.name()).clone()
     }
 
-    fn move_to_tile(&mut self, to: TilePos) -> R<HostCall> {
+    /// Begin a move onto the adjacent `to`, which the caller has found
+    /// open to it: its ticks are fixed here, from the bot's pace and how
+    /// the ground lies (`docs/03`, Pace).
+    fn begin_move(&mut self, to: TilePos) -> R<HostCall> {
+        let ticks = self.world.move_ticks(self.id, to);
+        self.begin("move", ticks, Effect::Move { to }, true)
+    }
+
+    /// `move(dir)`'s tile: a step or a drop — only this form drops
+    /// (`docs/03`, A drop) — that is unoccupied, or that holds a bot a
+    /// bot with pace bonks (`docs/03`, A bonk).
+    fn move_onto(&mut self, to: TilePos) -> R<HostCall> {
         // A flooded bot cannot move (`docs/09`); every other call runs.
-        if self.me().flooded || !self.world.steps(self.pos(), to) || self.world.occupied(to) {
+        if self.me().flooded || !self.world.steps_or_drops(self.pos(), to) {
             return Err(value_error());
         }
-        let ticks = self.model_data().move_ticks;
-        self.begin("move", ticks, Effect::Move { to }, true)
+        if !self.world.occupied(to) {
+            return self.begin_move(to);
+        }
+        // An occupied tile is the `ValueError` it always was, but for a
+        // bot with pace that finds a bot there, not itself in a move.
+        let target = self.world.bonkable(to).filter(|_| self.me().pace > 0);
+        let Some(target) = target else {
+            return Err(value_error());
+        };
+        let ticks = self.model_data().bonk_ticks;
+        self.begin_heard("move", ticks, Effect::Bonk { to, target }, Some("bonk"))
     }
 
     fn action_move(&mut self, args: &[Value]) -> R<HostCall> {
@@ -336,7 +368,7 @@ impl<'a> GameHost<'a> {
             "w" => n[3],
             _ => return Err(value_error()),
         };
-        self.move_to_tile(to)
+        self.move_onto(to)
     }
 
     fn action_move_to(&mut self, args: &[Value]) -> R<HostCall> {
@@ -361,7 +393,8 @@ impl<'a> GameHost<'a> {
         let Some((_, to)) = best else {
             return Err(value_error());
         };
-        self.move_to_tile(to)
+        // One step, never a drop and never a bonk.
+        self.begin_move(to)
     }
 
     fn action_pick(&mut self, args: &[Value]) -> R<HostCall> {

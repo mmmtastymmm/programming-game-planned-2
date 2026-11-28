@@ -229,6 +229,13 @@ pub enum Effect {
     Mine {
         at: TilePos,
     },
+    /// A `move` onto the tile of a bot (`docs/03`, Moving): on completion
+    /// `target`, if it still stands on `to`, is put a tile onward. The
+    /// bot stays on its own tile throughout.
+    Bonk {
+        to: TilePos,
+        target: EntityId,
+    },
     Wait,
 }
 
@@ -304,6 +311,10 @@ pub struct Machine {
     /// Flooded as the last water step left it (`docs/09`): a bot in more
     /// water than it wades, a building or a site on a wet tile.
     pub flooded: bool,
+    /// What a bot has gained by keeping moving (`docs/03`, Moving): zero
+    /// as printed, raised as a move completes, and lost as a tick's
+    /// slices end with the bot in no move. Always zero on a building.
+    pub pace: u64,
     /// `low_power` fell due during the machine's own slice, where its
     /// program is out of its body: the interpreter collects it after the
     /// call that caused it (`Host::take_raised`). Never set between calls.
@@ -350,6 +361,18 @@ impl Machine {
             return true;
         }
         matches!(&self.action, Some(Action { effect: Effect::Move { to }, .. }) if *to == p)
+    }
+
+    /// Whether it is in a move (`docs/03`, Moving): between two tiles and
+    /// on both. A bot in a bonk is on its own tile alone, and in none.
+    pub fn in_move(&self) -> bool {
+        matches!(
+            &self.action,
+            Some(Action {
+                effect: Effect::Move { .. },
+                ..
+            })
+        )
     }
 }
 
@@ -403,6 +426,8 @@ pub struct MachineRecord {
     pub grid: Option<Option<EntityId>>,
     /// Whether the last water step left it flooded (`docs/09`).
     pub flooded: bool,
+    /// A bot's `pace` (`docs/03`, Moving); absent on a building.
+    pub pace: Option<u64>,
 }
 
 impl MachineRecord {
@@ -427,6 +452,7 @@ impl MachineRecord {
             powered: m.is_building().then_some(m.powered),
             grid: m.is_building().then_some(m.grid),
             flooded: m.flooded,
+            pace: m.is_bot().then_some(m.pace),
         }
     }
 }
@@ -545,7 +571,8 @@ pub struct World {
     /// Sounds of the previous tick, what `hear()` returns; and this tick's.
     pub sounds_prev: Vec<Sound>,
     pub sounds_now: Vec<Sound>,
-    /// Attack hits landed this tick, summed per target in step 4.
+    /// Attack hits landed this tick, and what this tick's falls cost
+    /// (`docs/03`, A fall), summed per target in step 4.
     pub pending_damage: BTreeMap<EntityId, Num>,
     /// Machines whose `death` epilogue ran this tick, removed in step 4.
     pub dead: BTreeSet<EntityId>,
@@ -741,6 +768,7 @@ impl World {
                     powered: m.powered,
                     grid: m.grid,
                     flooded: m.flooded,
+                    pace: m.pace,
                     low_power_due: m.low_power_due,
                     program: m.program.as_ref().map(|p| p.deep_copy()),
                     log: m.log.clone(),
@@ -837,10 +865,16 @@ impl World {
     /// A step): passable terrain, ground it can step across, and water
     /// no deeper than it wades.
     pub fn steps(&self, from: TilePos, to: TilePos) -> bool {
-        self.passable(to)
-            && self.slope(from, to).is_some_and(Slope::is_step)
+        self.slope(from, to).is_some_and(Slope::is_step) && self.stands(to)
+    }
+
+    /// Whether a bot may stand on `p` once it is there: passable terrain
+    /// under water no deeper than a bot wades. What a step and a drop
+    /// both ask of the tile, apart from how the ground lies.
+    pub(crate) fn stands(&self, p: TilePos) -> bool {
+        self.passable(p)
             && self
-                .tile(to)
+                .tile(p)
                 .is_some_and(|t| t.water <= self.data.world.water.wade)
     }
 
@@ -1025,6 +1059,7 @@ impl World {
                 powered: model != Model::Bot && model != Model::Site,
                 grid: None,
                 flooded: false,
+                pace: 0,
                 low_power_due: false,
                 program,
                 log: Vec::new(),

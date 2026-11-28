@@ -209,6 +209,7 @@ impl Sim {
                 }
             }
         }
+        self.world.slices_end();
         // 3. Completions, ascending id.
         self.completions();
         // 4. Damage and death.
@@ -516,9 +517,8 @@ impl Sim {
     fn finish(&mut self, id: EntityId, effect: Effect) -> Value {
         let w = &mut self.world;
         match effect {
-            Effect::Move { to } => {
-                w.move_machine(id, to);
-            }
+            Effect::Move { to } => w.land(id, to),
+            Effect::Bonk { to, target } => w.bonk(id, to, target),
             Effect::Pick { kind, from } => {
                 let amount = {
                     let host = GameHost { world: w, id };
@@ -885,8 +885,9 @@ impl Sim {
         }
     }
 
-    /// Step 4 up to the removals: attacks and printer defence, summed per
-    /// target; `dying` and `death` raised. It leaves in `world.dead` every
+    /// Step 4 up to the removals: attacks, this tick's falls and printer
+    /// defence, summed per target; `dying` and `death` raised. It leaves
+    /// in `world.dead` every
     /// machine the step removes, in the order it removes them, and returns
     /// the ones this step's damage killed — the rest died in their own
     /// slices. The caller removes them; a fork stops between this and a
@@ -1336,6 +1337,15 @@ fn write_record(h: &mut Fnv1a, r: &MachineRecord) {
     }
     // Flooding (Q65): set by the water step, read until the next.
     h.write_u8(u8::from(r.flooded));
+    // A bot's pace (Q65; `docs/03`, Moving), which the next move's ticks
+    // are fixed from.
+    match r.pace {
+        None => h.write_u8(0),
+        Some(pace) => {
+            h.write_u8(1);
+            h.write_u64(pace);
+        }
+    }
 }
 
 /// Load a bundle from the log's files (`docs/01`, The bundle).

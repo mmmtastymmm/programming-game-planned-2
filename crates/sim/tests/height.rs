@@ -164,10 +164,15 @@ fn a_bot_steps_one_level_and_no_more() {
     // From the east, the rise is a cliff: the move is refused.
     let (pos, logs) = walk(at(1, 1), try_west, 6);
     assert_eq!((pos, logs), (at(1, 1), vec!["refused".to_string()]));
-    // From the top, the same edge is a drop, which is no step either.
+    // From the top, the same edge is a drop: no step, so `move_to` never
+    // takes it, but `move` does, and the bot falls (`tests/moving.rs`).
     let try_east = try_west.replace("'w'", "'e'");
     let (pos, logs) = walk(at(0, 1), &try_east, 6);
-    assert_eq!((pos, logs), (at(0, 1), vec!["refused".to_string()]));
+    assert_eq!((pos, logs), (at(1, 1), vec!["moved".to_string()]));
+    let step_east = "try:\n    move_to(3, 1)\n    log('stepped')\nexcept ValueError:\n    log('refused')\nwhile True:\n    wait(1)\n";
+    // Every way off the top but west is a drop, so west is its one step.
+    let (pos, logs) = walk(at(0, 1), step_east, 6);
+    assert_eq!((pos, logs), (at(-1, 1), vec!["stepped".to_string()]));
     // From the west it is two steps up.
     let climb = "move('e')\nmove('e')\nlog('up')\nwhile True:\n    wait(1)\n";
     let (pos, logs) = walk(at(-2, 1), climb, 8);

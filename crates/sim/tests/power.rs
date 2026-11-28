@@ -237,9 +237,11 @@ fn low_power_comes_once_per_fall_waits_for_the_action_and_main_flow_goes_on() {
     let b = bot(&mut s, T0, at(0, -2), "21.5");
     let program = "n = 0\nwhile True:\n    move('e' if n % 2 == 0 else 'w')\n    n += 1\n    log('moved', n)\ndef on_low_power():\n    log('hook at', me().pos[0], 'busy', me().busy)\n";
     let mut lines = run(&mut s, vec![deploy(0, "bot", program)], 12);
-    // Each move takes 1 and its two ticks give 0.2 back: 20.7 after the
-    // first, 19.9 after the second — which trips it as it begins, and the
-    // hook runs once that move has landed, back at x = 0.
+    // Each move takes 1, and the first move's two ticks give 0.2 back:
+    // 20.7 as the second begins, which leaves 19.7 — it trips as it
+    // begins, and the hook runs once that move has landed, back at x = 0.
+    // From its second move the bot has its pace (`docs/03`, Moving), and
+    // a move takes a tick: ten have landed and been counted in twelve.
     assert_eq!(
         lines_of(&lines, b),
         [
@@ -248,12 +250,21 @@ fn low_power_comes_once_per_fall_waits_for_the_action_and_main_flow_goes_on() {
             "moved 2",
             "moved 3",
             "moved 4",
-            "moved 5"
+            "moved 5",
+            "moved 6",
+            "moved 7",
+            "moved 8",
+            "moved 9",
+            "moved 10"
         ],
         "one hook, after the move that tripped it, and `n` kept counting"
     );
     assert!(!machine(&s, b).armed);
-    lines.extend(run(&mut s, vec![], 20));
+    // Ten more ticks, and not so many that it runs out: at a move a tick
+    // it loses 0.9 a tick net of its solar, and a bot that wakes from
+    // being out of power takes a `low_power` of its own (Q63).
+    lines.extend(run(&mut s, vec![], 10));
+    assert!(!machine(&s, b).flat && machine(&s, b).charge < num("20"));
     assert_eq!(
         lines_of(&lines, b)
             .iter()

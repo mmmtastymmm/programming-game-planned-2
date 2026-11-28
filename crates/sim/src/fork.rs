@@ -851,6 +851,7 @@ impl Fork {
                     report,
                 } => {
                     let Some(&id) = ids.get(at) else {
+                        self.sim.world.slices_end();
                         self.sim.completions();
                         let killed = self.sim.damage_apply();
                         self.stage = Stage::Damage {

@@ -35,7 +35,9 @@ earth_per_level = 1
 # water. The flow runs passes times in a tick, so water moves up to
 # passes tiles a tick and a slope carries passes times what one pass
 # would. A flooded machine (a bot in more than wade, a building or a site
-# on a wet tile) loses flood_damage health a tick.
+# on a wet tile) loses flood_damage health a tick. A bot that falls onto a
+# tile holding cushion levels of water or more takes no harm from the fall
+# (docs/03, Moving): half of what it wades, so a puddle breaks nothing.
 parts = 1000
 wet = "0.1"
 film = 4
@@ -43,6 +45,7 @@ wade = 1
 max_rate = 1
 passes = 4
 flood_damage = "0.2"
+cushion = "0.5"
 
 [deposit.ore]
 # a map may set a deposit's cap and regrowth per tile up to these

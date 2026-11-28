@@ -102,6 +102,10 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
             },
         ));
     }
+    // A bot's pace (`docs/03`, Moving).
+    if let Some(pace) = r.pace {
+        fields.push(("pace", int(i128::from(pace))));
+    }
     fields.push(("flooded", Value::Bool(r.flooded)));
     record("machine", fields)
 }
