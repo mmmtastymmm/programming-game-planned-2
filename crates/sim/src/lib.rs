@@ -7,6 +7,7 @@
 //!
 //! Layout: [`data`] the tuning tables, [`map`] the rectangle and its
 //! terrain, [`world`] the state, [`sense`] line of sight and vision,
+//! [`moving`] pace, falls and bonks,
 //! [`power`] grids and the power step, [`records`] what programs read,
 //! [`host`] the game builtins as the
 //! language's host, [`tick`] the nine steps and the state hash,
@@ -21,6 +22,7 @@ pub mod fork;
 pub mod hash;
 pub mod host;
 pub mod map;
+pub mod moving;
 pub mod power;
 pub mod records;
 pub mod rng;

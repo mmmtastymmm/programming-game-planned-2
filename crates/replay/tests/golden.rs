@@ -15,13 +15,17 @@
 //! the player's bots build, so the rising price, construction and two
 //! printers taking turns (Q42) all feed the hash; and, for power (Q62,
 //! Q63), a charger, a pylon and a tile of wire that join the two printers
-//! and the charger into one grid, and one bot that only paces, so that
+//! and the charger into one grid, and one bot that paces, so that
 //! inside the run's 480 ticks a battery falls to low power, the hook runs
 //! and the bot recharges; and, for the ground and water (Q65, Q66), a
 //! hollow dug beside the lake, a pylon built in it, and a channel cut from
 //! the lake that floods the pylon until it dies of it, while the spring
-//! and the sink keep the lake's water moving. The alive test asserts on what
-//! the match must have done, so a run that did nothing cannot score green.
+//! and the sink keep the lake's water moving; and, for moving (Q65), the
+//! pacing bot first digs a tile and fills the one beside it, falls from
+//! the one onto the other, and mines a rock away, and then, pacing at
+//! full pace, bonks a bot that has stopped beside its lane. The alive test
+//! asserts on what the match must have done, so a run that did nothing
+//! cannot score green.
 
 use replay::Replay;
 use sim::world::Model;
@@ -75,6 +79,14 @@ const CHANNEL: TilePos = TilePos::new(-10, -4);
 /// channel is early enough for the run to see it die.
 const PYLON_MARK: u64 = 360;
 const CHANNEL_MARK: u64 = 385;
+
+/// The ground the scenario's pacing bot works before it paces, east of
+/// its lane (`bot.py`'s `CREW`): a tile it digs a level down, the tile
+/// east of that, which it fills a level up with the earth and then falls
+/// from onto the first, and a rock it mines away.
+const DUG: TilePos = TilePos::new(-3, 7);
+const FILLED: TilePos = TilePos::new(-2, 7);
+const MINED: TilePos = TilePos::new(0, 6);
 
 /// The canonical golden scenario.
 fn golden_replay() -> Replay {
@@ -392,6 +404,108 @@ fn water_seen(replay: &Replay) -> WaterSeen {
     seen
 }
 
+/// What moving did (Q65; `docs/03`, Moving), seen tick by tick.
+struct MovingSeen {
+    /// The most pace a player bot ever had.
+    pace: u64,
+    /// Each fall: a bot that a tick left on a tile lower than the one it
+    /// stood on by more than a step — the levels, and the health it lost
+    /// in that tick.
+    falls: Vec<(u8, lang::Num)>,
+    /// The ticks a bonk was heard beginning.
+    bonks: u32,
+    /// Each bonk that put a bot a tile onward: the tick, what that bot
+    /// was doing, and whether the bonk ended it with nothing done — no
+    /// action left, and its load as it was. A bot that left the tile by
+    /// a move of its own is none of these: it was in that move as the
+    /// tick began, or was heard beginning it in the tick.
+    shoved: Vec<(u64, Option<&'static str>, bool)>,
+}
+
+/// The golden scenario stepped tick by tick for its moving.
+fn moving_seen(replay: &Replay) -> MovingSeen {
+    use sim::world::Effect;
+    let data = Data::load().expect("data");
+    let mut sim = sim::Sim::new(Map::parse(&replay.map, &data).expect("map"));
+    let log = replay.log();
+    let step = data.world.height.step;
+    let mut seen = MovingSeen {
+        pace: 0,
+        falls: Vec::new(),
+        bonks: 0,
+        shoved: Vec::new(),
+    };
+    for tick in 1..=replay.ticks {
+        let mut commands = if tick == 1 {
+            log.sets_for(0)
+        } else {
+            Vec::new()
+        };
+        commands.extend(log.sets_for(tick));
+        // Where every bot stood and what it had as the tick began, and
+        // the bonks that will complete in it.
+        let before: std::collections::BTreeMap<sim::EntityId, (TilePos, lang::Num)> = sim
+            .world
+            .machines
+            .values()
+            .filter(|m| m.model == Model::Bot)
+            .map(|m| (m.id, (m.pos, m.health)))
+            .collect();
+        let due: Vec<_> = sim
+            .world
+            .machines
+            .values()
+            .filter_map(|m| match m.action.as_ref() {
+                Some(a) if a.remaining <= 1 => match a.effect {
+                    Effect::Bonk { to, target } => Some((to, target)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .filter_map(|(to, target)| {
+                let t = sim.world.machines.get(&target)?;
+                (t.pos == to && !t.in_move()).then(|| (to, target, t.busy(), t.load.clone()))
+            })
+            .collect();
+        sim.step(&commands, &[]);
+        let w = &sim.world;
+        let level = |p: TilePos| w.tile(p).expect("on the map").height.level();
+        for m in w.machines.values().filter(|m| m.model == Model::Bot) {
+            if m.team == TeamId(0) {
+                seen.pace = seen.pace.max(m.pace);
+            }
+            let Some((pos, health)) = before.get(&m.id).copied() else {
+                continue;
+            };
+            let fell = level(pos).saturating_sub(level(m.pos));
+            if m.pos != pos && fell > step {
+                let lost = health.checked_sub(m.health).expect("health");
+                seen.falls.push((fell, lost));
+            }
+        }
+        seen.bonks = seen.bonks.saturating_add(
+            w.sounds_prev
+                .iter()
+                .filter(|snd| snd.cause == "bonk")
+                .count() as u32,
+        );
+        for (to, target, busy, load) in due {
+            let Some(t) = w.machines.get(&target) else {
+                continue;
+            };
+            let left = w
+                .sounds_prev
+                .iter()
+                .any(|snd| snd.cause == "move" && snd.pos == to);
+            if t.pos != to && !left {
+                seen.shoved
+                    .push((tick, busy, t.action.is_none() && t.load == load));
+            }
+        }
+    }
+    seen
+}
+
 fn hashes_to_text(hashes: &[u64]) -> String {
     hashes.iter().map(|h| format!("{h:016x}\n")).collect()
 }
@@ -488,7 +602,7 @@ fn golden_scenario_is_alive() {
     });
     assert!(ore_moved, "no ore was ever picked");
     assert_eq!(w.speed, 2, "the SetSpeed did not land");
-    // The bots built the planned printer (by about tick 400), so the
+    // The bots built the planned printer (by about tick 435), so the
     // player ends with two, and the plan was consumed.
     let printers: Vec<u32> = w
         .machines
@@ -613,6 +727,67 @@ fn golden_scenario_is_alive() {
     assert!(
         !w.machines.values().any(|m| m.pos == HOLLOW),
         "the flooded pylon is still standing"
+    );
+    // Moving (Q65; `docs/03`). The pacing bot dug a tile a level down
+    // and filled the one beside it a level up with that earth, and mined
+    // a rock, which is ground now at the height it had.
+    let start = Map::parse(&replay.map, &w.data).expect("map");
+    let tile = |at: TilePos| w.tile(at).expect("on the map");
+    assert_eq!(
+        (tile(DUG).height.level(), tile(FILLED).height.level()),
+        (ground.saturating_sub(1), ground.saturating_add(1)),
+        "the tile was never dug, or the one beside it never filled"
+    );
+    assert_eq!(
+        start.tile(MINED).map(|t| t.terrain),
+        Some(sim::map::Terrain::Rock),
+        "the scenario mines what was never rock"
+    );
+    assert_eq!(
+        (tile(MINED).terrain, tile(MINED).height),
+        (
+            sim::map::Terrain::Ground,
+            start.tile(MINED).expect("on the map").height
+        ),
+        "the rock was never mined"
+    );
+    // And what the final state cannot show. One bot fell, the two levels
+    // from the filled tile to the dug one, and lost a level's damage for
+    // it in that tick; a bot reached full pace; and before the redeploy
+    // one bonk put a bot onward, one that was picking, and ended its pick
+    // with nothing picked. The redeploy's guards all walk west, and bonk
+    // one another: every bot a bonk put onward had its action ended, and
+    // no bot was put onward by a bonk nobody heard begin.
+    let moved = moving_seen(&replay);
+    let bot = w.data.model("bot");
+    assert_eq!(
+        moved.falls,
+        [(2, bot.fall_damage)],
+        "the falls, as (levels, health lost)"
+    );
+    assert_eq!(moved.pace, bot.pace_max, "no bot ever reached full pace");
+    let first: Vec<_> = moved
+        .shoved
+        .iter()
+        .filter(|(tick, ..)| *tick < REDEPLOY)
+        .map(|(_, busy, undone)| (*busy, *undone))
+        .collect();
+    assert_eq!(
+        first,
+        [(Some("pick"), true)],
+        "the bots a bonk put onward before the redeploy, as (what each was doing, whether it ended undone) {:?}",
+        moved.shoved
+    );
+    assert!(
+        moved.shoved.iter().all(|(.., undone)| *undone),
+        "a bonk put a bot onward and left its action running: {:?}",
+        moved.shoved
+    );
+    assert!(
+        moved.bonks as usize >= moved.shoved.len(),
+        "{} bonks were heard and {} bots put onward",
+        moved.bonks,
+        moved.shoved.len()
     );
     let remembered = w.teams[&TeamId(0)]
         .memory

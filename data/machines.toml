@@ -61,6 +61,19 @@ unwire_ticks = 2
 dig_ticks = 4
 fill_ticks = 3
 mine_ticks = 8
+# moving (Q65, docs/03, Moving). A move takes `move_ticks`, less the bot's
+# pace, plus `up_ticks` onto a higher tile, less `down_ticks` onto a lower
+# one, and never fewer than one. Pace is gained a move at a time, to
+# `pace_max`: at 2, a bot that has kept moving takes level ground in one
+# tick, and at full pace a rise in one. A bonk takes `bonk_ticks`, the
+# ticks of a move from a standstill, so the bot about to be shoved has a
+# slice in which to move off. A fall costs `fall_damage` for each level
+# beyond the first: a bot of 10 health is dying after a fall of six levels
+pace_max = 2
+up_ticks = 1
+down_ticks = 1
+bonk_ticks = 2
+fall_damage = 2
 
 [model.printer]
 vision = 8
@@ -83,10 +96,11 @@ defence_damage = 1
 # which `generation` is below `drain + print_drain` — so it is never dark;
 # what is left fills its battery, which bots recharge from at `recharge_rate`
 # a `recharge`. A printer the map places starts full.
-# Set generously for testing: a bot moving without rest uses 0.4 a tick net
-# of its own solar, so the 4 a printer has left over while it prints keeps
-# the ten bots of its cap (`bots_per_printer`) charged by itself. To make
-# chargers and panels matter, bring `generation` down toward
+# Set generously for testing: a bot that moves from a standstill each time
+# uses 0.4 a tick net of its own solar, so the 4 a printer has left over
+# while it prints keeps the ten bots of its cap (`bots_per_printer`)
+# charged by itself; one that keeps its pace moves every tick and uses
+# 0.9. To make chargers and panels matter, bring `generation` down toward
 # `drain + print_drain`
 battery = 500
 generation = 6
@@ -176,6 +190,7 @@ attack = 3
 dig = 3
 fill = 2
 mine = 4
+bonk = 3
 
 [power]
 # the share of its battery at or below which a bot takes `low_power`, and

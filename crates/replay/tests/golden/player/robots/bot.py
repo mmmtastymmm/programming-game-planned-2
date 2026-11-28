@@ -8,23 +8,91 @@
 # off to recharge, and this loop then goes on where it was (Q63).
 steps = 0
 CAPACITY = 10
-# The team's first bot hauls nothing: it paces a lane away from the
-# deposits, which empties a battery about as fast as a bot can, so that
-# inside the fixture's few hundred ticks one bot falls to low power, runs
-# the hook, walks back to recharge and returns. The id is the first a
-# printer on this map gives a bot, and the lane is two tiles of its ground.
+# The team's first bot hauls nothing: it paces a lane beside the deposit,
+# which empties a battery about as fast as a bot can, so that inside the
+# fixture's few hundred ticks one bot falls to low power, runs the hook,
+# walks back to recharge and returns. The id is the first a printer on
+# this map gives a bot, and the lane is two tiles of its ground.
 RUNNER = 3
-LANE = (-6, 6)
-# The last bot the team's first printer prints under its cap digs (Q65):
-# it fills up with ore like any other, and from then on carries out the
+LANE = (-8, 6)
+# Before it paces, the runner works the ground east of the lane (Q65), a
+# step of this list at a time: it digs a tile down a level and fills the
+# one beside it up a level with that earth, climbs onto the filled tile
+# and moves off it onto the dug one, a drop of two levels and so a fall,
+# and then mines a rock away. And once, pacing, it bonks a bot that has
+# stopped to pick at the lane's west end.
+CREW = [
+    ("go", -3, 6),
+    ("dig", -3, 7),
+    ("go", -2, 6),
+    ("fill", -2, 7),
+    ("move", "n"),
+    ("move", "w"),
+    ("go", -1, 6),
+    ("mine", 0, 6),
+]
+runner = {"stage": 0, "bonked": False}
+# The ninth bot the team's first printer prints digs (Q65): it fills up
+# with ore like any other, and from then on carries out the
 # team's ground plans, standing west of each, and places and fills the
 # site of a building plan beside it — all of it south of the base, by the
 # lake, so that it leaves the base's own sites to the others.
-DIGGER = 26
+DIGGER = 25
+
+
+def crew():
+    step = CREW[runner["stage"]]
+    here = me().pos
+    try:
+        if step[0] == "go":
+            if (here[0], here[1]) != (step[1], step[2]):
+                move_to(step[1], step[2])
+                return
+        elif step[0] == "dig":
+            dig(step[1], step[2])
+        elif step[0] == "fill":
+            fill(step[1], step[2])
+        elif step[0] == "mine":
+            mine(step[1], step[2])
+        else:
+            move(step[1])
+            log("crew moved", step[1], "to height", tile(me().pos[0], me().pos[1]).height)
+    except ValueError:
+        wait(1)
+        return
+    runner["stage"] += 1
+    log("crew", step[0], "done, health", me().health)
+
+
+def bonk():
+    # At the lane's west end with pace: a bot standing on the tile beyond,
+    # picking, is bonked a tile onward, once.
+    west = (LANE[0] - 1, LANE[1])
+    for m in see():
+        if m.kind == "bot" and m.pos == west and m.busy == "pick":
+            try:
+                move("w")
+            except ValueError:
+                return False
+            # It worked if the tile is empty now: a bot that moved off
+            # before the bonk landed is tried again.
+            runner["bonked"] = True
+            for after in see():
+                if after.pos == west:
+                    runner["bonked"] = False
+            log("bonked", m.id, runner["bonked"])
+            return True
+    return False
 
 
 def pace():
     here = me().pos
+    if runner["stage"] < len(CREW):
+        crew()
+        return
+    if not runner["bonked"] and (here[0], here[1]) == LANE and me().pace > 0:
+        if bonk():
+            return
     if here[1] != LANE[1] or here[0] < LANE[0] or here[0] > LANE[0] + 1:
         try:
             move_to(LANE[0], LANE[1])

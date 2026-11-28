@@ -57,8 +57,9 @@ signature = "me() -> Machine"
 doc = """
 This machine's own record: `id`, `name`, `model`, `team`, `pos`, `health`,
 `busy`, `progress`, `charge` (what its battery holds), `battery` (what
-it can hold) and `flooded`; `load`, `color` and `flat` (out of power) for
-a bot; `store`, `powered` and `grid` for a building.
+it can hold) and `flooded`; `load`, `color`, `flat` (out of power) and
+`pace` (what it has gained by keeping moving, from 0 to `pace_max`; see
+`move`) for a bot; `store`, `powered` and `grid` for a building.
 
 A flooded machine loses health every tick: a bot in more water than it
 wades, a building on a wet tile. A flooded bot cannot move, and a flooded
@@ -108,17 +109,38 @@ Every tile your team sees or remembers carrying the overlay `label`, as
 [game.move]
 signature = "move(dir: str) -> None"
 doc = """
-Step one tile: dir is "n", "e", "s" or "w". The tile must be ground and
-free. Takes `move_ticks`.
+Step one tile: dir is "n", "e", "s" or "w". The tile must be ground, free,
+at most one level higher, and under no more water than a bot wades.
 
-Raises ValueError if the way is blocked, or the bot is flooded."""
+Takes `move_ticks`, less the bot's pace, plus `up_ticks` uphill and less
+`down_ticks` downhill, never fewer than one. Pace rises by one with each
+move completed (by two downhill, not at all uphill) and is lost in any
+tick that ends with the bot not in a move, so a bot is fast only while it
+keeps moving. A turn costs nothing.
+
+A tile lower by more than one level is a drop. Only `move` takes one, and
+the bot falls: it loses its pace, and `fall_damage` health for each level
+beyond the first, unless it lands in water deep enough to break the fall.
+
+A bot with pace that moves onto a tile holding another bot, any team's,
+that is not itself in a move bonks it: the bonk takes `bonk_ticks`, the
+bot stays on its own tile and loses its pace, and the other bot is put
+one tile onward, off a cliff if there is one, with whatever it was doing
+ended. If it cannot be put there nothing happens to it. A bonk does no
+damage; the fall may.
+
+Raises ValueError if the way is blocked — by a building, by a bot when
+this one has no pace, or by a bot that is itself in a move — or the bot
+is flooded."""
 
 [game.move_to]
 signature = "move_to(x: int, y: int) -> None"
 doc = """
 Take ONE step toward (x, y): to the free neighbouring tile closest to it.
 There is no pathfinding, so a bot can walk into a dead end; loop to
-arrive, or use go_to from lib/nav.py.
+arrive, or use go_to from lib/nav.py. It only steps: never over a drop,
+and never into a bot to bonk it. Its ticks follow the bot's pace, as
+`move`'s do.
 
 Raises ValueError if no step is possible, the bot is already there, or
 it is flooded."""

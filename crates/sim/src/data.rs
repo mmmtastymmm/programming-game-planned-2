@@ -79,6 +79,15 @@ pub struct ModelData {
     pub dig_ticks: u64,
     pub fill_ticks: u64,
     pub mine_ticks: u64,
+    /// Moving (`docs/03`, Moving): the most pace a bot gathers, the ticks
+    /// a move onto a higher tile adds and one onto a lower tile saves,
+    /// the ticks of a bonk, and the health a fall costs for each level
+    /// beyond a step.
+    pub pace_max: u64,
+    pub up_ticks: u64,
+    pub down_ticks: u64,
+    pub bonk_ticks: u64,
+    pub fall_damage: Num,
     /// How far a pylon joins, in tiles by squared distance.
     pub span: i64,
 }
@@ -166,6 +175,9 @@ pub struct WaterData {
     pub passes: u32,
     /// The health a flooded machine loses a tick.
     pub flood_damage: Num,
+    /// A bot that falls onto a tile holding this many parts or more
+    /// takes no harm from the fall (`docs/03`, Moving).
+    pub cushion: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -344,6 +356,11 @@ impl MachinesData {
                     "dig_ticks" => d.dig_ticks = uint(FILE, &key(k), v)?,
                     "fill_ticks" => d.fill_ticks = uint(FILE, &key(k), v)?,
                     "mine_ticks" => d.mine_ticks = uint(FILE, &key(k), v)?,
+                    "pace_max" => d.pace_max = uint(FILE, &key(k), v)?,
+                    "up_ticks" => d.up_ticks = uint(FILE, &key(k), v)?,
+                    "down_ticks" => d.down_ticks = uint(FILE, &key(k), v)?,
+                    "bonk_ticks" => d.bonk_ticks = uint(FILE, &key(k), v)?,
+                    "fall_damage" => d.fall_damage = num(FILE, &key(k), v)?,
                     "span" => d.span = int(FILE, &key(k), v)?,
                     other => {
                         return Err(err(
@@ -584,8 +601,8 @@ impl WorldData {
             let v = uint(FILE, &name, get(FILE, water_t, key)?)?;
             u32::try_from(v).map_err(|_| err(FILE, format!("`{name}` is too large")))
         };
-        // `wet`, `wade` and `max_rate` are written in levels and kept in
-        // parts, each a whole number of them.
+        // `wet`, `wade`, `max_rate` and `cushion` are written in levels
+        // and kept in parts, each a whole number of them.
         let per_level = parts("parts")?;
         let levels = |key: &str| -> D<u32> {
             let name = format!("water.{key}");
@@ -616,6 +633,7 @@ impl WorldData {
                 "water.flood_damage",
                 get(FILE, water_t, "flood_damage")?,
             )?,
+            cushion: levels("cushion")?,
         };
         // `docs/09`, Data: water thin enough to dry is never wet, and
         // what a bot wades is water. A level of nothing is no level.
@@ -693,6 +711,8 @@ mod tests {
         assert_eq!(d.machines.kinds, ["ore", "earth"]);
         assert_eq!(d.machines.colors[0], "red");
         assert_eq!(d.model("bot").move_ticks, 2);
+        assert_eq!(d.model("bot").pace_max, 2);
+        assert_eq!(d.world.water.cushion, 500);
         assert_eq!(d.model("printer").defence_damage, Num::ONE);
         assert!(d.world.terrain["rock"].blocks_sight);
         assert_eq!(d.net.delay, 3);
