@@ -663,16 +663,19 @@ fn commands_that_cannot_apply_on_their_tick_are_dropped() {
     let _ = mark;
 }
 
-/// Q42, Q62: a team's deployments are one per model that runs a program
-/// — `bot`, `printer`, `depot`, `solar` and `charger` — and no others; a
-/// pylon and a site run none.
+/// Q42, Q62, Q67: a team's deployments are one per model that runs a
+/// program — `bot`, `printer`, `depot`, `solar`, `charger`, `pump`,
+/// `tank` and `spout` — and no others; a pylon, an aqueduct and a site
+/// run none.
 #[test]
 fn a_team_has_one_deployment_per_model() {
     let s = sim();
-    for good in ["bot", "printer", "depot", "solar", "charger"] {
+    for good in [
+        "bot", "printer", "depot", "solar", "charger", "pump", "tank", "spout",
+    ] {
         assert!(s.validate(&deploy(0, good, "wait(1)\n")).is_ok());
     }
-    for bad in ["1", "9", "red", "site", "pylon", ""] {
+    for bad in ["1", "9", "red", "site", "pylon", "aqueduct", ""] {
         assert!(
             s.validate(&deploy(0, bad, "wait(1)\n")).is_err(),
             "`{bad}` accepted as a deployment"
@@ -682,7 +685,9 @@ fn a_team_has_one_deployment_per_model() {
     let team = snap.teams.iter().find(|t| t.id == TeamId(0)).unwrap();
     assert_eq!(
         team.deployments.keys().cloned().collect::<Vec<_>>(),
-        ["bot", "charger", "depot", "printer", "solar"]
+        [
+            "bot", "charger", "depot", "printer", "pump", "solar", "spout", "tank"
+        ]
     );
 }
 
@@ -775,6 +780,7 @@ fn the_markable_values_are_exactly_what_validation_accepts() {
         PlanKind::Paint,
         PlanKind::Overlay,
         PlanKind::Wire,
+        PlanKind::Pipe,
     ] {
         let values = Sim::markable(&data, plan);
         assert!(!values.is_empty(), "{plan:?} has nothing to mark");
@@ -784,11 +790,16 @@ fn the_markable_values_are_exactly_what_validation_accepts() {
     }
     assert_eq!(
         Sim::markable(&data, PlanKind::Building),
-        vec!["printer", "depot", "solar", "charger", "pylon"]
+        vec![
+            "printer", "depot", "solar", "charger", "pylon", "pump", "tank", "spout", "aqueduct"
+        ]
     );
     // A wire has no kinds: one value, and nothing else is a wire plan.
     assert_eq!(Sim::markable(&data, PlanKind::Wire), vec!["wire"]);
     assert!(sim.validate(&mark(PlanKind::Wire, "red")).is_err());
+    // Nor has a pipe (Q67).
+    assert_eq!(Sim::markable(&data, PlanKind::Pipe), vec!["pipe"]);
+    assert!(sim.validate(&mark(PlanKind::Pipe, "wire")).is_err());
     for refused in ["site", "bot"] {
         assert!(sim.validate(&mark(PlanKind::Building, refused)).is_err());
     }
@@ -1097,6 +1108,7 @@ fn memory_by_a_walk_of_the_whole_map(
                 paint: tile.paint.clone(),
                 overlay: tile.overlay.clone(),
                 wires: tile.wires.clone(),
+                pipes: tile.pipes.clone(),
                 building: w
                     .machines
                     .values()

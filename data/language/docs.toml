@@ -41,8 +41,9 @@ steps between tiles at most one level apart), `water` (how deep the
 water on it stands, in levels; a bot wades up to one level), `spring`
 and `sink` (the rate of one on the tile, in levels a tick, or None),
 `deposit`, `building`, `paint`, `overlay`,
-`wires` (the numbers of the teams with a wire under it), `plans` and
-`seen_at`. None for a tile your team has never seen."""
+`wires` (the numbers of the teams with a wire under it), `pipes` (the
+same, of pipe), `plans` and `seen_at`. None for a tile your team has
+never seen."""
 
 [game.tiles]
 signature = "tiles(x0: int, y0: int, x1: int, y1: int) -> list[Tile]"
@@ -59,19 +60,24 @@ This machine's own record: `id`, `name`, `model`, `team`, `pos`, `health`,
 `busy`, `progress`, `charge` (what its battery holds), `battery` (what
 it can hold) and `flooded`; `load`, `color`, `flat` (out of power) and
 `pace` (what it has gained by keeping moving, from 0 to `pace_max`; see
-`move`) for a bot; `store`, `powered` and `grid` for a building.
+`move`) for a bot; `store`, `powered` and `grid` for a building. Every
+machine also has `water` (what its tank holds, in levels) and `tank`
+(what it can hold); a building has `watered` and `network`, and a spout
+`pouring`.
 
 A flooded machine loses health every tick: a bot in more water than it
 wades, a building on a wet tile. A flooded bot cannot move, and a flooded
-building is dark."""
+building is dark. A building its water network could not cover is dry
+(`watered` is False) and stops as a dark one does."""
 
 [game.plans]
 signature = "plans(kind: str) -> list[tuple[int, int, str | bool | int | None]]"
 doc = """
 Your team's pending plans of one kind: "paint", "overlay", "building",
-"wire" or "ground", as (x, y, value) tuples sorted by row then column.
-The value is a color, a label, a model, True for a wire or the height a
-ground plan asks for, or None for a plan to clear."""
+"wire", "ground" or "pipe", as (x, y, value) tuples sorted by row then
+column. The value is a color, a label, a model, True for a wire or a
+pipe, or the height a ground plan asks for, or None for a plan to
+clear."""
 
 [game.power]
 signature = "power() -> list[Power]"
@@ -86,6 +92,25 @@ Costs one unit per grid returned."""
 signature = "wires() -> list[tuple[int, int]]"
 doc = """
 Every tile carrying your team's own wire, as (x, y), sorted by row then
+column.
+
+Costs one unit per tile returned."""
+
+[game.water]
+signature = "water() -> list[Water]"
+doc = """
+Your team's water networks as the last network step left them, one
+record each: `network` (its label, the id of its oldest building),
+`supply` (what its pumps that found water can lift a tick), `drain`
+(what its buildings need a tick), `stored` (the water in its tanks) and
+`capacity`, each in levels.
+
+Costs one unit per network returned."""
+
+[game.pipes]
+signature = "pipes() -> list[tuple[int, int]]"
+doc = """
+Every tile carrying your team's own pipe, as (x, y), sorted by row then
 column.
 
 Costs one unit per tile returned."""
@@ -236,6 +261,25 @@ refunded. A wire plan to clear the tile is used up.
 
 Raises ValueError if your team has no wire there."""
 
+[game.pipe]
+signature = "pipe(x: int, y: int) -> None"
+doc = """
+Lay your team's pipe under the adjacent ground tile (x, y), for
+`pipe_cost` in ore from your load. A pipe plan on the tile is used up.
+Pipe joins your buildings into a water network, whatever the height of
+the ground, and no rival can remove it.
+
+Raises ValueError if your team's pipe is already there, the tile is not
+ground, or your load is short of the cost."""
+
+[game.unpipe]
+signature = "unpipe(x: int, y: int) -> None"
+doc = """
+Remove your team's pipe from the adjacent tile (x, y). Nothing is
+refunded. A pipe plan to clear the tile is used up.
+
+Raises ValueError if your team has no pipe there."""
+
 [game.dig]
 signature = "dig(x: int, y: int) -> None"
 doc = """
@@ -312,6 +356,17 @@ Paint this bot in a color from the paint list, or None for its plain
 body. A way to show what a bot is doing.
 
 Raises ValueError for any other value."""
+
+[game.pour]
+signature = "pour(dir: str | None) -> None"
+doc = """
+Turn this spout to pour onto the tile beside it to the "n", "e", "s" or
+"w", or None to pour nowhere, which is how it is built. It takes no
+ticks. A spout pours what its water network can give, up to its
+`pour_rate` a tick, onto ground at any height; one facing rock or the
+edge of the map pours nothing, and neither does a dark or a dry one.
+
+Raises ValueError for any other value, and on anything but a spout."""
 
 # -------------------------------------------------- language builtins ---
 

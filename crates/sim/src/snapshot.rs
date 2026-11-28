@@ -5,8 +5,8 @@ use crate::command::TeamId;
 use crate::map::TilePos;
 use crate::tick::Sim;
 use crate::world::{
-    Action, Effect, EntityId, GridFigures, LogEntry, Machine, MachineRecord, Plans, Sound,
-    TileMemory, World,
+    Action, Effect, EntityId, GridFigures, LogEntry, Machine, MachineRecord, NetworkFigures, Plans,
+    Sound, TileMemory, World,
 };
 use lang::FaultRecord;
 use std::collections::BTreeMap;
@@ -96,6 +96,12 @@ pub struct TeamSnapshot {
     /// The tiles carrying this team's own wire, in the same order, each
     /// with whether that power step found it part of a grid.
     pub wires: Vec<(TilePos, bool)>,
+    /// The team's water networks as its last network step kept them,
+    /// ascending label (Q67; `docs/09`), each amount in parts.
+    pub networks: Vec<NetworkFigures>,
+    /// The tiles carrying this team's own pipe, in the same order, each
+    /// with whether that network step found it part of a network.
+    pub pipes: Vec<(TilePos, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +157,15 @@ impl Sim {
                     tiles
                         .into_iter()
                         .map(|p| (p, t.live_wires.contains(&p)))
+                        .collect()
+                },
+                networks: t.networks.clone(),
+                pipes: {
+                    let mut tiles: Vec<TilePos> = t.pipe_tiles.iter().copied().collect();
+                    tiles.sort_by(crate::map::row_then_column);
+                    tiles
+                        .into_iter()
+                        .map(|p| (p, t.live_pipes.contains(&p)))
                         .collect()
                 },
             })

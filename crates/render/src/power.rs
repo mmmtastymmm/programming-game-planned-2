@@ -214,6 +214,7 @@ mod tests {
             paint: None,
             overlay: None,
             wires: wires.iter().map(|t| TeamId(*t)).collect::<BTreeSet<_>>(),
+            pipes: BTreeSet::new(),
             building: building.map(|(team, model)| MachineRecord {
                 id: EntityId(9),
                 name: "b".into(),
@@ -235,6 +236,10 @@ mod tests {
                 grid: Some(None),
                 flooded: false,
                 pace: None,
+                water: 0,
+                watered: Some(true),
+                network: Some(None),
+                pouring: None,
             }),
         }
     }

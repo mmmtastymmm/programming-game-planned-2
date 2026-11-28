@@ -76,7 +76,7 @@ fn basis(world: &World) -> impl Iterator<Item = (EntityId, TilePos, Model, TeamI
     world
         .machines
         .values()
-        .map(|m| (m.id, m.pos, m.model, m.team, m.is_dark()))
+        .map(|m| (m.id, m.pos, m.model, m.team, m.is_stopped()))
 }
 
 #[cfg(debug_assertions)]
@@ -213,11 +213,11 @@ pub fn sees_tile(world: &World, seer: EntityId, p: TilePos) -> bool {
 /// Every tile a team's machines see now, in row-then-column order.
 pub fn team_visible_tiles(world: &World, team: TeamId) -> BTreeSet<TilePos> {
     let mut out = BTreeSet::new();
-    // A dark building sees nothing (`docs/08`).
+    // A dark building sees nothing (`docs/08`), nor a dry one (`docs/09`).
     for m in world
         .machines
         .values()
-        .filter(|m| m.team == team && !m.is_dark())
+        .filter(|m| m.team == team && !m.is_stopped())
     {
         let vision = world.data.model(m.model.name()).vision;
         // The furthest it can see is to a tile at height zero: its vision
@@ -271,11 +271,12 @@ pub fn team_can_see(world: &mut World, team: TeamId, target: EntityId) -> bool {
 pub fn team_hears(world: &World, team: TeamId) -> Vec<usize> {
     let mut out = Vec::new();
     for (i, s) in world.sounds_prev.iter().enumerate() {
-        // A dark building hears nothing (`docs/08`).
+        // A dark building hears nothing (`docs/08`), nor a dry one
+        // (`docs/09`).
         let heard = world
             .machines
             .values()
-            .filter(|m| m.team == team && !m.is_dark())
+            .filter(|m| m.team == team && !m.is_stopped())
             .any(|m| {
                 let reach = world
                     .data

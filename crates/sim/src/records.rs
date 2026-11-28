@@ -3,7 +3,9 @@
 
 use crate::command::TeamId;
 use crate::map::TilePos;
-use crate::world::{GridFigures, MachineRecord, Sound, TileMemory, TileState, World};
+use crate::world::{
+    GridFigures, MachineRecord, NetworkFigures, Sound, TileMemory, TileState, World,
+};
 use lang::Num;
 use lang::value::{DictObj, ListObj, Record, Value};
 use std::cell::RefCell;
@@ -42,6 +44,19 @@ pub fn list(world: &mut World, items: Vec<Value>) -> Value {
         id: world.host_object_id(),
         items: RefCell::new(items),
     }))
+}
+
+/// An amount of water in levels, a `num`, however finely the sim counts
+/// it (`docs/09`): `parts` at `per_level` to a level.
+pub fn levels(parts: u64, per_level: u32) -> Value {
+    let (amount, per) = (
+        Num::from_int(i128::from(parts)),
+        Num::from_int(i128::from(per_level)),
+    );
+    match (amount, per) {
+        (Ok(a), Ok(p)) => a.checked_div(p).map_or(Value::None, Value::Num),
+        _ => Value::None,
+    }
 }
 
 fn record(type_name: &str, fields: Vec<(&str, Value)>) -> Value {
@@ -107,7 +122,44 @@ pub fn machine_record(world: &mut World, r: &MachineRecord) -> Value {
         fields.push(("pace", int(i128::from(pace))));
     }
     fields.push(("flooded", Value::Bool(r.flooded)));
+    // The water network (`docs/09`): what its tank holds and the most it
+    // can, in levels, on every machine; `watered` and `network` on a
+    // building; `pouring` on a spout.
+    let per_level = world.data.world.water.parts;
+    let tank = world.data.model(r.model.name()).tank;
+    fields.push(("water", levels(u64::from(r.water), per_level)));
+    fields.push(("tank", levels(u64::from(tank), per_level)));
+    if let Some(watered) = r.watered {
+        fields.push(("watered", Value::Bool(watered)));
+    }
+    if let Some(network) = r.network {
+        fields.push((
+            "network",
+            match network {
+                Some(id) => int(i128::from(id.0)),
+                None => Value::None,
+            },
+        ));
+    }
+    if let Some(pouring) = r.pouring {
+        fields.push(("pouring", opt_str(pouring.map(|d| d.name()))));
+    }
     record("machine", fields)
+}
+
+/// One water network's figures, as `water()` returns them (`docs/09`,
+/// What a program reads): every amount in levels.
+pub fn water_record(f: &NetworkFigures, per_level: u32) -> Value {
+    record(
+        "water",
+        vec![
+            ("network", int(i128::from(f.network.0))),
+            ("supply", levels(f.supply, per_level)),
+            ("drain", levels(f.drain, per_level)),
+            ("stored", levels(f.stored, per_level)),
+            ("capacity", levels(f.capacity, per_level)),
+        ],
+    )
 }
 
 /// One grid's figures, as `power()` returns them (`docs/02`, Senses).
@@ -154,18 +206,9 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
     };
     // Water is read in levels, a `num`, however finely the sim counts it.
     let per_level = world.data.world.water.parts;
-    let in_levels = move |parts: u32| -> Value {
-        let (amount, per) = (
-            lang::Num::from_int(i128::from(parts)),
-            lang::Num::from_int(i128::from(per_level)),
-        );
-        match (amount, per) {
-            (Ok(a), Ok(p)) => a.checked_div(p).map_or(Value::None, Value::Num),
-            _ => Value::None,
-        }
-    };
+    let in_levels = move |parts: u32| -> Value { levels(u64::from(parts), per_level) };
     let rate = |r: Option<u32>| r.map_or(Value::None, in_levels);
-    let (terrain, deposit, paint, overlay, wires, building, seen_at) =
+    let (terrain, deposit, paint, overlay, wires, pipes, building, seen_at) =
         if mem.state == TileState::Visible {
             // The world now.
             let tile = world.tiles[idx].clone();
@@ -180,6 +223,7 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
                 tile.paint.clone(),
                 tile.overlay.clone(),
                 tile.wires.clone(),
+                tile.pipes.clone(),
                 building,
                 world.tick,
             )
@@ -190,6 +234,7 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
                 mem.paint.clone(),
                 mem.overlay.clone(),
                 mem.wires.clone(),
+                mem.pipes.clone(),
                 mem.building.clone(),
                 mem.seen_at,
             )
@@ -210,6 +255,11 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
     // The teams with a wire on it, as sorted team numbers (Q62).
     let wires_v = {
         let teams: Vec<Value> = wires.iter().map(|t| int(i128::from(t.0))).collect();
+        list(world, teams)
+    };
+    // And those with a pipe on it (Q67).
+    let pipes_v = {
+        let teams: Vec<Value> = pipes.iter().map(|t| int(i128::from(t.0))).collect();
         list(world, teams)
     };
     let plans = world.plans(team, p).cloned().unwrap_or_default();
@@ -238,6 +288,14 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
                     _ => Value::None,
                 },
             ),
+            // A pipe plan reads as a wire plan does (Q67).
+            (
+                Value::str("pipe"),
+                match &plans.pipe {
+                    Some(crate::world::Plan::Set(_)) => Value::Bool(true),
+                    _ => Value::None,
+                },
+            ),
         ];
         Value::Dict(Rc::new(DictObj {
             id: world.host_object_id(),
@@ -261,6 +319,7 @@ pub fn tile_record(world: &mut World, team: TeamId, p: TilePos) -> Value {
             ("paint", opt_str(paint.as_deref())),
             ("overlay", opt_str(overlay.as_deref())),
             ("wires", wires_v),
+            ("pipes", pipes_v),
             ("plans", plans_v),
         ],
     )

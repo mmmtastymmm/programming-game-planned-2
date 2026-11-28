@@ -332,8 +332,10 @@ pub fn body_half(model: Model) -> Vec3 {
         // Q62: the panel's foot, under its tilted plate; the charger, a
         // squat block; the pylon, a thin mast.
         Model::Solar => Vec3::new(0.25, 0.04, 0.15),
-        Model::Charger => Vec3::new(0.3, 0.2, 0.3),
-        Model::Pylon => Vec3::new(0.05, 0.45, 0.05),
+        // Q67's four each take the nearest body until T49 draws them.
+        Model::Charger | Model::Pump | Model::Spout => Vec3::new(0.3, 0.2, 0.3),
+        Model::Pylon | Model::Aqueduct => Vec3::new(0.05, 0.45, 0.05),
+        Model::Tank => body_half(Model::Depot),
         Model::Site => Vec3::splat(0.35),
     }
 }

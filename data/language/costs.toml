@@ -114,3 +114,9 @@ unwire = 1
 dig = 1
 fill = 1
 mine = 1
+# the water network (Q67, docs/09)
+water = 2
+pipes = 2
+pipe = 1
+unpipe = 1
+pour = 1

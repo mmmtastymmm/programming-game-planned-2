@@ -196,6 +196,7 @@ fn plan_byte(p: PlanKind) -> u8 {
         PlanKind::Building => 2,
         PlanKind::Wire => 3,
         PlanKind::Ground => 4,
+        PlanKind::Pipe => 5,
     }
 }
 
@@ -206,6 +207,7 @@ fn plan_of(b: u8) -> Result<PlanKind, String> {
         2 => Ok(PlanKind::Building),
         3 => Ok(PlanKind::Wire),
         4 => Ok(PlanKind::Ground),
+        5 => Ok(PlanKind::Pipe),
         _ => Err(format!("unknown plan kind byte {b}")),
     }
 }
@@ -445,6 +447,42 @@ mod tests {
         huge[16] = 1;
         huge.extend_from_slice(&u64::MAX.to_le_bytes());
         assert!(decode(&huge).unwrap_err().contains("exceeds"));
+    }
+
+    /// Q67: the pipe is the sixth plan kind, with a byte of its own, in a
+    /// `Mark` and in an `Unmark`; a byte past it is refused.
+    #[test]
+    fn every_plan_kind_has_a_byte_of_its_own() {
+        let kinds = [
+            PlanKind::Paint,
+            PlanKind::Overlay,
+            PlanKind::Building,
+            PlanKind::Wire,
+            PlanKind::Ground,
+            PlanKind::Pipe,
+        ];
+        for (i, plan) in kinds.into_iter().enumerate() {
+            assert_eq!(plan_byte(plan), i as u8);
+            assert_eq!(plan_of(i as u8), Ok(plan));
+            let at = TilePos::new(2, -7);
+            for kind in [
+                CommandKind::Mark {
+                    at,
+                    plan,
+                    value: Some(plan.name().into()),
+                },
+                CommandKind::Mark {
+                    at,
+                    plan,
+                    value: None,
+                },
+                CommandKind::Unmark { at, plan },
+            ] {
+                let c = cmd(9, 1, kind);
+                assert_eq!(decode(&encode(&c)).unwrap(), c);
+            }
+        }
+        assert!(plan_of(kinds.len() as u8).is_err());
     }
 
     #[test]

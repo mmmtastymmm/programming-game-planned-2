@@ -206,11 +206,15 @@ impl World {
         }
     }
 
-    /// All the water of the match, in parts: what stands on the tiles and
-    /// the ground water. The water step never changes it (`docs/09`).
+    /// All the water of the match, in parts: what stands on the tiles,
+    /// the ground water, and what every tank holds. Neither the water
+    /// step nor the network step ever changes it (`docs/09`).
     pub fn water_total(&self) -> u64 {
-        self.tiles.iter().fold(self.ground_water, |sum, t| {
+        let standing = self.tiles.iter().fold(self.ground_water, |sum, t| {
             sum.saturating_add(u64::from(t.water))
-        })
+        });
+        self.machines
+            .values()
+            .fold(standing, |sum, m| sum.saturating_add(u64::from(m.water)))
     }
 }
