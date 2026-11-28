@@ -61,12 +61,13 @@ pace, falls and bonks
 ([T43](history/tasks-completed/task-completed-0043.md)), sight over
 height ([T44](history/tasks-completed/task-completed-0044.md)) and all
 of `09`'s water on the ground
-([T45](history/tasks-completed/task-completed-0045.md)). What is not
-built is outside it. The renderer draws a bot crossing a tile in one
-tick whatever its pace, and shows no fall and no bonk. The first map
-is flat and dry, and the starter's navigation knows nothing of steps,
-drops or pace. The work is [T46](TASKS.md) and [T47](TASKS.md), and
-this entry closes with the commit that finishes the last of them.
+([T45](history/tasks-completed/task-completed-0045.md)). The renderer
+draws all of it
+([T46](history/tasks-completed/task-completed-0046.md)). What is not
+built is the content: the first map is flat and dry, and the starter's
+navigation knows nothing of steps, drops or pace. The work is
+[T47](TASKS.md), and this entry closes with the commit that finishes
+it.
 
 **P12 — The code lags Q67: no water network**
 

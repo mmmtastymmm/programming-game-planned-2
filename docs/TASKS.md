@@ -35,16 +35,6 @@ Two conventions carried over from the predecessor project:
 
 What is left of Q65, and [P11](PROBLEMS.md) closes with the last.
 
-**T46 — Height and water in `render`: what is left**
-
-`07`'s Q65 entry is drawn but for the bot's own movement: tiles at their
-heights, water as a sheet tipped to its slope, damp ground, a spring's
-and a sink's mark, a ramp at a step of one level, the ground row with
-*lower*, *raise*, *level* and its clear, a ground plan's outline and its
-ghost, the flooded mark and the inspector's lines. What is left is the
-bot, now that `03`'s Moving is built: stepping between heights at the
-speed its pace gives, and shown falling and bonked.
-
 **T47 — The starter library and the shipped maps know height and water**
 
 `07`'s starter tree and `data/maps`. The first map gains heights, a
