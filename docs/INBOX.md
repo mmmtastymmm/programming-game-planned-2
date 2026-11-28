@@ -50,3 +50,13 @@ nothing leaves that plan standing, so a second stroke of *raise* over a
 tile planned a level down, or *level* over one, could never bring it
 back; the renderer sends the `Unmark` there. Both read as what Q65
 meant, and neither is what `07` says.
+
+**I14 — `02` and `07` are within two kilobytes of the size cap, and Q67's rows went to `09` for it**
+
+Writing Q67, the rows a ruling adds to a machine — four models, five
+attributes, two senses and three actions — would not fit in `02`, which
+stood at 38,957 bytes of 40,960, so they are in `09` and `02` points
+there; `07` took one short entry and stands as close. `02` owns what a
+machine is, senses and does, and now holds that for everything but the
+water network. Either doc wants splitting into a doorway and parts
+before the next ruling that touches it.

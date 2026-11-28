@@ -202,8 +202,8 @@ loop:
 3. **Action completions**, in ascending entity id: moves land, a bonk
    puts the bot it hit a tile onward (Q65; `03`), transfers
    happen, prints count down and place bots, sites complete,
-   deconstructions finish, recharges move charge, wires are laid and
-   removed (`02`), ground is dug, filled and mined (Q65; `03`); a dark building's main-flow action and a dark
+   deconstructions finish, recharges move charge, wires and pipes are
+   laid and removed (`02`, `09`), ground is dug, filled and mined (Q65; `03`); a dark building's main-flow action and a dark
    printer's print do not count down (`08`). A bot printed
    this tick has its first slice next tick.
 4. **Damage and death**: health changes from this tick's causes are applied
@@ -219,25 +219,28 @@ loop:
    here is absent from everything below.
 5. **Out teams**: every team that is out — it resigned this tick, or steps
    3 and 4 left it with no printer, by deconstruction or death (`04`) — has
-   its machines removed, its plans and its wires (Q62) cleared and its log
+   its machines removed, its plans, its wires (Q62) and its pipes (Q67) cleared and its log
    closed, in team order.
 6. **Power and printing**: in team order, every team's grids are traced
    and served, oldest building first, which sets each building's
    `powered` and `grid` until the next tick's step 6; every bot's solar is
    added and its flat bots that have the charge wake (Q63); its printers
-   that are ready, powered and above zero health begin
+   that are ready, powered, watered (Q67; `09`) and above zero health begin
    prints by turns until its bots and prints in progress reach its cap
    (Q42; `02`, Printing); and its grids' figures are kept (Q62). The order
    inside this step is `08`'s, The power step, and is stated there alone.
    An out team has no grids. The match is built with its grids traced and
    every building powered at tick 0.
-7. **Regrowth and water**: every deposit grows (`03`); then the water
-   step: springs run, water flows in its passes, sinks run and thin
+7. **Regrowth and water**: every deposit grows (`03`); then the network
+   step, in team order, which serves each team's water networks, lifts
+   what its pumps lift, pours what its spouts pour and sets each
+   building's `watered` and `network` until the next (Q67; `09`); then
+   the water step: springs run, water flows in its passes, sinks run and thin
    water dries, which sets each machine's `flooded` and darkens a
    flooded building until the next (Q65, Q66; `09`). The match is built with its water as the
    map gives it and nothing flooded.
 8. **The vision pass**: each team's visible tiles are computed, from every
-   machine of the team but a dark building (`08`), by line of sight over
+   machine of the team but a dark or a dry building (`08`, `09`), by line of sight over
    the ground's heights (Q65; `03`), and their snapshots refreshed (Q21).
 9. **The state hash** over everything below.
 
@@ -261,13 +264,14 @@ A **command** is:
   never ambiguous.
 - **Validation at submission** refuses what can never apply — a tile off
   the map, a step not in the list, a `Deploy` naming a deployment other
-  than `bot`, `printer`, `depot`, `solar` or `charger` (Q42, Q62), a bundle
+  than `bot`, `printer`, `depot`, `solar`, `charger`, `pump`, `tank` or
+  `spout` (Q42, Q62, Q67), a bundle
   that fails
   to load (`01`) — so the log holds only commands every peer would accept.
   A command that cannot apply *on its tick* — a `Mark` on a tile the sender
-  has since lost the right to, or a paint, overlay or wire plan on a tile
-  that is not ground the sender has seen (Q49, Q62), a wire or ground plan
-  asking for what the tile already has, a ground plan on a tile the sender
+  has since lost the right to, or a paint, overlay, wire or pipe plan on
+  a tile that is not ground the sender has seen (Q49, Q62, Q67), a wire,
+  pipe or ground plan asking for what the tile already has, a ground plan on a tile the sender
   has not seen or one with a deposit, a spring or a sink (Q65; `03`), a `Resign` from a team already out — is
   dropped in `sim.step` and recorded nowhere.
 - **The log is append-only and complete**: every command every peer ever
@@ -298,10 +302,10 @@ value with no reference into the sim:
 |---|---|
 | `tick` | the tick just completed, and the speed in force — the driver's number, carried for the renderer, not the sim's |
 | `machines` | every machine's attribute record (`02`), the version of the bundle its program runs, which a deploy since may have left behind (Q11), plus its diagnostic log entries from this tick |
-| `tiles`, per team | every tile's record as that team sees it: state, terrain, height, water, spring and sink (Q65), deposit, paint, overlay, wires, building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is part of a grid (Q62; `08`) |
+| `tiles`, per team | every tile's record as that team sees it: state, terrain, height, water, spring and sink (Q65), deposit, paint, overlay, wires, pipes (Q67), building, plans, `seen_at` (`03`), and, where the team's own wire lies, whether that tile is part of a grid (Q62; `08`) |
 | `sounds` | every sound emitted this tick, with its cause, position, loudness and tick |
 | `faults` | every machine's fault record (`01`) |
-| `teams` | each team's deployments, their bundles' versions, its cap, its bot count, and the figures of each of its grids as its last power step kept them (Q62; `08`) |
+| `teams` | each team's deployments, their bundles' versions, its cap, its bot count, and the figures of each of its grids as its last power step kept them (Q62; `08`) and of each of its water networks as its last network step did (Q67; `09`) |
 
 The renderer reads it and builds its own entities; nothing in it is shared
 with the sim, and nothing the renderer does to it reaches the sim. It is
@@ -314,10 +318,10 @@ snapshot and **not** of the state hash.
 The hash is FNV-1a 64-bit over a canonical encoding of the world after step
 8, in this order: the tick; every team in order — whether it is out, its
 deployments, the version of each bundle, its cap, its print turn (Q42), its
-grids' figures in label order (Q62), its plans by tile in row-then-column order,
+grids' figures in label order (Q62) and its water networks' (Q67), its plans by tile in row-then-column order,
 its memory table by tile; every tile in row-then-column order — terrain,
 height and water (Q65), deposit, paint, overlay, its wires' teams in order
-(Q62); the ground water (Q65; `09`); the next entity
+(Q62) and its pipes' (Q67); the ground water (Q65; `09`); the next entity
 id; every machine in ascending entity id — every attribute, whether it is
 `dying`, whether a bot is armed for `low_power` (Q62), its action in progress and `progress`, a site's construction ticks
 and the model it becomes, its store capacity, which for a site is its
