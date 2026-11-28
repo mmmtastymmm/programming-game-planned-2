@@ -346,9 +346,10 @@ pub fn panels(
                             Some(sim::world::Plan::Set(l)) => Some((*p, l.clone())),
                             _ => None,
                         };
-                        // A ground plan's label is the height it asks for.
+                        // A ground plan's label is the height it asks for,
+                        // in letters the panel's font has.
                         let ground = match &plans.ground {
-                            Some(sim::world::Plan::Set(h)) => Some((*p, format!("→{h}"))),
+                            Some(sim::world::Plan::Set(h)) => Some((*p, format!("to {h}"))),
                             _ => None,
                         };
                         overlay.into_iter().chain(ground)
@@ -356,19 +357,22 @@ pub fn panels(
                     .collect()
             })
             .unwrap_or_default();
-        if let Tool::Mark(PlanKind::Ground, Some(h)) = &state.tool {
-            labels.extend(
-                view::plannable_preview(&state, &driver.0)
-                    .into_iter()
-                    .map(|p| (p, format!("→{h}"))),
-            );
-        }
-        if let Tool::Mark(PlanKind::Overlay, Some(l)) = &state.tool {
-            labels.extend(
-                view::plannable_preview(&state, &driver.0)
-                    .into_iter()
-                    .map(|p| (p, l.clone())),
-            );
+        // The armed tool's preview: an overlay's label, and the height a
+        // ground tool would plan on each tile.
+        if matches!(
+            &state.tool,
+            Tool::Mark(PlanKind::Ground | PlanKind::Overlay, Some(_))
+        ) {
+            for (p, plans) in view::plannable_preview(&state, &driver.0, rows.height_max) {
+                if let Some(sim::world::Plan::Set(h)) = &plans.ground {
+                    // In place of the label of a plan the tile holds.
+                    labels.retain(|(q, l)| *q != p || !l.starts_with("to "));
+                    labels.push((p, format!("to {h}")));
+                }
+                if let Some(sim::world::Plan::Set(l)) = &plans.overlay {
+                    labels.push((p, l.clone()));
+                }
+            }
         }
         let font = egui::FontId::proportional(14.0);
         for (p, label) in labels {
@@ -464,6 +468,7 @@ fn tools(ui: &mut egui::Ui, driver: &mut DriverResource, state: &mut ViewState, 
     if !resting {
         ui.small("drag: mark every tile crossed · Shift+drag: fill a rectangle");
         ui.small("clear on a tile you planned withdraws the plan");
+        ui.small("ground: lower and raise go a level a stroke · level: to where the stroke began");
     }
     ui.separator();
     if ui.button("resign (Shift+R)").clicked() {

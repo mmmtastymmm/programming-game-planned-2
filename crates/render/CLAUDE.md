@@ -39,7 +39,10 @@ because a single workgroup happens to keep its order.
 `select_quad` are copies of `mark_quad` for exactly this reason, and a paint
 plan's square is opaque (Q54). A wire plan's line and the hatched line that
 takes one up are `wire_plan_bar` and `wire_hatch_bar`, a mesh each, and a
-laid wire and a pylon's line are opaque (Q62). A new translucent layer over paint, or over
+laid wire and a pylon's line are opaque (Q62). The ground and water
+(Q65) add four more, a mesh each: `water_sheet`, `ground_plan_frame`,
+`ground_plan_block` under a plan to raise a tile, and
+`ground_hatch_quad` over one to lower it. A new translucent layer over paint, or over
 any other translucent mesh, follows the same rule.
 
 **Reproducing it.** It takes scale: paint most of the screen, put the layer

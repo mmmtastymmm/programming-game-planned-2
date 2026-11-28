@@ -891,6 +891,67 @@ impl Driver {
         &self.snapshots.cur
     }
 
+    /// What the player's team knows of a tile's ground, as the sim last
+    /// reported it (Q65): its height and whether it is ground, or `None`
+    /// for a tile it has not seen, which a ground tool leaves alone.
+    pub fn known_ground(&self, at: sim::TilePos) -> Option<crate::marks::Known> {
+        let (min, max) = self.bounds;
+        if !(min.x..=max.x).contains(&at.x) || !(min.y..=max.y).contains(&at.y) {
+            return None;
+        }
+        let team = self.snapshot().teams.iter().find(|t| t.id == self.player)?;
+        // A team's tiles come in row-then-column order from the
+        // south-west, so the tile's place is known; the search is for a
+        // snapshot that ever comes otherwise.
+        let width = (max.x - min.x + 1) as usize;
+        let idx = (at.y - min.y) as usize * width + (at.x - min.x) as usize;
+        let mem = match team.tiles.get(idx) {
+            Some((p, mem)) if *p == at => mem,
+            _ => team.tiles.iter().find(|(p, _)| *p == at).map(|(_, m)| m)?,
+        };
+        (mem.state != sim::world::TileState::Unknown).then(|| crate::marks::Known {
+            height: mem.height.level(),
+            ground: mem.terrain == sim::map::Terrain::Ground,
+        })
+    }
+
+    /// What marking each of `tiles` with the armed ground tool submits
+    /// (`docs/07`, Marks), given the team's plans and what it knows of
+    /// each tile: `tool` is the tool's name, or `None` for the row's
+    /// clear, and `began` the tile the stroke began on, whose height
+    /// *level* asks of every tile.
+    pub fn ground_commands(
+        &self,
+        tool: Option<&str>,
+        tiles: &[sim::TilePos],
+        began: Option<sim::TilePos>,
+        max: u8,
+    ) -> Vec<CommandKind> {
+        let held: std::collections::BTreeMap<sim::TilePos, &sim::world::Plans> = self
+            .snapshot()
+            .teams
+            .iter()
+            .find(|t| t.id == self.player)
+            .map(|t| t.plans.iter().map(|(p, x)| (*p, x)).collect())
+            .unwrap_or_default();
+        let stroke = crate::marks::Stroke {
+            anchor: began.and_then(|p| self.known_ground(p)).map(|k| k.height),
+            max,
+        };
+        tiles
+            .iter()
+            .filter_map(|p| {
+                let known = self.known_ground(*p);
+                crate::marks::ground_command(tool, *p, known, held.get(p).copied(), stroke)
+            })
+            // A deposit's, a spring's and a sink's ground does not change.
+            .filter(|c| match c {
+                CommandKind::Mark { at, plan, .. } => self.may_plan(*at, *plan).is_ok(),
+                _ => true,
+            })
+            .collect()
+    }
+
     /// The tiles carrying the player's team's own wire, as the sim last
     /// reported them (Q62).
     pub fn wired(&self) -> std::collections::BTreeSet<sim::TilePos> {

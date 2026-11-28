@@ -233,6 +233,95 @@ fn bolt_image() -> Image {
     )
 }
 
+/// The mark over a flooded machine (`docs/07`; Q65): three waves, drawn
+/// here as the bolt is, with pixels that are fully there or not at all.
+fn flood_image() -> Image {
+    const SIZE: u32 = 32;
+    let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            let inside = (3.0..29.0).contains(&px);
+            let wave = [9.0f32, 16.0, 23.0]
+                .iter()
+                .any(|mid| (py - (mid + 2.4 * (px * 0.55).sin())).abs() < 1.7);
+            data.extend_from_slice(if inside && wave {
+                &[70, 170, 255, 255]
+            } else {
+                &[0, 0, 0, 0]
+            });
+        }
+    }
+    Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+}
+
+/// How far a ramp runs out from the foot of the step it climbs, and half
+/// its width, in tiles (Q65).
+pub const RAMP_RUN: f32 = 0.45;
+pub const RAMP_HALF: f32 = 0.3;
+
+/// The ramp at a step of one level (`docs/07`; Q65): a wedge lying on the
+/// lower tile, its high edge against the tile to the north (-Z) and a
+/// level up, its toe [`RAMP_RUN`] out. Its origin is the lower tile's
+/// centre, on its surface; a turn about Y points it at another side. The
+/// face against the step and the one on the ground are never seen, and
+/// are not built.
+pub fn ramp_mesh() -> Mesh {
+    let (w, rise) = (RAMP_HALF, LEVEL_RISE);
+    let (edge, toe) = (-0.5, -0.5 + RAMP_RUN);
+    let slope = Vec3::new(0.0, RAMP_RUN, rise).normalize();
+    // (corners, normal): the slope's quad as two triangles, then a side
+    // each, wound counter-clockwise seen from outside.
+    let faces: [(&[[f32; 3]], Vec3); 3] = [
+        (
+            &[
+                [-w, 0.0, toe],
+                [w, 0.0, toe],
+                [w, rise, edge],
+                [-w, 0.0, toe],
+                [w, rise, edge],
+                [-w, rise, edge],
+            ],
+            slope,
+        ),
+        (
+            &[[-w, 0.0, toe], [-w, rise, edge], [-w, 0.0, edge]],
+            Vec3::NEG_X,
+        ),
+        (&[[w, 0.0, toe], [w, 0.0, edge], [w, rise, edge]], Vec3::X),
+    ];
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    for (corners, normal) in faces {
+        for c in corners {
+            positions.push(*c);
+            normals.push(normal.to_array());
+            // The ground's art, laid as it lies on the tile under it.
+            uvs.push([c[0] + 0.5, c[2] + 0.5]);
+        }
+    }
+    let indices = (0..positions.len() as u32).collect();
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
 /// A machine's body as half extents: its mesh, and the outline drawn round
 /// it (Q43).
 pub fn body_half(model: Model) -> Vec3 {
@@ -431,6 +520,10 @@ pub struct Palette {
     pub pylon_mast: Handle<Mesh>,
     /// The quad the power mark is drawn on.
     pub power_quad: Handle<Mesh>,
+    /// The flooded mark's quad (Q65): the power mark's, set off to one
+    /// side of the machine as the screen has it, so the two show together
+    /// over a flooded building, which is dark too.
+    pub flood_quad: Handle<Mesh>,
     /// The sheet water is drawn as, at its surface (Q65). See-through, and
     /// over paint, plans and markers, so a mesh of its own
     /// (`crates/render/CLAUDE.md`).
@@ -443,8 +536,19 @@ pub struct Palette {
     /// A ground plan's frame on its tile (Q65): see-through, over paint
     /// and other plans, so a mesh of its own.
     pub ground_plan_frame: Handle<Mesh>,
+    /// The earth a plan to raise a tile would add, as a see-through block
+    /// from the ground to the planned height, and the hatch over ground a
+    /// plan would take away: each see-through over other see-through
+    /// layers, so a mesh each.
+    pub ground_plan_block: Handle<Mesh>,
+    pub ground_hatch_quad: Handle<Mesh>,
+    /// The ramp at a step of one level ([`ramp_mesh`]).
+    pub ramp_wedge: Handle<Mesh>,
 
     pub ground_mat: Handle<StandardMaterial>,
+    /// Ground with water on it (Q65): the same art, darker. Animated
+    /// with `ground_mat`.
+    pub damp_mat: Handle<StandardMaterial>,
     pub ground_frames: Vec<Handle<Image>>,
     /// Per autotile mask, its material; the frames rotate through them.
     pub water_mats: Vec<Handle<StandardMaterial>>,
@@ -500,6 +604,8 @@ pub struct Palette {
     pub charge_fill_mat: Handle<StandardMaterial>,
     /// The struck-through bolt over a flat bot and a dark building.
     pub bolt_mat: Handle<StandardMaterial>,
+    /// The waves over a flooded machine.
+    pub flood_mat: Handle<StandardMaterial>,
     /// The earth under a raised tile, and water (Q65).
     pub earth_mat: Handle<StandardMaterial>,
     pub water_mat: Handle<StandardMaterial>,
@@ -509,6 +615,8 @@ pub struct Palette {
     pub sink_mat: Handle<StandardMaterial>,
     /// A ground plan: the color of earth, see-through.
     pub ground_plan_mat: Handle<StandardMaterial>,
+    /// The earth a plan to raise a tile would add: earth, see-through.
+    pub ground_ghost_mat: Handle<StandardMaterial>,
 }
 
 impl Palette {
@@ -657,11 +765,23 @@ impl Palette {
             charger_block: meshes.add(Cuboid::from_size(2.0 * body_half(Model::Charger))),
             pylon_mast: meshes.add(Cylinder::new(0.05, 0.9)),
             power_quad: meshes.add(Rectangle::new(0.42, 0.42)),
+            flood_quad: meshes.add(
+                Mesh::from(Rectangle::new(0.42, 0.42)).translated_by(Vec3::new(0.46, 0.0, 0.0)),
+            ),
             water_sheet: meshes.add(Cuboid::new(1.0, 0.012, 1.0)),
             source_cone: meshes.add(Cone::new(0.2, 0.34)),
             source_ring: meshes.add(Torus::new(0.3, 0.38)),
             ground_plan_frame: meshes.add(Cuboid::new(0.86, 0.014, 0.86)),
+            ground_plan_block: meshes.add(Cuboid::new(0.8, 1.0, 0.8)),
+            ground_hatch_quad: meshes.add(Cuboid::new(0.8, 2.0 * MARK_HALF, 0.8)),
+            ramp_wedge: meshes.add(ramp_mesh()),
             ground_mat: tex(materials, ground_frames[0].clone(), 0.95),
+            damp_mat: {
+                let mut m = StandardMaterial::from(Color::srgb(0.55, 0.6, 0.7));
+                m.base_color_texture = Some(ground_frames[0].clone());
+                m.perceptual_roughness = 0.6;
+                materials.add(m)
+            },
             ground_frames,
             water_mats,
             water_frames,
@@ -761,9 +881,23 @@ impl Palette {
                 unlit: true,
                 ..default()
             }),
+            ground_ghost_mat: materials.add(StandardMaterial {
+                base_color: Color::srgba(0.5, 0.38, 0.26, 0.5),
+                alpha_mode: AlphaMode::Blend,
+                unlit: true,
+                ..default()
+            }),
             sink_mat: materials.add(StandardMaterial {
                 base_color: Color::srgb(1.0, 0.6, 0.15),
                 unlit: true,
+                ..default()
+            }),
+            flood_mat: materials.add(StandardMaterial {
+                base_color_texture: Some(assets.add(flood_image())),
+                alpha_mode: AlphaMode::Mask(0.5),
+                unlit: true,
+                double_sided: true,
+                cull_mode: None,
                 ..default()
             }),
             bolt_mat: materials.add(StandardMaterial {
@@ -862,6 +996,42 @@ mod tests {
     /// Two bots on adjacent tiles staring at each other must not touch:
     /// everything past the face plane has to fit in half the inter-face
     /// gap with daylight to spare.
+    /// The ramp's faces are wound the way their normals point, or one
+    /// would be culled and the wedge show hollow; and it stays on its
+    /// tile, a level high at the step's edge and on the ground at its toe.
+    #[test]
+    fn the_ramp_is_a_wedge_wound_outward() {
+        let mesh = ramp_mesh();
+        let positions: Vec<Vec3> = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|a| a.as_float3())
+            .unwrap()
+            .iter()
+            .map(|p| Vec3::from_array(*p))
+            .collect();
+        let normals: Vec<Vec3> = mesh
+            .attribute(Mesh::ATTRIBUTE_NORMAL)
+            .and_then(|a| a.as_float3())
+            .unwrap()
+            .iter()
+            .map(|n| Vec3::from_array(*n))
+            .collect();
+        assert_eq!(positions.len() % 3, 0);
+        for (tri, n) in positions.chunks(3).zip(normals.chunks(3)) {
+            let facing = (tri[1] - tri[0]).cross(tri[2] - tri[0]).normalize();
+            assert!(
+                facing.dot(n[0]) > 0.99,
+                "{tri:?} faces {facing}, not {}",
+                n[0]
+            );
+        }
+        for p in &positions {
+            assert!(p.x.abs() <= RAMP_HALF && (-0.5..=0.0).contains(&p.z));
+            let at_edge = p.z == -0.5;
+            assert!(p.y == 0.0 || (at_edge && p.y == LEVEL_RISE), "{p}");
+        }
+    }
+
     #[test]
     fn facing_lenses_never_clip() {
         let tip = LENS_GLASS_Z - LENS_GLASS_LEN / 2.0;
